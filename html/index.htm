@@ -12,6 +12,9 @@
         header { background: #21262d; border-bottom: 1px solid #30363d; height: 50px; display: flex; align-items: center; justify-content: space-between; padding: 0 1.5rem; flex-shrink: 0; }
         .brand { font-size: 1.1rem; font-weight: bold; color: #58a6ff; display: flex; align-items: center; gap: 8px; }
         .user-controls { display: flex; align-items: center; gap: 15px; }
+        .privilege-badge { font-size: 0.75rem; padding: 3px 8px; border-radius: 12px; font-weight: bold; }
+        .badge-root { background: rgba(218, 54, 51, 0.2); color: #ff7b72; border: 1px solid rgba(218, 54, 51, 0.4); }
+        .badge-user { background: rgba(210, 153, 34, 0.2); color: #d29922; border: 1px solid rgba(210, 153, 34, 0.4); }
         .logout-btn { background: #23272e; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
         .logout-btn:hover { background: #30363d; color: #f0f6fc; }
 
@@ -25,15 +28,19 @@
         .nav-item { display: flex; align-items: center; gap: 10px; padding: 0.6rem 1rem; color: #c9d1d9; text-decoration: none; font-size: 0.9rem; cursor: pointer; transition: background 0.15s; }
         .nav-item:hover { background: #21262d; color: #58a6ff; }
         .nav-item.active { background: #1f2937; color: #58a6ff; border-left: 3px solid #58a6ff; font-weight: 600; }
-        .badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; background: #30363d; color: #8b949e; margin-left: auto; }
 
         /* Content Area */
-        main { flex: 1; background: #0d1117; display: flex; flex-direction: column; position: relative; }
+        main { flex: 1; background: #0d1117; display: flex; flex-direction: column; position: relative; overflow-y: auto; }
         iframe { width: 100%; height: 100%; border: none; background: #0d1117; }
 
         .welcome-screen { padding: 2.5rem; color: #c9d1d9; }
         .welcome-screen h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: #58a6ff; }
         .welcome-screen p { margin-bottom: 1.5rem; color: #8b949e; }
+
+        .sudo-info-box { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.2rem; margin-bottom: 2rem; }
+        .sudo-info-box h3 { font-size: 1rem; color: #d29922; margin-bottom: 0.5rem; }
+        .sudo-info-box pre { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 0.5rem; white-space: pre-wrap; }
+
         .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.2rem; }
         .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1.2rem; cursor: pointer; transition: border-color 0.2s, transform 0.1s; }
         .card:hover { border-color: #58a6ff; transform: translateY(-2px); }
@@ -48,7 +55,7 @@
             Debian Server Manager
         </div>
         <div class="user-controls">
-            <span id="authStatusText" style="font-size: 0.85rem; color: #8b949e;"></span>
+            <span id="privilegeBadge" class="privilege-badge">Checking...</span>
             <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
     </header>
@@ -83,6 +90,13 @@
                 <h1>Server Control Overview</h1>
                 <p>Select a plugin from the sidebar to manage system services, storage, and network settings.</p>
 
+                <div id="sudoGuideBox" class="sudo-info-box" style="display: none;">
+                    <h3>⚡ Privilege Separation (Running as Non-Root User)</h3>
+                    <p style="font-size: 0.85rem; color: #c9d1d9;">To execute system commands tagged with <code>_root</code> or <code>_root_cmd</code> without prompt errors, add this rule to <code>/etc/sudoers.d/debian-server-manager</code>:</p>
+                    <pre id="sudoersSnippet"># Allow server user to execute root commands passwordless
+debian-user ALL=(ALL) NOPASSWD: ALL</pre>
+                </div>
+
                 <div class="card-grid" id="dashboardCards">
                     <!-- Plugin quick cards -->
                 </div>
@@ -97,8 +111,16 @@
             try {
                 const authRes = await fetch('/api/auth/status');
                 const authData = await authRes.json();
-                if (authData.auth_enabled) {
-                    document.getElementById('authStatusText').innerText = 'Authenticated';
+
+                const badge = document.getElementById('privilegeBadge');
+                if (authData.is_root) {
+                    badge.className = 'privilege-badge badge-root';
+                    badge.innerText = 'Root Mode';
+                    document.getElementById('sudoGuideBox').style.display = 'none';
+                } else {
+                    badge.className = 'privilege-badge badge-user';
+                    badge.innerText = 'Sudo / User Mode';
+                    document.getElementById('sudoGuideBox').style.display = 'block';
                 }
 
                 await loadPlugins();

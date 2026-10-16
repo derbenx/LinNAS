@@ -1,0 +1,14 @@
+{
+  "id": "php",
+  "name": "PHP Scripting Engine",
+  "description": "Configure PHP runtime version, memory limits, and file upload execution settings",
+  "category": "Web Services",
+  "default": false,
+  "apt_package": "php",
+  "check_cmd": "which php",
+  "install_sudo": "apt-get update && apt-get install -y php{version} php{version}-cli php{version}-mysql libapache2-mod-php{version}",
+  "remove_sudo": "apt-get remove -y php* libapache2-mod-php*",
+  "commands": {
+    "restart_php_sudo": "systemctl restart apache2 || service apache2 restart"
+  }
+}

@@ -6,11 +6,11 @@
   "default": false,
   "apt_package": "veracrypt",
   "check_cmd": "which veracrypt",
-  "install_cmd": "apt-get update && apt-get install -y veracrypt",
-  "remove_cmd": "apt-get remove -y veracrypt",
+  "install_sudo": "apt-get update && apt-get install -y veracrypt",
+  "remove_sudo": "apt-get remove -y veracrypt",
   "commands": {
-    "mount_volume_cmd": "veracrypt -t -k \"\" --paging=no --non-interactive {volume_path} {mount_point} --password={password}",
-    "dismount_volume_cmd": "veracrypt -d {mount_point}",
-    "dismount_all_cmd": "veracrypt -d"
+    "mount_volume_sudo": "veracrypt -t -k \"\" --paging=no --non-interactive \"{volume_path}\" \"{mount_point}\" --password=\"{password}\"",
+    "dismount_volume_sudo": "veracrypt -d \"{mount_point}\"",
+    "dismount_all_sudo": "veracrypt -d"
   }
 }

@@ -7,6 +7,6 @@
   "commands": {
     "list_interfaces_cmd": "ip -j link show",
     "get_ip_cmd": "ip -j addr show {iface}",
-    "set_ip_cmd": "ip addr flush dev {iface} && ip addr add {ip}/{cidr} dev {iface} && ip link set {iface} up"
+    "set_ip_sudo": "ip addr flush dev {iface} && ip addr add {ip}/{cidr} dev {iface} && ip link set {iface} up"
   }
 }

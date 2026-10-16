@@ -57,8 +57,7 @@ raw-malware.info
 	}
 }
 
-func TestCommandKeyValidation(t *testing.T) {
-	// Setup test plugin file
+func TestCommandKeyValidationAndSudoTags(t *testing.T) {
 	tmpDir := t.TempDir()
 	origDir, _ := os.Getwd()
 	_ = os.Chdir(tmpDir)
@@ -66,16 +65,18 @@ func TestCommandKeyValidation(t *testing.T) {
 
 	_ = os.MkdirAll("html/testplugin", 0755)
 	manifest := map[string]interface{}{
-		"id":           "testplugin",
-		"name":         "Test Plugin",
-		"default":      true,
-		"test_cmd":     "echo hello {name}",
-		"not_a_command": "veracrypt",
+		"id":          "testplugin",
+		"name":        "Test Plugin",
+		"default":     true,
+		"test_cmd":    "echo standard {name}",
+		"test_sudo":   "echo sudo_elevated {name}",
+		"test_root":   "echo root_elevated {name}",
+		"not_allowed": "veracrypt",
 	}
 	bytesData, _ := json.Marshal(manifest)
 	_ = os.WriteFile("html/testplugin/plugin.json", bytesData, 0644)
 
-	// Valid key ending in _cmd
+	// Test standard _cmd key
 	reqBody, _ := json.Marshal(ExecRequest{
 		Plugin: "testplugin",
 		CmdKey: "test_cmd",
@@ -91,14 +92,31 @@ func TestCommandKeyValidation(t *testing.T) {
 	if !resp.Success {
 		t.Fatalf("Expected execution success, got error: %s", resp.Error)
 	}
-	if !strings.Contains(resp.Output, "hello world") {
-		t.Fatalf("Expected output 'hello world', got %s", resp.Output)
+	if !strings.Contains(resp.Output, "standard world") {
+		t.Fatalf("Expected output 'standard world', got %s", resp.Output)
 	}
 
-	// Invalid key NOT ending in _cmd
+	// Test privileged _sudo key
+	reqBodySudo, _ := json.Marshal(ExecRequest{
+		Plugin: "testplugin",
+		CmdKey: "test_sudo",
+		Args:   map[string]string{"name": "admin"},
+	})
+	reqSudo := httptest.NewRequest(http.MethodPost, "/api/plugin/exec", bytes.NewReader(reqBodySudo))
+	wSudo := httptest.NewRecorder()
+
+	handleExecPluginCmd(wSudo, reqSudo)
+
+	var respSudo ExecResponse
+	_ = json.NewDecoder(wSudo.Body).Decode(&respSudo)
+	if respSudo.Error != "" && !strings.Contains(respSudo.Error, "exit status") {
+		t.Fatalf("Unexpected key validation error for _sudo key: %s", respSudo.Error)
+	}
+
+	// Test invalid key tag
 	reqBodyInvalid, _ := json.Marshal(ExecRequest{
 		Plugin: "testplugin",
-		CmdKey: "not_a_command",
+		CmdKey: "not_allowed",
 		Args:   map[string]string{},
 	})
 	reqInvalid := httptest.NewRequest(http.MethodPost, "/api/plugin/exec", bytes.NewReader(reqBodyInvalid))
@@ -109,10 +127,7 @@ func TestCommandKeyValidation(t *testing.T) {
 	var respInvalid ExecResponse
 	_ = json.NewDecoder(wInvalid.Body).Decode(&respInvalid)
 	if respInvalid.Success {
-		t.Fatalf("Expected non-_cmd execution to fail")
-	}
-	if !strings.Contains(respInvalid.Error, "Only keys ending with '_cmd'") {
-		t.Fatalf("Unexpected error message: %s", respInvalid.Error)
+		t.Fatalf("Expected non-_cmd/_sudo/_root execution to fail")
 	}
 }
 
@@ -124,7 +139,6 @@ func TestPluginDataStorage(t *testing.T) {
 
 	_ = os.MkdirAll("html/smb", 0755)
 
-	// Post data
 	payload := `{"shares":[{"name":"test","path":"/tmp"}]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/plugin/data?plugin=smb", strings.NewReader(payload))
 	w := httptest.NewRecorder()
@@ -135,13 +149,11 @@ func TestPluginDataStorage(t *testing.T) {
 		t.Fatalf("Expected 200 OK, got %d", w.Result().StatusCode)
 	}
 
-	// Verify file was written
 	dataPath := filepath.Join("html", "smb", "data.json")
 	if _, err := os.Stat(dataPath); os.IsNotExist(err) {
 		t.Fatalf("data.json was not created")
 	}
 
-	// Get data
 	reqGet := httptest.NewRequest(http.MethodGet, "/api/plugin/data?plugin=smb", nil)
 	wGet := httptest.NewRecorder()
 

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>SMB Shares Config</title>
+    <title>SMB Shares & User Config</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
@@ -22,8 +22,14 @@
 
         .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
         .btn:hover { background: #2ea043; }
-        .btn-danger { background: #da3633; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+        .btn-danger { background: #da3633; color: white; }
         .btn-danger:hover { background: #b62324; }
+
+        .switch-btn { padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius: 4px; border: none; cursor: pointer; font-weight: bold; }
+        .switch-enabled { background: #238636; color: white; }
+        .switch-disabled { background: #6e7681; color: white; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
         th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
@@ -33,8 +39,24 @@
     </style>
 </head>
 <body>
-    <h2>SMB Network Shares Config</h2>
-    <p class="subtitle">Manage Samba shares and network file permissions across your LAN.</p>
+    <h2>SMB Shares & User Credentials Config</h2>
+    <p class="subtitle">Manage Samba shares, network permissions, and SMB user accounts.</p>
+
+    <!-- SMB User Management Section -->
+    <div class="section">
+        <div class="section-title">Samba User Credentials Setup</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>SMB Username</label>
+                <input type="text" id="smbUser" placeholder="smbuser">
+            </div>
+            <div class="form-group">
+                <label>SMB Password</label>
+                <input type="password" id="smbPass" placeholder="••••••••">
+            </div>
+        </div>
+        <button class="btn" onclick="addSMBUser()">Create / Update SMB User</button>
+    </div>
 
     <!-- Create Share Form -->
     <div class="section">
@@ -64,10 +86,11 @@
     <!-- Active Shares List -->
     <div class="section">
         <div class="section-title">Configured SMB Shares</div>
-        <button class="btn" style="background: #30363d; margin-bottom: 1rem;" onclick="restartSMBService()">Restart Samba Service</button>
+        <button class="btn btn-secondary" style="margin-bottom: 1rem;" onclick="restartSMBService()">Restart Samba Service</button>
         <table>
             <thead>
                 <tr>
+                    <th>Status / Toggle</th>
                     <th>Share Name</th>
                     <th>Path</th>
                     <th>Comment</th>
@@ -76,7 +99,7 @@
                 </tr>
             </thead>
             <tbody id="smbTableBody">
-                <tr><td colspan="5" style="text-align: center; color: #8b949e;">Loading shares...</td></tr>
+                <tr><td colspan="6" style="text-align: center; color: #8b949e;">Loading shares...</td></tr>
             </tbody>
         </table>
     </div>
@@ -102,13 +125,19 @@
             tbody.innerHTML = '';
 
             if (shares.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #8b949e;">No SMB shares configured yet.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #8b949e;">No SMB shares configured yet.</td></tr>';
                 return;
             }
 
             shares.forEach((s, idx) => {
+                const isEnabled = s.enabled !== false;
+                const toggleBtn = isEnabled
+                    ? `<button class="switch-btn switch-enabled" onclick="toggleShare(${idx})">Active</button>`
+                    : `<button class="switch-btn switch-disabled" onclick="toggleShare(${idx})">Disabled</button>`;
+
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
+                    <td>${toggleBtn}</td>
                     <td><strong>${s.name}</strong></td>
                     <td>${s.path}</td>
                     <td>${s.comment || '-'}</td>
@@ -134,6 +163,46 @@
             }
         }
 
+        async function addSMBUser() {
+            const username = document.getElementById('smbUser').value.trim();
+            const password = document.getElementById('smbPass').value;
+
+            if (!username || !password) {
+                showOutput('Please provide both SMB Username and Password.');
+                return;
+            }
+
+            showOutput(`Creating / updating SMB credentials for user '${username}'...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'smb',
+                        cmd_key: 'add_smb_user_sudo',
+                        args: { username: username, password: password }
+                    })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('smbPass').value = '';
+                    showOutput(`Successfully set up SMB user '${username}'.\n` + data.output);
+                } else {
+                    showOutput(`Failed to set up SMB user: ${data.error}\n${data.output}`);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function toggleShare(index) {
+            shares[index].enabled = (shares[index].enabled === false) ? true : false;
+            await saveSMBData();
+            showOutput(`Share '${shares[index].name}' status set to ${shares[index].enabled ? 'Active' : 'Disabled'}. Restart service to apply.`);
+        }
+
         async function addShare() {
             const name = document.getElementById('shareName').value.trim();
             const path = document.getElementById('sharePath').value.trim();
@@ -145,13 +214,12 @@
                 return;
             }
 
-            // Conflict check
             if (shares.some(s => s.name.toLowerCase() === name.toLowerCase())) {
                 showOutput(`Share with name '${name}' already exists.`);
                 return;
             }
 
-            shares.push({ name, path, comment, read_only: readOnly });
+            shares.push({ name, path, comment, read_only: readOnly, enabled: true });
             await saveSMBData();
 
             document.getElementById('shareName').value = '';
@@ -176,7 +244,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         plugin: 'smb',
-                        cmd_key: 'restart_smb_cmd',
+                        cmd_key: 'restart_smb_sudo',
                         args: {}
                     })
                 });

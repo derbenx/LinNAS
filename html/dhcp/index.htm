@@ -22,7 +22,7 @@
 
         .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
         .btn:hover { background: #2ea043; }
-        .btn-secondary { background: #30363d; }
+        .btn-secondary { background: #30363d; color: white; }
         .btn-secondary:hover { background: #484f58; }
 
         .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
@@ -121,7 +121,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         plugin: 'dhcp',
-                        cmd_key: 'restart_dhcp_cmd',
+                        cmd_key: 'restart_dhcp_sudo',
                         args: {}
                     })
                 });

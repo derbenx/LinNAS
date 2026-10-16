@@ -12,24 +12,40 @@
         .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
         .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
 
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
         .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
         .form-group label { font-size: 0.85rem; color: #8b949e; }
-        .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
-        .form-group input:focus { border-color: #58a6ff; outline: none; }
+        .input-row { display: flex; gap: 8px; }
+        .input-row input { flex: 1; padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .input-row input:focus { border-color: #58a6ff; outline: none; }
 
         .checkbox-group { display: flex; align-items: center; gap: 8px; margin-top: 0.5rem; font-size: 0.9rem; color: #c9d1d9; }
+        .checkbox-group input:disabled + label { color: #484f58; cursor: not-allowed; }
 
         .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
         .btn:hover { background: #2ea043; }
-        .btn-danger { background: #da3633; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+        .btn-danger { background: #da3633; color: white; }
         .btn-danger:hover { background: #b62324; }
+
+        .switch-btn { padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius: 4px; border: none; cursor: pointer; font-weight: bold; }
+        .switch-enabled { background: #238636; color: white; }
+        .switch-disabled { background: #6e7681; color: white; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
         th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
         th { color: #8b949e; font-weight: 600; background: #1f242d; }
 
         .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; z-index: 100; }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 550px; max-width: 90%; max-height: 80vh; display: flex; flex-direction: column; padding: 1.2rem; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .file-list { flex: 1; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; height: 300px; }
+        .file-item { padding: 0.4rem 0.6rem; cursor: pointer; font-size: 0.85rem; border-bottom: 1px solid #161b22; display: flex; align-items: center; justify-content: space-between; }
+        .file-item:hover { background: #1f242d; color: #58a6ff; }
     </style>
 </head>
 <body>
@@ -41,24 +57,23 @@
         <div class="section-title">Mount File Image (ISO / VHD)</div>
         <div class="form-grid">
             <div class="form-group">
-                <label>File Path on Server</label>
-                <input type="text" id="filePath" placeholder="/mnt/storage/disk.iso">
+                <label>File Path on Server (.iso, .vhd, .img)</label>
+                <div class="input-row">
+                    <input type="text" id="filePath" placeholder="/mnt/storage/disk.iso">
+                    <button class="btn btn-secondary" onclick="openBrowser('filePath')">Browse...</button>
+                </div>
             </div>
             <div class="form-group">
-                <label>Mount Point</label>
-                <input type="text" id="mountPoint" placeholder="/media/iso_mount">
-            </div>
-            <div class="form-group">
-                <label>Image Type</label>
-                <select id="imageType">
-                    <option value="mount_iso_cmd">ISO Image (.iso)</option>
-                    <option value="mount_vhd_cmd">VHD / Virtual Disk (.vhd / .img)</option>
-                </select>
+                <label>Mount Point Target</label>
+                <div class="input-row">
+                    <input type="text" id="mountPoint" placeholder="/media/iso_mount">
+                    <button class="btn btn-secondary" onclick="openBrowser('mountPoint')">Browse...</button>
+                </div>
             </div>
         </div>
         <div class="checkbox-group">
             <input type="checkbox" id="addToSmb">
-            <label for="addToSmb">Automatically share this mount point via SMB</label>
+            <label for="addToSmb" id="smbLabel">Automatically share this mount point via SMB</label>
         </div>
         <div class="form-group" id="smbNameGroup" style="margin-top: 0.8rem; max-width: 300px; display: none;">
             <label>SMB Share Name</label>
@@ -71,7 +86,7 @@
     <!-- Section 2: Local Storage Disks -->
     <div class="section">
         <div class="section-title">Detected System Disks & Partitions</div>
-        <button class="btn" style="background: #30363d; margin-bottom: 1rem;" onclick="refreshDrives()">Refresh Disks</button>
+        <button class="btn btn-secondary" style="margin-bottom: 1rem;" onclick="refreshDrives()">Refresh Disks</button>
         <table>
             <thead>
                 <tr>
@@ -80,27 +95,125 @@
                     <th>Filesystem</th>
                     <th>Size</th>
                     <th>Mount Point</th>
+                    <th>Status / Toggle</th>
                     <th>Action</th>
                 </tr>
             </thead>
             <tbody id="driveTableBody">
-                <tr><td colspan="6" style="text-align: center; color: #8b949e;">Click Refresh Disks to scan system partitions.</td></tr>
+                <tr><td colspan="7" style="text-align: center; color: #8b949e;">Click Refresh Disks to scan system partitions.</td></tr>
             </tbody>
         </table>
+    </div>
+
+    <!-- Modal Browser -->
+    <div id="browseModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalPath">/</h3>
+                <button class="btn btn-secondary" onclick="closeBrowser()">X</button>
+            </div>
+            <div class="file-list" id="fileListContainer"></div>
+            <div style="margin-top: 1rem; display: flex; justify-content: space-between;">
+                <button class="btn btn-secondary" onclick="selectCurrentFolder()">Select Current Folder</button>
+                <button class="btn btn-secondary" onclick="closeBrowser()">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <div id="outputBox" class="output-box"></div>
 
     <script>
+        let isSmbInstalled = false;
+        let activeInputId = '';
+        let currentBrowsePath = '/';
+
+        async function checkSmbStatus() {
+            try {
+                const res = await fetch('/api/plugins');
+                const plugins = await res.json();
+                const smbPlugin = plugins.find(p => p.id === 'smb');
+                isSmbInstalled = smbPlugin && smbPlugin.installed;
+
+                const checkbox = document.getElementById('addToSmb');
+                const label = document.getElementById('smbLabel');
+
+                if (!isSmbInstalled) {
+                    checkbox.disabled = true;
+                    checkbox.checked = false;
+                    label.innerText = 'Automatically share this mount point via SMB (Requires SMB package installed)';
+                } else {
+                    checkbox.disabled = false;
+                    label.innerText = 'Automatically share this mount point via SMB';
+                }
+            } catch (err) {
+                console.error('Error checking SMB status:', err);
+            }
+        }
+
         document.getElementById('addToSmb').addEventListener('change', (e) => {
             document.getElementById('smbNameGroup').style.display = e.target.checked ? 'block' : 'none';
         });
 
+        /* File Browser */
+        function openBrowser(inputId) {
+            activeInputId = inputId;
+            document.getElementById('browseModal').style.display = 'flex';
+            loadDir('/');
+        }
+
+        function closeBrowser() {
+            document.getElementById('browseModal').style.display = 'none';
+        }
+
+        async function loadDir(path) {
+            currentBrowsePath = path;
+            document.getElementById('modalPath').innerText = path;
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(path)}`);
+                const data = await res.json();
+                renderFileList(data.parent, data.items || []);
+            } catch (err) {
+                console.error('Failed to browse dir:', err);
+            }
+        }
+
+        function renderFileList(parent, items) {
+            const container = document.getElementById('fileListContainer');
+            container.innerHTML = '';
+
+            if (currentBrowsePath !== '/') {
+                const parentDiv = document.createElement('div');
+                parentDiv.className = 'file-item';
+                parentDiv.innerHTML = `<strong>📁 .. (Parent Directory)</strong>`;
+                parentDiv.onclick = () => loadDir(parent);
+                container.appendChild(parentDiv);
+            }
+
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'file-item';
+                div.innerHTML = `<span>${item.is_dir ? '📁' : '📄'} ${item.name}</span>`;
+                div.onclick = () => {
+                    if (item.is_dir) {
+                        loadDir(item.path);
+                    } else {
+                        document.getElementById(activeInputId).value = item.path;
+                        closeBrowser();
+                    }
+                };
+                container.appendChild(div);
+            });
+        }
+
+        function selectCurrentFolder() {
+            document.getElementById(activeInputId).value = currentBrowsePath;
+            closeBrowser();
+        }
+
         async function mountFileImage() {
             const filePath = document.getElementById('filePath').value.trim();
             const mountPoint = document.getElementById('mountPoint').value.trim();
-            const cmdKey = document.getElementById('imageType').value;
-            const addToSmb = document.getElementById('addToSmb').checked;
+            const addToSmb = document.getElementById('addToSmb').checked && isSmbInstalled;
             let shareName = document.getElementById('smbShareName').value.trim();
 
             if (!filePath || !mountPoint) {
@@ -108,7 +221,10 @@
                 return;
             }
 
-            showOutput(`Mounting ${filePath} to ${mountPoint}...`);
+            const ext = filePath.split('.').pop().toLowerCase();
+            const cmdKey = (ext === 'iso') ? 'mount_iso_sudo' : 'mount_vhd_sudo';
+
+            showOutput(`Auto-detected type [${ext.toUpperCase()}]. Mounting ${filePath} to ${mountPoint}...`);
 
             try {
                 const res = await fetch('/api/plugin/exec', {
@@ -141,12 +257,10 @@
 
         async function addSMBShare(name, path) {
             try {
-                // Fetch existing smb shares data to resolve name conflict
                 const dataRes = await fetch('/api/plugin/data?plugin=smb');
                 let smbData = await dataRes.json();
                 if (!Array.isArray(smbData.shares)) smbData.shares = [];
 
-                // Conflict check and auto rename (e.g. Videos -> Videos2)
                 let finalName = name;
                 let count = 2;
                 while (smbData.shares.some(s => s.name.toLowerCase() === finalName.toLowerCase())) {
@@ -154,7 +268,7 @@
                     count++;
                 }
 
-                smbData.shares.push({ name: finalName, path: path, comment: 'Auto-added drive share', read_only: false });
+                smbData.shares.push({ name: finalName, path: path, comment: 'Auto-added drive share', read_only: false, enabled: true });
 
                 await fetch('/api/plugin/data?plugin=smb', {
                     method: 'POST',
@@ -203,10 +317,16 @@
                 const mnt = dev.mountpoint || '-';
 
                 let actionBtn = '';
+                let statusToggle = '';
+
                 if (dev.mountpoint) {
+                    statusToggle = `<button class="switch-btn switch-enabled" onclick="toggleDriveMount('${devPath}', '${dev.mountpoint}', false)">Mounted (Click to Pause)</button>`;
                     actionBtn = `<button class="btn btn-danger" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="unmountDev('${dev.mountpoint}')">Unmount</button>`;
                 } else if (dev.fstype) {
+                    statusToggle = `<button class="switch-btn switch-disabled" onclick="promptMountDev('${devPath}')">Unmounted (Click to Mount)</button>`;
                     actionBtn = `<button class="btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="promptMountDev('${devPath}')">Mount</button>`;
+                } else {
+                    statusToggle = '<span style="color: #6e7681;">Unformatted</span>';
                 }
 
                 tr.innerHTML = `
@@ -215,6 +335,7 @@
                     <td>${dev.fstype || 'N/A'}</td>
                     <td>${dev.size || ''}</td>
                     <td>${mnt}</td>
+                    <td>${statusToggle}</td>
                     <td>${actionBtn}</td>
                 `;
                 tbody.appendChild(tr);
@@ -227,6 +348,14 @@
             devices.forEach(processDev);
         }
 
+        async function toggleDriveMount(devPath, mnt, shouldMount) {
+            if (!shouldMount) {
+                await unmountDev(mnt);
+            } else {
+                await promptMountDev(devPath);
+            }
+        }
+
         async function promptMountDev(devPath) {
             const mnt = prompt(`Enter mount path for ${devPath}:`, `/mnt/${devPath.split('/').pop()}`);
             if (!mnt) return;
@@ -237,7 +366,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         plugin: 'drive_mount',
-                        cmd_key: 'mount_disk_cmd',
+                        cmd_key: 'mount_disk_sudo',
                         args: { device: devPath, mountpoint: mnt }
                     })
                 });
@@ -256,7 +385,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         plugin: 'drive_mount',
-                        cmd_key: 'unmount_disk_cmd',
+                        cmd_key: 'unmount_disk_sudo',
                         args: { mountpoint: mnt }
                     })
                 });
@@ -273,6 +402,10 @@
             box.style.display = 'block';
             box.innerText = text;
         }
+
+        window.onload = () => {
+            checkSmbStatus();
+        };
     </script>
 </body>
 </html>

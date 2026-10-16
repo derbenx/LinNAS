@@ -20,7 +20,7 @@
 
         .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
         .btn:hover { background: #2ea043; }
-        .btn-secondary { background: #30363d; }
+        .btn-secondary { background: #30363d; color: white; }
         .btn-secondary:hover { background: #484f58; }
 
         .no-hardware-box { background: #21262d; border: 1px solid #d29922; border-radius: 6px; padding: 1.2rem; color: #e3b341; margin-bottom: 1.5rem; display: none; }
@@ -133,7 +133,7 @@
                 const res = await fetch('/api/plugin/exec', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ plugin: 'wifi', cmd_key: 'scan_ap_cmd', args: { iface: iface } })
+                    body: JSON.stringify({ plugin: 'wifi', cmd_key: 'scan_ap_sudo', args: { iface: iface } })
                 });
                 const data = await res.json();
                 showOutput(data.success ? 'Scan Output:\n' + data.output : 'Scan failed: ' + data.error + '\n' + data.output);
@@ -160,13 +160,12 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         plugin: 'wifi',
-                        cmd_key: 'connect_wifi_cmd',
+                        cmd_key: 'connect_wifi_sudo',
                         args: { iface, ssid, password }
                     })
                 });
                 const data = await res.json();
 
-                // Store password in base64 as requested
                 await saveWifiProfile(ssid, btoa(password));
 
                 showOutput(data.success ? `Connected successfully to '${ssid}'.` : `Connection attempt output:\n${data.output}\nError: ${data.error}`);
@@ -181,7 +180,6 @@
                 let wifiData = await dataRes.json();
                 if (!Array.isArray(wifiData.networks)) wifiData.networks = [];
 
-                // Update or add
                 const existing = wifiData.networks.find(n => n.ssid === ssid);
                 if (existing) {
                     existing.b64_password = b64Pass;

@@ -1,0 +1,15 @@
+{
+  "id": "mysql",
+  "name": "MySQL / MariaDB Database",
+  "description": "Configure MySQL / MariaDB database server, create users, and access SQL Web Client",
+  "category": "Web Services",
+  "default": false,
+  "apt_package": "mariadb-server",
+  "check_cmd": "which mariadb || which mysql",
+  "install_sudo": "apt-get update && apt-get install -y mariadb-server mariadb-client",
+  "remove_sudo": "apt-get remove -y mariadb-server mariadb-client",
+  "commands": {
+    "restart_mysql_sudo": "systemctl restart mariadb || systemctl restart mysql",
+    "create_db_user_sudo": "mysql -e \"CREATE USER IF NOT EXISTS '{username}'@'%' IDENTIFIED BY '{password}'; GRANT ALL PRIVILEGES ON *.* TO '{username}'@'%'; FLUSH PRIVILEGES;\""
+  }
+}

@@ -6,9 +6,9 @@
   "default": true,
   "commands": {
     "list_drives_cmd": "lsblk -J -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT",
-    "mount_disk_cmd": "mkdir -p {mountpoint} && mount {device} {mountpoint}",
-    "unmount_disk_cmd": "umount {mountpoint}",
-    "mount_iso_cmd": "mkdir -p {mountpoint} && mount -o loop {filepath} {mountpoint}",
-    "mount_vhd_cmd": "mkdir -p {mountpoint} && mount -o loop {filepath} {mountpoint}"
+    "mount_disk_sudo": "mkdir -p \"{mountpoint}\" && mount \"{device}\" \"{mountpoint}\"",
+    "unmount_disk_sudo": "umount \"{mountpoint}\"",
+    "mount_iso_sudo": "mkdir -p \"{mountpoint}\" && mount -o loop \"{filepath}\" \"{mountpoint}\"",
+    "mount_vhd_sudo": "mkdir -p \"{mountpoint}\" && mount -o loop \"{filepath}\" \"{mountpoint}\""
   }
 }

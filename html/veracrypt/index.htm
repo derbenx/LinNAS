@@ -18,9 +18,12 @@
         .form-group input { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
         .form-group input:focus { border-color: #58a6ff; outline: none; }
 
+        .checkbox-group { display: flex; align-items: center; gap: 8px; margin-top: 0.5rem; font-size: 0.9rem; color: #c9d1d9; }
+        .checkbox-group input:disabled + label { color: #484f58; cursor: not-allowed; }
+
         .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
         .btn:hover { background: #2ea043; }
-        .btn-danger { background: #da3633; }
+        .btn-danger { background: #da3633; color: white; }
         .btn-danger:hover { background: #b62324; }
 
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
@@ -32,7 +35,7 @@
 </head>
 <body>
     <h2>VeraCrypt Encryption Config</h2>
-    <p class="subtitle">Mount encrypted VeraCrypt file containers or physical disk volumes safely.</p>
+    <p class="subtitle">Mount and dismount encrypted VeraCrypt file containers or physical disk volumes safely.</p>
 
     <!-- Mount Container Form -->
     <div class="section">
@@ -43,7 +46,7 @@
                 <input type="text" id="volPath" placeholder="/data/encrypted.hc or /dev/sdb1">
             </div>
             <div class="form-group">
-                <label>Target Mount Point</label>
+                <label>Target Mount Point (e.g. /mnt/veracrypt or /media/mounted_drive/vc_vault)</label>
                 <input type="text" id="mountPoint" placeholder="/mnt/veracrypt1">
             </div>
             <div class="form-group">
@@ -51,6 +54,15 @@
                 <input type="password" id="password" placeholder="Volume password">
             </div>
         </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="addVcToSmb">
+            <label for="addVcToSmb" id="vcSmbLabel">Automatically share this mounted VeraCrypt volume via SMB</label>
+        </div>
+        <div class="form-group" id="vcSmbNameGroup" style="margin-top: 0.8rem; max-width: 300px; display: none;">
+            <label>SMB Share Name</label>
+            <input type="text" id="vcSmbShareName" placeholder="EncryptedVault">
+        </div>
+        <br>
         <button class="btn" onclick="mountVolume()">Mount Volume</button>
     </div>
 
@@ -76,6 +88,34 @@
 
     <script>
         let mountedList = [];
+        let isSmbInstalled = false;
+
+        async function checkSmbStatus() {
+            try {
+                const res = await fetch('/api/plugins');
+                const plugins = await res.json();
+                const smbPlugin = plugins.find(p => p.id === 'smb');
+                isSmbInstalled = smbPlugin && smbPlugin.installed;
+
+                const checkbox = document.getElementById('addVcToSmb');
+                const label = document.getElementById('vcSmbLabel');
+
+                if (!isSmbInstalled) {
+                    checkbox.disabled = true;
+                    checkbox.checked = false;
+                    label.innerText = 'Automatically share this mounted VeraCrypt volume via SMB (Requires SMB package installed)';
+                } else {
+                    checkbox.disabled = false;
+                    label.innerText = 'Automatically share this mounted VeraCrypt volume via SMB';
+                }
+            } catch (err) {
+                console.error('Error checking SMB status:', err);
+            }
+        }
+
+        document.getElementById('addVcToSmb').addEventListener('change', (e) => {
+            document.getElementById('vcSmbNameGroup').style.display = e.target.checked ? 'block' : 'none';
+        });
 
         async function loadMountedData() {
             try {
@@ -127,6 +167,8 @@
             const volPath = document.getElementById('volPath').value.trim();
             const mountPoint = document.getElementById('mountPoint').value.trim();
             const password = document.getElementById('password').value;
+            const addToSmb = document.getElementById('addVcToSmb').checked && isSmbInstalled;
+            let shareName = document.getElementById('vcSmbShareName').value.trim();
 
             if (!volPath || !mountPoint || !password) {
                 showOutput('Please enter Volume Path, Mount Point, and Password.');
@@ -141,7 +183,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         plugin: 'veracrypt',
-                        cmd_key: 'mount_volume_cmd',
+                        cmd_key: 'mount_volume_sudo',
                         args: {
                             volume_path: volPath,
                             mount_point: mountPoint,
@@ -155,12 +197,46 @@
                     mountedList.push({ volume_path: volPath, mount_point: mountPoint });
                     await saveMountedData();
                     document.getElementById('password').value = '';
-                    showOutput(`VeraCrypt volume mounted successfully at ${mountPoint}.\n` + data.output);
+
+                    let msg = `VeraCrypt volume mounted successfully at ${mountPoint}.\n` + data.output;
+                    if (addToSmb) {
+                        if (!shareName) shareName = mountPoint.split('/').pop() || 'EncryptedVault';
+                        const smbRes = await addSMBShare(shareName, mountPoint);
+                        msg += '\n' + smbRes;
+                    }
+                    showOutput(msg);
                 } else {
                     showOutput(`Failed to mount VeraCrypt volume: ${data.error}\n${data.output}`);
                 }
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function addSMBShare(name, path) {
+            try {
+                const dataRes = await fetch('/api/plugin/data?plugin=smb');
+                let smbData = await dataRes.json();
+                if (!Array.isArray(smbData.shares)) smbData.shares = [];
+
+                let finalName = name;
+                let count = 2;
+                while (smbData.shares.some(s => s.name.toLowerCase() === finalName.toLowerCase())) {
+                    finalName = `${name}${count}`;
+                    count++;
+                }
+
+                smbData.shares.push({ name: finalName, path: path, comment: 'VeraCrypt Vault SMB Share', read_only: false, enabled: true });
+
+                await fetch('/api/plugin/data?plugin=smb', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ shares: smbData.shares })
+                });
+
+                return `SMB Share '${finalName}' added for VeraCrypt mount path ${path}.`;
+            } catch (err) {
+                return `Mounted VeraCrypt, but failed to create SMB share: ${err.message}`;
             }
         }
 
@@ -174,7 +250,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         plugin: 'veracrypt',
-                        cmd_key: 'dismount_volume_cmd',
+                        cmd_key: 'dismount_volume_sudo',
                         args: { mount_point: item.mount_point }
                     })
                 });
@@ -200,7 +276,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         plugin: 'veracrypt',
-                        cmd_key: 'dismount_all_cmd',
+                        cmd_key: 'dismount_all_sudo',
                         args: {}
                     })
                 });
@@ -220,7 +296,10 @@
             box.innerText = text;
         }
 
-        window.onload = loadMountedData;
+        window.onload = () => {
+            checkSmbStatus();
+            loadMountedData();
+        };
     </script>
 </body>
 </html>

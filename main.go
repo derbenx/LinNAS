@@ -32,6 +32,8 @@ type PluginManifest struct {
 	Default     bool              `json:"default"`
 	AptPackage  string            `json:"apt_package,omitempty"`
 	CheckCmd    string            `json:"check_cmd,omitempty"`
+	InstallCmd  string            `json:"install_cmd,omitempty"`
+	RemoveCmd   string            `json:"remove_cmd,omitempty"`
 	Commands    map[string]string `json:"commands,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
 	Installed   bool              `json:"installed"`
@@ -49,11 +51,47 @@ type ExecResponse struct {
 	Error   string `json:"error,omitempty"`
 }
 
+type FileEntry struct {
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	IsDir bool   `json:"is_dir"`
+	Size  int64  `json:"size"`
+}
+
+type SMBShare struct {
+	Name     string `json:"name"`
+	Path     string `json:"path"`
+	Comment  string `json:"comment"`
+	ReadOnly bool   `json:"read_only"`
+	Enabled  bool   `json:"enabled"`
+}
+
+type SMBData struct {
+	Shares []SMBShare `json:"shares"`
+}
+
+type DNSData struct {
+	PrimaryDNS   string `json:"primary_dns"`
+	SecondaryDNS string `json:"secondary_dns"`
+	BlockRules   string `json:"block_rules"`
+}
+
+type DHCPData struct {
+	Enabled   bool   `json:"enabled"`
+	Interface string `json:"interface"`
+	StartIP   string `json:"start_ip"`
+	EndIP     string `json:"end_ip"`
+	Netmask   string `json:"netmask"`
+	Gateway   string `json:"gateway"`
+	LeaseTime string `json:"lease_time"`
+}
+
 var (
-	appConfig   Config
-	sessions    = make(map[string]time.Time)
-	sessionsMu  sync.RWMutex
-	safeVarReg  = regexp.MustCompile(`^[a-zA-Z0-9_\-\.\/\:\ \@]+$`)
+	appConfig  Config
+	sessions   = make(map[string]time.Time)
+	sessionsMu sync.RWMutex
+	// Prohibit shell metacharacters $, `, |, &, ;, <, >, (, ), \, *, ?
+	safeVarReg = regexp.MustCompile(`^[a-zA-Z0-9_\-\.\/\:\ \@\!\#\%\^\=\+\{\}\[\]\~]+$`)
 )
 
 func loadConfig() {
@@ -96,7 +134,6 @@ func isAuthorized(r *http.Request) bool {
 
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Serve static files and public auth endpoints
 		path := r.URL.Path
 		if path == "/api/login" || path == "/api/auth/status" {
 			next(w, r)
@@ -175,6 +212,7 @@ func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, map[string]interface{}{
 		"auth_enabled": appConfig.AuthEnabled,
 		"logged_in":    isAuthorized(r),
+		"is_root":      os.Getuid() == 0,
 	})
 }
 
@@ -189,7 +227,6 @@ func checkPackageInstalled(checkCmd string, aptPackage string) bool {
 		if err == nil && strings.Contains(string(out), "install ok installed") {
 			return true
 		}
-		// Fallback check with which
 		cmd2 := exec.Command("which", aptPackage)
 		if cmd2.Run() == nil {
 			return true
@@ -228,7 +265,6 @@ func getPlugins() ([]PluginManifest, error) {
 			manifest.ID = entry.Name()
 		}
 
-		// Check installation status
 		if manifest.Default {
 			manifest.Installed = true
 		} else {
@@ -262,15 +298,17 @@ func handleExecPluginCmd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Security validation: plugin id must be safe alphanumeric
 	if matched, _ := regexp.MatchString(`^[a-zA-Z0-9_\-]+$`, req.Plugin); !matched {
 		jsonResponse(w, ExecResponse{Success: false, Error: "Invalid plugin ID"})
 		return
 	}
 
-	// Security validation: cmd_key MUST end with "_cmd"
-	if !strings.HasSuffix(req.CmdKey, "_cmd") {
-		jsonResponse(w, ExecResponse{Success: false, Error: "Only keys ending with '_cmd' can be executed"})
+	// Validate command key ends strictly with _cmd or _sudo
+	isSudoCmd := strings.HasSuffix(req.CmdKey, "_sudo")
+	isStandardCmd := strings.HasSuffix(req.CmdKey, "_cmd")
+
+	if !isSudoCmd && !isStandardCmd {
+		jsonResponse(w, ExecResponse{Success: false, Error: "Only keys ending with '_cmd' or '_sudo' can be executed"})
 		return
 	}
 
@@ -287,7 +325,6 @@ func handleExecPluginCmd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up command string in root JSON or inside "commands" map
 	cmdTemplate := ""
 	if val, ok := rawMap[req.CmdKey].(string); ok {
 		cmdTemplate = val
@@ -297,27 +334,49 @@ func handleExecPluginCmd(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Fallback mapping for install/remove commands
+	if cmdTemplate == "" {
+		if req.CmdKey == "install_cmd" || req.CmdKey == "install_sudo" {
+			if val, ok := rawMap["install_sudo"].(string); ok {
+				cmdTemplate = val
+			} else if val, ok := rawMap["install_cmd"].(string); ok {
+				cmdTemplate = val
+			}
+		} else if req.CmdKey == "remove_cmd" || req.CmdKey == "remove_sudo" {
+			if val, ok := rawMap["remove_sudo"].(string); ok {
+				cmdTemplate = val
+			} else if val, ok := rawMap["remove_cmd"].(string); ok {
+				cmdTemplate = val
+			}
+		}
+	}
+
 	if cmdTemplate == "" {
 		jsonResponse(w, ExecResponse{Success: false, Error: fmt.Sprintf("Command key %s not found in plugin", req.CmdKey)})
 		return
 	}
 
-	// Substitute variables safely
 	finalCmd := cmdTemplate
 	for k, v := range req.Args {
-		// Verify argument value doesn't contain shell injection characters
-		if !safeVarReg.MatchString(v) && len(v) > 0 {
-			jsonResponse(w, ExecResponse{Success: false, Error: fmt.Sprintf("Invalid characters in parameter %s", k)})
+		if len(v) > 0 && !safeVarReg.MatchString(v) {
+			jsonResponse(w, ExecResponse{Success: false, Error: fmt.Sprintf("Invalid or dangerous character in parameter %s", k)})
 			return
 		}
 		finalCmd = strings.ReplaceAll(finalCmd, "{"+k+"}", v)
 		finalCmd = strings.ReplaceAll(finalCmd, "%"+k+"%", v)
 	}
 
-	log.Printf("[EXEC] Plugin: %s, CmdKey: %s, Cmd: %s", req.Plugin, req.CmdKey, finalCmd)
+	needsSudo := isSudoCmd || req.CmdKey == "install_sudo" || req.CmdKey == "remove_sudo" || (req.CmdKey == "install_cmd" && rawMap["install_sudo"] != nil) || (req.CmdKey == "remove_cmd" && rawMap["remove_sudo"] != nil)
+	var execCmd *exec.Cmd
+	if needsSudo && os.Getuid() != 0 {
+		log.Printf("[EXEC-SUDO] Plugin: %s, CmdKey: %s, Cmd: %s", req.Plugin, req.CmdKey, finalCmd)
+		execCmd = exec.Command("sudo", "-n", "sh", "-c", finalCmd)
+	} else {
+		log.Printf("[EXEC] Plugin: %s, CmdKey: %s, Cmd: %s", req.Plugin, req.CmdKey, finalCmd)
+		execCmd = exec.Command("sh", "-c", finalCmd)
+	}
 
-	cmd := exec.Command("sh", "-c", finalCmd)
-	outBytes, err := cmd.CombinedOutput()
+	outBytes, err := execCmd.CombinedOutput()
 	outputStr := string(outBytes)
 
 	if err != nil {
@@ -333,6 +392,76 @@ func handleExecPluginCmd(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Output:  outputStr,
 	})
+}
+
+// Sync SMB, DNS, and DHCP plugin data directly to Debian service configs
+func syncSystemConfigs(pluginID string, body []byte) {
+	switch pluginID {
+	case "smb":
+		var smbData SMBData
+		if err := json.Unmarshal(body, &smbData); err == nil {
+			var sb strings.Builder
+			sb.WriteString("# Generated by Debian Server Manager\n\n")
+			for _, share := range smbData.Shares {
+				if share.Enabled {
+					sb.WriteString(fmt.Sprintf("[%s]\n", share.Name))
+					sb.WriteString(fmt.Sprintf("   path = %s\n", share.Path))
+					if share.Comment != "" {
+						sb.WriteString(fmt.Sprintf("   comment = %s\n", share.Comment))
+					}
+					if share.ReadOnly {
+						sb.WriteString("   read only = yes\n")
+					} else {
+						sb.WriteString("   read only = no\n")
+					}
+					sb.WriteString("   guest ok = yes\n\n")
+				}
+			}
+			// Attempt to write to /etc/samba/conf.d/shares.conf or /etc/samba/smb.conf
+			_ = os.MkdirAll("/etc/samba/conf.d", 0755)
+			confPath := "/etc/samba/conf.d/shares.conf"
+			if err := os.WriteFile(confPath, []byte(sb.String()), 0644); err != nil {
+				// Fallback to /tmp or local data config snippet
+				_ = os.WriteFile(filepath.Join("html", "smb", "smb_shares.conf"), []byte(sb.String()), 0644)
+			}
+		}
+
+	case "dns":
+		var dnsData DNSData
+		if err := json.Unmarshal(body, &dnsData); err == nil {
+			var sb strings.Builder
+			sb.WriteString("# Generated by Debian Server Manager\n")
+			if dnsData.PrimaryDNS != "" {
+				sb.WriteString(fmt.Sprintf("server=%s\n", dnsData.PrimaryDNS))
+			}
+			if dnsData.SecondaryDNS != "" {
+				sb.WriteString(fmt.Sprintf("server=%s\n", dnsData.SecondaryDNS))
+			}
+			if dnsData.BlockRules != "" {
+				sb.WriteString("\n# AdBlock Rules\n")
+				sb.WriteString(dnsData.BlockRules)
+				sb.WriteString("\n")
+			}
+			_ = os.MkdirAll("/etc/dnsmasq.d", 0755)
+			_ = os.WriteFile("/etc/dnsmasq.d/99-server-manager-dns.conf", []byte(sb.String()), 0644)
+		}
+
+	case "dhcp":
+		var dhcpData DHCPData
+		if err := json.Unmarshal(body, &dhcpData); err == nil {
+			var sb strings.Builder
+			sb.WriteString("# Generated by Debian Server Manager\n")
+			if dhcpData.Enabled && dhcpData.Interface != "" && dhcpData.StartIP != "" && dhcpData.EndIP != "" {
+				sb.WriteString(fmt.Sprintf("interface=%s\n", dhcpData.Interface))
+				sb.WriteString(fmt.Sprintf("dhcp-range=%s,%s,%s,%s\n", dhcpData.StartIP, dhcpData.EndIP, dhcpData.Netmask, dhcpData.LeaseTime))
+				if dhcpData.Gateway != "" {
+					sb.WriteString(fmt.Sprintf("dhcp-option=option:router,%s\n", dhcpData.Gateway))
+				}
+			}
+			_ = os.MkdirAll("/etc/dnsmasq.d", 0755)
+			_ = os.WriteFile("/etc/dnsmasq.d/99-server-manager-dhcp.conf", []byte(sb.String()), 0644)
+		}
+	}
 }
 
 func handlePluginData(w http.ResponseWriter, r *http.Request) {
@@ -359,7 +488,6 @@ func handlePluginData(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to read request body", http.StatusBadRequest)
 			return
 		}
-		// Validate JSON
 		var js json.RawMessage
 		if err := json.Unmarshal(body, &js); err != nil {
 			http.Error(w, "Invalid JSON data", http.StatusBadRequest)
@@ -371,11 +499,51 @@ func handlePluginData(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to write data file", http.StatusInternalServerError)
 			return
 		}
+
+		// Sync data directly to system config files (/etc/samba, /etc/dnsmasq.d)
+		syncSystemConfigs(pluginID, body)
+
 		jsonResponse(w, map[string]interface{}{"success": true})
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func handleFsBrowse(w http.ResponseWriter, r *http.Request) {
+	dirPath := r.URL.Query().Get("path")
+	if dirPath == "" {
+		dirPath = "/"
+	}
+
+	dirPath = filepath.Clean(dirPath)
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		jsonResponse(w, map[string]interface{}{"error": err.Error(), "path": dirPath, "items": []FileEntry{}})
+		return
+	}
+
+	var items []FileEntry
+	for _, entry := range entries {
+		info, err := entry.Info()
+		size := int64(0)
+		if err == nil {
+			size = info.Size()
+		}
+		items = append(items, FileEntry{
+			Name:  entry.Name(),
+			Path:  filepath.Join(dirPath, entry.Name()),
+			IsDir: entry.IsDir(),
+			Size:  size,
+		})
+	}
+
+	parent := filepath.Dir(dirPath)
+	jsonResponse(w, map[string]interface{}{
+		"path":   dirPath,
+		"parent": parent,
+		"items":  items,
+	})
 }
 
 func handleDNSConvert(w http.ResponseWriter, r *http.Request) {
@@ -402,7 +570,6 @@ func handleDNSConvert(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// AdBlock format: ||domain.com^
 		if strings.HasPrefix(line, "||") && strings.HasSuffix(line, "^") {
 			domain := line[2 : len(line)-1]
 			if domainRegex.MatchString(domain) {
@@ -411,7 +578,6 @@ func handleDNSConvert(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Hosts format: 0.0.0.0 domain.com or 127.0.0.1 domain.com
 		parts := strings.Fields(line)
 		if len(parts) >= 2 {
 			domain := parts[1]
@@ -421,7 +587,6 @@ func handleDNSConvert(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Single raw domain: domain.com
 		if domainRegex.MatchString(line) {
 			converted = append(converted, fmt.Sprintf("address=/%s/0.0.0.0", line))
 		}
@@ -442,7 +607,6 @@ func jsonResponse(w http.ResponseWriter, data interface{}) {
 func main() {
 	loadConfig()
 
-	// Ensure html directory exists
 	_ = os.MkdirAll("html", 0755)
 
 	mux := http.NewServeMux()
@@ -454,12 +618,12 @@ func main() {
 	mux.HandleFunc("/api/plugins", handleListPlugins)
 	mux.HandleFunc("/api/plugin/exec", handleExecPluginCmd)
 	mux.HandleFunc("/api/plugin/data", handlePluginData)
+	mux.HandleFunc("/api/fs/browse", handleFsBrowse)
 	mux.HandleFunc("/api/dns/convert", handleDNSConvert)
 
 	// Static HTML File server
 	fileServer := http.FileServer(http.Dir("html"))
 	mux.Handle("/", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Serve index.htm if root
 		if r.URL.Path == "/" {
 			http.ServeFile(w, r, filepath.Join("html", "index.htm"))
 			return
@@ -468,7 +632,7 @@ func main() {
 	})))
 
 	addr := fmt.Sprintf(":%d", appConfig.Port)
-	log.Printf("Starting Debian Server Manager on http://localhost%s", addr)
+	log.Printf("Starting Debian Server Manager on http://localhost%s (Running as Root: %v)", addr, os.Getuid() == 0)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
