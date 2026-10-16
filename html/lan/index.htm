@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LAN Network Config</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus { border-color: #58a6ff; outline: none; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn:hover { background: #2ea043; }
+
+        .no-hardware-box { background: #21262d; border: 1px solid #d29922; border-radius: 6px; padding: 1.2rem; color: #e3b341; margin-bottom: 1.5rem; display: none; }
+        .no-hardware-box h3 { margin-bottom: 0.5rem; font-size: 1rem; }
+        .no-hardware-box p { font-size: 0.85rem; color: #c9d1d9; line-height: 1.4; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <h2>LAN Network Settings</h2>
+    <p class="subtitle">Configure static IPv4 address, netmask, and link state for physical Ethernet network interfaces.</p>
+
+    <div id="hardwareWarning" class="no-hardware-box">
+        <h3>⚠️ No Ethernet LAN Hardware Detected</h3>
+        <p>No active wired network interfaces were found on this machine. To resolve this issue:</p>
+        <p>1. Check that an Ethernet network cable or PCI adapter is firmly attached.<br>
+           2. Verify missing driver packages using <code>lspci -k</code> or <code>lshw -C network</code>.<br>
+           3. Install driver firmware via Debian APT (e.g., <code>apt install firmware-realtek</code> or <code>firmware-linux-nonfree</code>).</p>
+    </div>
+
+    <div class="section" id="configSection">
+        <div class="section-title">Ethernet Interface Configuration</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Ethernet Interface</label>
+                <select id="ifaceSelect" onchange="onIfaceSelect()"></select>
+            </div>
+            <div class="form-group">
+                <label>IPv4 Address</label>
+                <input type="text" id="ipAddr" placeholder="192.168.1.50">
+            </div>
+            <div class="form-group">
+                <label>Subnet CIDR Mask (e.g. 24 for 255.255.255.0)</label>
+                <input type="text" id="cidrMask" placeholder="24">
+            </div>
+        </div>
+        <button class="btn" onclick="applyLanConfig()">Apply Network Settings</button>
+    </div>
+
+    <div id="outputBox" class="output-box"></div>
+
+    <script>
+        let lanInterfaces = [];
+
+        async function detectLanInterfaces() {
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'lan', cmd_key: 'list_interfaces_cmd', args: {} })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const links = JSON.parse(data.output);
+                    lanInterfaces = links.filter(l => l.ifname !== 'lo' && !l.ifname.startsWith('wl'));
+
+                    if (lanInterfaces.length === 0) {
+                        document.getElementById('hardwareWarning').style.display = 'block';
+                        document.getElementById('configSection').style.display = 'none';
+                    } else {
+                        document.getElementById('hardwareWarning').style.display = 'none';
+                        document.getElementById('configSection').style.display = 'block';
+                        populateIfaceSelect();
+                    }
+                }
+            } catch (err) {
+                showOutput('Failed to scan LAN interfaces: ' + err.message);
+            }
+        }
+
+        function populateIfaceSelect() {
+            const select = document.getElementById('ifaceSelect');
+            select.innerHTML = '';
+            lanInterfaces.forEach(l => {
+                const opt = document.createElement('option');
+                opt.value = l.ifname;
+                opt.innerText = `${l.ifname} (${l.operstate || 'unknown'})`;
+                select.appendChild(opt);
+            });
+            onIfaceSelect();
+        }
+
+        async function onIfaceSelect() {
+            const iface = document.getElementById('ifaceSelect').value;
+            if (!iface) return;
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'lan', cmd_key: 'get_ip_cmd', args: { iface: iface } })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const addrInfo = JSON.parse(data.output);
+                    if (addrInfo[0] && addrInfo[0].addr_info) {
+                        const ipv4 = addrInfo[0].addr_info.find(a => a.family === 'inet');
+                        if (ipv4) {
+                            document.getElementById('ipAddr').value = ipv4.local;
+                            document.getElementById('cidrMask').value = ipv4.prefixlen;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Error getting IP:', err);
+            }
+        }
+
+        async function applyLanConfig() {
+            const iface = document.getElementById('ifaceSelect').value;
+            const ip = document.getElementById('ipAddr').value.trim();
+            const cidr = document.getElementById('cidrMask').value.trim();
+
+            if (!iface || !ip || !cidr) {
+                showOutput('Please fill in Interface, IP Address, and Subnet CIDR.');
+                return;
+            }
+
+            showOutput(`Applying static IP ${ip}/${cidr} to ${iface}...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'lan',
+                        cmd_key: 'set_ip_cmd',
+                        args: { iface, ip, cidr }
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Successfully configured ${iface}.` : `Configuration failed: ${data.error}\n${data.output}`);
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            const box = document.getElementById('outputBox');
+            box.style.display = 'block';
+            box.innerText = text;
+        }
+
+        window.onload = detectLanInterfaces;
+    </script>
+</body>
+</html>

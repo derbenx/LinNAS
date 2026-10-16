@@ -1,0 +1,14 @@
+{
+  "id": "dhcp",
+  "name": "DHCP Config",
+  "description": "Configure DHCP IP address leases and gateway settings for local clients",
+  "category": "Network",
+  "default": true,
+  "apt_package": "dnsmasq",
+  "check_cmd": "which dnsmasq",
+  "install_cmd": "apt-get update && apt-get install -y dnsmasq",
+  "remove_cmd": "apt-get remove -y dnsmasq",
+  "commands": {
+    "restart_dhcp_cmd": "systemctl restart dnsmasq || service dnsmasq restart"
+  }
+}

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DNS & AdBlock Config</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input, .form-group textarea { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group textarea { height: 120px; font-family: monospace; resize: vertical; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; }
+        .btn-secondary:hover { background: #484f58; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <h2>DNS Forwarding & Ad Blocking</h2>
+    <p class="subtitle">Set up DNS server forwarders and convert external ad-block list formats (Hosts, AdBlock, raw domains) into local blocking rules.</p>
+
+    <!-- Upstream DNS Forwarders -->
+    <div class="section">
+        <div class="section-title">Upstream DNS Forwarders</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Primary DNS Server</label>
+                <input type="text" id="primaryDns" placeholder="1.1.1.1">
+            </div>
+            <div class="form-group">
+                <label>Secondary DNS Server</label>
+                <input type="text" id="secondaryDns" placeholder="8.8.8.8">
+            </div>
+        </div>
+        <button class="btn" onclick="saveDnsConfig()">Save Forwarders</button>
+    </div>
+
+    <!-- AdBlock List Auto Converter -->
+    <div class="section">
+        <div class="section-title">Blocklist Converter & Rules</div>
+        <div class="form-group" style="margin-bottom: 1rem;">
+            <label>Raw Blocklist Input (Paste Hosts format '0.0.0.0 bad.com', AdBlock '||bad.com^', or raw domain list)</label>
+            <textarea id="rawBlocklist" placeholder="0.0.0.0 ads.example.com&#10;||telemetry.badsite.org^&#10;malware-domain.net"></textarea>
+        </div>
+        <button class="btn btn-secondary" style="margin-bottom: 1.5rem;" onclick="convertBlocklist()">Auto Detect & Convert to DNS Rules</button>
+
+        <div class="form-group">
+            <label>Active Converted dnsmasq Rules</label>
+            <textarea id="convertedRules" placeholder="address=/ads.example.com/0.0.0.0"></textarea>
+        </div>
+        <br>
+        <button class="btn" onclick="saveBlockRules()">Apply & Save Blocklist</button>
+        <button class="btn btn-secondary" style="margin-left: 0.5rem;" onclick="restartDnsService()">Restart DNS Service</button>
+    </div>
+
+    <div id="outputBox" class="output-box"></div>
+
+    <script>
+        async function loadData() {
+            try {
+                const res = await fetch('/api/plugin/data?plugin=dns');
+                const data = await res.json();
+                document.getElementById('primaryDns').value = data.primary_dns || '1.1.1.1';
+                document.getElementById('secondaryDns').value = data.secondary_dns || '8.8.8.8';
+                document.getElementById('convertedRules').value = data.block_rules || '';
+            } catch (err) {
+                showOutput('Failed to load DNS config: ' + err.message);
+            }
+        }
+
+        async function saveDnsConfig() {
+            const p = document.getElementById('primaryDns').value.trim();
+            const s = document.getElementById('secondaryDns').value.trim();
+
+            try {
+                const dataRes = await fetch('/api/plugin/data?plugin=dns');
+                let dnsData = await dataRes.json();
+                dnsData.primary_dns = p;
+                dnsData.secondary_dns = s;
+
+                await fetch('/api/plugin/data?plugin=dns', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dnsData)
+                });
+
+                showOutput('Upstream DNS forwarders saved successfully.');
+            } catch (err) {
+                showOutput('Error saving forwarders: ' + err.message);
+            }
+        }
+
+        async function convertBlocklist() {
+            const raw = document.getElementById('rawBlocklist').value;
+            if (!raw.trim()) {
+                showOutput('Please paste blocklist text into the input field above.');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/dns/convert', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: raw
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('convertedRules').value = data.result;
+                    showOutput(`Successfully converted ${data.count} domain block rules.`);
+                } else {
+                    showOutput('Conversion failed.');
+                }
+            } catch (err) {
+                showOutput('Conversion error: ' + err.message);
+            }
+        }
+
+        async function saveBlockRules() {
+            const rules = document.getElementById('convertedRules').value;
+
+            try {
+                const dataRes = await fetch('/api/plugin/data?plugin=dns');
+                let dnsData = await dataRes.json();
+                dnsData.block_rules = rules;
+
+                await fetch('/api/plugin/data?plugin=dns', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dnsData)
+                });
+
+                showOutput('Blocklist rules saved. Click "Restart DNS Service" to reload settings.');
+            } catch (err) {
+                showOutput('Error saving blocklist: ' + err.message);
+            }
+        }
+
+        async function restartDnsService() {
+            showOutput('Restarting DNS server daemon...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'dns',
+                        cmd_key: 'restart_dns_cmd',
+                        args: {}
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? 'DNS service restarted successfully.\n' + data.output : 'Restart failed: ' + data.error);
+            } catch (err) {
+                showOutput('Failed to execute restart: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            const box = document.getElementById('outputBox');
+            box.style.display = 'block';
+            box.innerText = text;
+        }
+
+        window.onload = loadData;
+    </script>
+</body>
+</html>

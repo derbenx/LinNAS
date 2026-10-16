@@ -1,0 +1,15 @@
+{
+  "id": "smb",
+  "name": "SMB Config",
+  "description": "Configure Samba network file shares",
+  "category": "Storage",
+  "default": false,
+  "apt_package": "samba",
+  "check_cmd": "which smbd",
+  "install_cmd": "apt-get update && apt-get install -y samba",
+  "remove_cmd": "apt-get remove -y samba",
+  "commands": {
+    "restart_smb_cmd": "systemctl restart smbd || service smbd restart",
+    "status_smb_cmd": "systemctl status smbd || service smbd status"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "port": 8080,
+  "auth_enabled": true,
+  "username": "admin",
+  "password": "adminpassword"
+}

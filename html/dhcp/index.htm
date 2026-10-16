@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DHCP Config</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus { border-color: #58a6ff; outline: none; }
+
+        .checkbox-group { display: flex; align-items: center; gap: 8px; margin-bottom: 1rem; font-size: 0.9rem; color: #c9d1d9; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; }
+        .btn-secondary:hover { background: #484f58; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <h2>DHCP Server Configuration</h2>
+    <p class="subtitle">Configure automatic local IP address allocation, subnet masks, default gateway, and lease durations.</p>
+
+    <div class="section">
+        <div class="section-title">DHCP Pool Settings</div>
+
+        <div class="checkbox-group">
+            <input type="checkbox" id="dhcpEnabled" checked>
+            <label for="dhcpEnabled">Enable DHCP Server</label>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Network Interface</label>
+                <input type="text" id="interface" placeholder="eth0 / enp3s0">
+            </div>
+            <div class="form-group">
+                <label>Start IP Address</label>
+                <input type="text" id="startIp" placeholder="192.168.1.100">
+            </div>
+            <div class="form-group">
+                <label>End IP Address</label>
+                <input type="text" id="endIp" placeholder="192.168.1.200">
+            </div>
+            <div class="form-group">
+                <label>Subnet Mask</label>
+                <input type="text" id="netmask" placeholder="255.255.255.0">
+            </div>
+            <div class="form-group">
+                <label>Default Gateway Router</label>
+                <input type="text" id="gateway" placeholder="192.168.1.1">
+            </div>
+            <div class="form-group">
+                <label>Lease Duration</label>
+                <input type="text" id="leaseTime" placeholder="12h">
+            </div>
+        </div>
+
+        <button class="btn" onclick="saveDhcpConfig()">Save Settings</button>
+        <button class="btn btn-secondary" style="margin-left: 0.5rem;" onclick="restartDhcpService()">Restart DHCP Service</button>
+    </div>
+
+    <div id="outputBox" class="output-box"></div>
+
+    <script>
+        async function loadDhcpConfig() {
+            try {
+                const res = await fetch('/api/plugin/data?plugin=dhcp');
+                const data = await res.json();
+                document.getElementById('dhcpEnabled').checked = data.enabled !== false;
+                document.getElementById('interface').value = data.interface || 'eth0';
+                document.getElementById('startIp').value = data.start_ip || '192.168.1.100';
+                document.getElementById('endIp').value = data.end_ip || '192.168.1.200';
+                document.getElementById('netmask').value = data.netmask || '255.255.255.0';
+                document.getElementById('gateway').value = data.gateway || '192.168.1.1';
+                document.getElementById('leaseTime').value = data.lease_time || '12h';
+            } catch (err) {
+                showOutput('Failed to load DHCP settings: ' + err.message);
+            }
+        }
+
+        async function saveDhcpConfig() {
+            const config = {
+                enabled: document.getElementById('dhcpEnabled').checked,
+                interface: document.getElementById('interface').value.trim(),
+                start_ip: document.getElementById('startIp').value.trim(),
+                end_ip: document.getElementById('endIp').value.trim(),
+                netmask: document.getElementById('netmask').value.trim(),
+                gateway: document.getElementById('gateway').value.trim(),
+                lease_time: document.getElementById('leaseTime').value.trim()
+            };
+
+            try {
+                await fetch('/api/plugin/data?plugin=dhcp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                showOutput('DHCP configuration saved. Restart service to apply settings.');
+            } catch (err) {
+                showOutput('Failed to save settings: ' + err.message);
+            }
+        }
+
+        async function restartDhcpService() {
+            showOutput('Restarting DHCP service...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'dhcp',
+                        cmd_key: 'restart_dhcp_cmd',
+                        args: {}
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? 'DHCP service restarted successfully.\n' + data.output : 'Restart failed: ' + data.error);
+            } catch (err) {
+                showOutput('Failed to execute restart: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            const box = document.getElementById('outputBox');
+            box.style.display = 'block';
+            box.innerText = text;
+        }
+
+        window.onload = loadDhcpConfig;
+    </script>
+</body>
+</html>

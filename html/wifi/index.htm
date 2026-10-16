@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Wi-Fi Config</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus { border-color: #58a6ff; outline: none; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; }
+        .btn-secondary:hover { background: #484f58; }
+
+        .no-hardware-box { background: #21262d; border: 1px solid #d29922; border-radius: 6px; padding: 1.2rem; color: #e3b341; margin-bottom: 1.5rem; display: none; }
+        .no-hardware-box h3 { margin-bottom: 0.5rem; font-size: 1rem; }
+        .no-hardware-box p { font-size: 0.85rem; color: #c9d1d9; line-height: 1.4; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
+        th { color: #8b949e; font-weight: 600; background: #1f242d; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <h2>Wi-Fi Wireless Settings</h2>
+    <p class="subtitle">Scan local access points, connect to wireless networks, and manage base64 stored passwords.</p>
+
+    <div id="wifiWarning" class="no-hardware-box">
+        <h3>⚠️ No Wi-Fi Adapter Hardware Detected</h3>
+        <p>No wireless interface (e.g. <code>wlan0</code>, <code>wlp2s0</code>) was detected on this Debian server.</p>
+        <p>1. Ensure a Wi-Fi USB dongle or PCIe wireless card is connected.<br>
+           2. Check missing kernel firmware with <code>dmesg | grep firmware</code>.<br>
+           3. Install Debian wireless drivers (e.g., <code>apt install firmware-iwlwifi</code> or <code>firmware-atheros</code>).</p>
+    </div>
+
+    <div class="section" id="wifiSection">
+        <div class="section-title">Wi-Fi Connection</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Wi-Fi Interface</label>
+                <select id="wifiIfaceSelect"></select>
+            </div>
+            <div class="form-group">
+                <label>Network SSID</label>
+                <input type="text" id="wifiSsid" placeholder="MyHomeNetwork">
+            </div>
+            <div class="form-group">
+                <label>Wi-Fi Password</label>
+                <input type="password" id="wifiPassword" placeholder="Wireless password">
+            </div>
+        </div>
+        <button class="btn" onclick="connectWifi()">Connect to Wi-Fi</button>
+        <button class="btn btn-secondary" style="margin-left: 0.5rem;" onclick="scanAPs()">Scan Access Points</button>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Stored Wi-Fi Profiles (Base64 Encrypted Passwords)</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>SSID</th>
+                    <th>Base64 Encrypted Password</th>
+                    <th>Date Added</th>
+                </tr>
+            </thead>
+            <tbody id="wifiSavedTable">
+                <tr><td colspan="3" style="text-align: center; color: #8b949e;">Loading saved Wi-Fi profiles...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="outputBox" class="output-box"></div>
+
+    <script>
+        let wifiInterfaces = [];
+
+        async function detectWifiInterfaces() {
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'wifi', cmd_key: 'list_wifi_ifaces_cmd', args: {} })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const links = JSON.parse(data.output);
+                    wifiInterfaces = links.filter(l => l.ifname.startsWith('wl') || l.ifname.startsWith('wlan'));
+
+                    if (wifiInterfaces.length === 0) {
+                        document.getElementById('wifiWarning').style.display = 'block';
+                        document.getElementById('wifiSection').style.display = 'none';
+                    } else {
+                        document.getElementById('wifiWarning').style.display = 'none';
+                        document.getElementById('wifiSection').style.display = 'block';
+                        populateWifiSelect();
+                    }
+                }
+            } catch (err) {
+                showOutput('Failed to scan Wi-Fi interfaces: ' + err.message);
+            }
+            loadSavedWifiData();
+        }
+
+        function populateWifiSelect() {
+            const select = document.getElementById('wifiIfaceSelect');
+            select.innerHTML = '';
+            wifiInterfaces.forEach(l => {
+                const opt = document.createElement('option');
+                opt.value = l.ifname;
+                opt.innerText = l.ifname;
+                select.appendChild(opt);
+            });
+        }
+
+        async function scanAPs() {
+            const iface = document.getElementById('wifiIfaceSelect').value || 'wlan0';
+            showOutput(`Scanning nearby Wi-Fi networks on ${iface}...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'wifi', cmd_key: 'scan_ap_cmd', args: { iface: iface } })
+                });
+                const data = await res.json();
+                showOutput(data.success ? 'Scan Output:\n' + data.output : 'Scan failed: ' + data.error + '\n' + data.output);
+            } catch (err) {
+                showOutput('Scan error: ' + err.message);
+            }
+        }
+
+        async function connectWifi() {
+            const iface = document.getElementById('wifiIfaceSelect').value;
+            const ssid = document.getElementById('wifiSsid').value.trim();
+            const password = document.getElementById('wifiPassword').value;
+
+            if (!ssid || !password) {
+                showOutput('Please enter SSID and Password.');
+                return;
+            }
+
+            showOutput(`Connecting to SSID '${ssid}'...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'wifi',
+                        cmd_key: 'connect_wifi_cmd',
+                        args: { iface, ssid, password }
+                    })
+                });
+                const data = await res.json();
+
+                // Store password in base64 as requested
+                await saveWifiProfile(ssid, btoa(password));
+
+                showOutput(data.success ? `Connected successfully to '${ssid}'.` : `Connection attempt output:\n${data.output}\nError: ${data.error}`);
+            } catch (err) {
+                showOutput('Error connecting: ' + err.message);
+            }
+        }
+
+        async function saveWifiProfile(ssid, b64Pass) {
+            try {
+                const dataRes = await fetch('/api/plugin/data?plugin=wifi');
+                let wifiData = await dataRes.json();
+                if (!Array.isArray(wifiData.networks)) wifiData.networks = [];
+
+                // Update or add
+                const existing = wifiData.networks.find(n => n.ssid === ssid);
+                if (existing) {
+                    existing.b64_password = b64Pass;
+                    existing.updated = new Date().toISOString().split('T')[0];
+                } else {
+                    wifiData.networks.push({
+                        ssid: ssid,
+                        b64_password: b64Pass,
+                        updated: new Date().toISOString().split('T')[0]
+                    });
+                }
+
+                await fetch('/api/plugin/data?plugin=wifi', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(wifiData)
+                });
+                renderSavedTable(wifiData.networks);
+            } catch (err) {
+                console.error('Failed to save profile:', err);
+            }
+        }
+
+        async function loadSavedWifiData() {
+            try {
+                const res = await fetch('/api/plugin/data?plugin=wifi');
+                const data = await res.json();
+                renderSavedTable(data.networks || []);
+            } catch (err) {
+                console.error('Error loading profiles:', err);
+            }
+        }
+
+        function renderSavedTable(networks) {
+            const tbody = document.getElementById('wifiSavedTable');
+            tbody.innerHTML = '';
+
+            if (networks.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #8b949e;">No saved Wi-Fi networks found.</td></tr>';
+                return;
+            }
+
+            networks.forEach(n => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${n.ssid}</strong></td>
+                    <td style="font-family: monospace; color: #78a9ff;">${n.b64_password}</td>
+                    <td>${n.updated || '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function showOutput(text) {
+            const box = document.getElementById('outputBox');
+            box.style.display = 'block';
+            box.innerText = text;
+        }
+
+        window.onload = detectWifiInterfaces;
+    </script>
+</body>
+</html>

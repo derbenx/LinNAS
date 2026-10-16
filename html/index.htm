@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debian Server Control Panel</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #1a1e24; color: #e1e6ed; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* Top Header */
+        header { background: #21262d; border-bottom: 1px solid #30363d; height: 50px; display: flex; align-items: center; justify-content: space-between; padding: 0 1.5rem; flex-shrink: 0; }
+        .brand { font-size: 1.1rem; font-weight: bold; color: #58a6ff; display: flex; align-items: center; gap: 8px; }
+        .user-controls { display: flex; align-items: center; gap: 15px; }
+        .logout-btn { background: #23272e; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+        .logout-btn:hover { background: #30363d; color: #f0f6fc; }
+
+        /* Main Container */
+        .layout { display: flex; flex: 1; height: calc(100vh - 50px); }
+
+        /* Sidebar Navigation */
+        aside { width: 240px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+        .nav-section { padding: 0.8rem 0; border-bottom: 1px solid #21262d; }
+        .nav-section-title { padding: 0 1rem 0.4rem; font-size: 0.75rem; text-transform: uppercase; color: #8b949e; letter-spacing: 0.05em; font-weight: 600; }
+        .nav-item { display: flex; align-items: center; gap: 10px; padding: 0.6rem 1rem; color: #c9d1d9; text-decoration: none; font-size: 0.9rem; cursor: pointer; transition: background 0.15s; }
+        .nav-item:hover { background: #21262d; color: #58a6ff; }
+        .nav-item.active { background: #1f2937; color: #58a6ff; border-left: 3px solid #58a6ff; font-weight: 600; }
+        .badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; background: #30363d; color: #8b949e; margin-left: auto; }
+
+        /* Content Area */
+        main { flex: 1; background: #0d1117; display: flex; flex-direction: column; position: relative; }
+        iframe { width: 100%; height: 100%; border: none; background: #0d1117; }
+
+        .welcome-screen { padding: 2.5rem; color: #c9d1d9; }
+        .welcome-screen h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: #58a6ff; }
+        .welcome-screen p { margin-bottom: 1.5rem; color: #8b949e; }
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.2rem; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1.2rem; cursor: pointer; transition: border-color 0.2s, transform 0.1s; }
+        .card:hover { border-color: #58a6ff; transform: translateY(-2px); }
+        .card h3 { font-size: 1.1rem; color: #f0f6fc; margin-bottom: 0.4rem; }
+        .card p { font-size: 0.85rem; color: #8b949e; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+            Debian Server Manager
+        </div>
+        <div class="user-controls">
+            <span id="authStatusText" style="font-size: 0.85rem; color: #8b949e;"></span>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </header>
+
+    <div class="layout">
+        <aside>
+            <div class="nav-section">
+                <div class="nav-section-title">General</div>
+                <a class="nav-item active" onclick="showDashboard()">
+                    <span>🏠 Dashboard</span>
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">Installed Plugins</div>
+                <div id="installedPluginsNav">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">Management</div>
+                <div id="systemPluginsNav">
+                    <!-- APT Installer & standard tools -->
+                </div>
+            </div>
+        </aside>
+
+        <main id="mainContent">
+            <iframe id="pluginIframe" style="display: none;"></iframe>
+            <div id="dashboardView" class="welcome-screen">
+                <h1>Server Control Overview</h1>
+                <p>Select a plugin from the sidebar to manage system services, storage, and network settings.</p>
+
+                <div class="card-grid" id="dashboardCards">
+                    <!-- Plugin quick cards -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let allPlugins = [];
+
+        async function init() {
+            try {
+                const authRes = await fetch('/api/auth/status');
+                const authData = await authRes.json();
+                if (authData.auth_enabled) {
+                    document.getElementById('authStatusText').innerText = 'Authenticated';
+                }
+
+                await loadPlugins();
+            } catch (err) {
+                console.error('Failed to initialize:', err);
+            }
+        }
+
+        async function loadPlugins() {
+            try {
+                const res = await fetch('/api/plugins');
+                allPlugins = await res.json();
+                renderNav();
+                renderDashboardCards();
+            } catch (err) {
+                console.error('Failed to load plugins:', err);
+            }
+        }
+
+        function renderNav() {
+            const installedNav = document.getElementById('installedPluginsNav');
+            const systemNav = document.getElementById('systemPluginsNav');
+            installedNav.innerHTML = '';
+            systemNav.innerHTML = '';
+
+            allPlugins.forEach(p => {
+                if (p.id === 'apt') {
+                    systemNav.appendChild(createNavItem(p));
+                    return;
+                }
+
+                if (p.installed) {
+                    installedNav.appendChild(createNavItem(p));
+                }
+            });
+        }
+
+        function createNavItem(plugin) {
+            const a = document.createElement('a');
+            a.className = 'nav-item';
+            a.id = `nav-${plugin.id}`;
+            a.innerHTML = `<span>${getPluginIcon(plugin.id)} ${plugin.name}</span>`;
+            a.onclick = () => openPlugin(plugin.id);
+            return a;
+        }
+
+        function renderDashboardCards() {
+            const cardsContainer = document.getElementById('dashboardCards');
+            cardsContainer.innerHTML = '';
+
+            allPlugins.forEach(p => {
+                if (p.installed) {
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.onclick = () => openPlugin(p.id);
+                    card.innerHTML = `
+                        <h3>${getPluginIcon(p.id)} ${p.name}</h3>
+                        <p>${p.description || 'Manage service configuration and settings.'}</p>
+                    `;
+                    cardsContainer.appendChild(card);
+                }
+            });
+        }
+
+        function getPluginIcon(id) {
+            const icons = {
+                'apt': '📦',
+                'smb': '📁',
+                'veracrypt': '🔒',
+                'drive_mount': '💾',
+                'dns': '🌐',
+                'dhcp': '📡',
+                'lan': '🔌',
+                'wifi': '📶'
+            };
+            return icons[id] || '⚙️';
+        }
+
+        function openPlugin(id) {
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            const activeNav = document.getElementById(`nav-${id}`);
+            if (activeNav) activeNav.classList.add('active');
+
+            const iframe = document.getElementById('pluginIframe');
+            const dashboard = document.getElementById('dashboardView');
+
+            iframe.src = `/${id}/index.htm`;
+            iframe.style.display = 'block';
+            dashboard.style.display = 'none';
+        }
+
+        function showDashboard() {
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            document.querySelector('.nav-item').classList.add('active');
+
+            const iframe = document.getElementById('pluginIframe');
+            const dashboard = document.getElementById('dashboardView');
+
+            iframe.style.display = 'none';
+            dashboard.style.display = 'block';
+            loadPlugins();
+        }
+
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/login.htm';
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

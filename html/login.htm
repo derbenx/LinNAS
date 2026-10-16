@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debian Server Manager - Login</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #1a1e24; color: #e1e6ed; display: flex; align-items: center; justify-content: center; height: 100vh; }
+        .login-card { background: #252b33; padding: 2.5rem; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 100%; max-width: 400px; border: 1px solid #363d48; }
+        .login-card h2 { text-align: center; margin-bottom: 1.5rem; color: #4db8ff; }
+        .form-group { margin-bottom: 1.2rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: #9da9bb; }
+        .form-group input { width: 100%; padding: 0.75rem; border-radius: 4px; border: 1px solid #363d48; background: #1a1e24; color: #fff; font-size: 1rem; }
+        .form-group input:focus { outline: none; border-color: #4db8ff; }
+        .btn { width: 100%; padding: 0.75rem; background: #007acc; color: white; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; font-weight: bold; transition: background 0.2s; }
+        .btn:hover { background: #005999; }
+        .error-msg { color: #ff5555; text-align: center; margin-top: 1rem; font-size: 0.9rem; display: none; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h2>Debian Server Manager</h2>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" required autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn">Login</button>
+            <div id="errorMsg" class="error-msg">Invalid credentials</div>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorMsg = document.getElementById('errorMsg');
+            errorMsg.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                if (res.ok) {
+                    window.location.href = '/';
+                } else {
+                    errorMsg.innerText = 'Invalid username or password';
+                    errorMsg.style.display = 'block';
+                }
+            } catch (err) {
+                errorMsg.innerText = 'Server error occurred';
+                errorMsg.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

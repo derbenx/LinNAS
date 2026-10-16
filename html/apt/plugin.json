@@ -1,0 +1,7 @@
+{
+  "id": "apt",
+  "name": "APT Installer",
+  "description": "Manage Debian package installation for plugin applications",
+  "category": "Management",
+  "default": true
+}

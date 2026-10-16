@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>VeraCrypt Config</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus { border-color: #58a6ff; outline: none; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn:hover { background: #2ea043; }
+        .btn-danger { background: #da3633; }
+        .btn-danger:hover { background: #b62324; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
+        th { color: #8b949e; font-weight: 600; background: #1f242d; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <h2>VeraCrypt Encryption Config</h2>
+    <p class="subtitle">Mount encrypted VeraCrypt file containers or physical disk volumes safely.</p>
+
+    <!-- Mount Container Form -->
+    <div class="section">
+        <div class="section-title">Mount VeraCrypt Volume</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Volume File / Device Path</label>
+                <input type="text" id="volPath" placeholder="/data/encrypted.hc or /dev/sdb1">
+            </div>
+            <div class="form-group">
+                <label>Target Mount Point</label>
+                <input type="text" id="mountPoint" placeholder="/mnt/veracrypt1">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password" placeholder="Volume password">
+            </div>
+        </div>
+        <button class="btn" onclick="mountVolume()">Mount Volume</button>
+    </div>
+
+    <!-- Active Mounted Volumes -->
+    <div class="section">
+        <div class="section-title">Mounted VeraCrypt Containers</div>
+        <button class="btn btn-danger" style="margin-bottom: 1rem;" onclick="dismountAll()">Dismount All Volumes</button>
+        <table>
+            <thead>
+                <tr>
+                    <th>Volume Path</th>
+                    <th>Mount Point</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="mountedTableBody">
+                <tr><td colspan="3" style="text-align: center; color: #8b949e;">Loading mounted containers...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="outputBox" class="output-box"></div>
+
+    <script>
+        let mountedList = [];
+
+        async function loadMountedData() {
+            try {
+                const res = await fetch('/api/plugin/data?plugin=veracrypt');
+                const data = await res.json();
+                mountedList = data.volumes || [];
+                renderList();
+            } catch (err) {
+                showOutput('Failed to load VeraCrypt data: ' + err.message);
+            }
+        }
+
+        function renderList() {
+            const tbody = document.getElementById('mountedTableBody');
+            tbody.innerHTML = '';
+
+            if (mountedList.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #8b949e;">No active VeraCrypt volumes mounted via panel.</td></tr>';
+                return;
+            }
+
+            mountedList.forEach((v, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${v.volume_path}</strong></td>
+                    <td>${v.mount_point}</td>
+                    <td>
+                        <button class="btn btn-danger" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="dismountVolume(${idx})">Dismount</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function saveMountedData() {
+            try {
+                await fetch('/api/plugin/data?plugin=veracrypt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ volumes: mountedList })
+                });
+                renderList();
+            } catch (err) {
+                showOutput('Failed to save data: ' + err.message);
+            }
+        }
+
+        async function mountVolume() {
+            const volPath = document.getElementById('volPath').value.trim();
+            const mountPoint = document.getElementById('mountPoint').value.trim();
+            const password = document.getElementById('password').value;
+
+            if (!volPath || !mountPoint || !password) {
+                showOutput('Please enter Volume Path, Mount Point, and Password.');
+                return;
+            }
+
+            showOutput(`Mounting volume ${volPath}...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'veracrypt',
+                        cmd_key: 'mount_volume_cmd',
+                        args: {
+                            volume_path: volPath,
+                            mount_point: mountPoint,
+                            password: password
+                        }
+                    })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    mountedList.push({ volume_path: volPath, mount_point: mountPoint });
+                    await saveMountedData();
+                    document.getElementById('password').value = '';
+                    showOutput(`VeraCrypt volume mounted successfully at ${mountPoint}.\n` + data.output);
+                } else {
+                    showOutput(`Failed to mount VeraCrypt volume: ${data.error}\n${data.output}`);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function dismountVolume(index) {
+            const item = mountedList[index];
+            showOutput(`Dismounting volume at ${item.mount_point}...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'veracrypt',
+                        cmd_key: 'dismount_volume_cmd',
+                        args: { mount_point: item.mount_point }
+                    })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    mountedList.splice(index, 1);
+                    await saveMountedData();
+                    showOutput(`Volume at ${item.mount_point} dismounted.`);
+                } else {
+                    showOutput(`Dismount failed: ${data.error}\n${data.output}`);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function dismountAll() {
+            showOutput('Dismounting all VeraCrypt volumes...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'veracrypt',
+                        cmd_key: 'dismount_all_cmd',
+                        args: {}
+                    })
+                });
+
+                const data = await res.json();
+                mountedList = [];
+                await saveMountedData();
+                showOutput('All volumes dismounted.\n' + data.output);
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            const box = document.getElementById('outputBox');
+            box.style.display = 'block';
+            box.innerText = text;
+        }
+
+        window.onload = loadMountedData;
+    </script>
+</body>
+</html>

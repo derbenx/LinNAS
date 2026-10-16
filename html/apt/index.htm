@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>APT Installer</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 2rem; font-size: 0.9rem; }
+
+        .plugin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; }
+        .plugin-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.2rem; display: flex; flex-direction: column; justify-content: space-between; }
+        .plugin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+        .plugin-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; }
+        .status-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
+        .status-installed { background: rgba(46, 160, 67, 0.15); color: #3fb950; border: 1px solid rgba(46, 160, 67, 0.4); }
+        .status-not-installed { background: rgba(218, 54, 51, 0.15); color: #f85149; border: 1px solid rgba(218, 54, 51, 0.4); }
+        .status-default { background: rgba(56, 139, 253, 0.15); color: #58a6ff; border: 1px solid rgba(56, 139, 253, 0.4); }
+
+        .plugin-desc { font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem; flex-grow: 1; }
+        .plugin-pkg { font-size: 0.8rem; font-family: monospace; color: #7d8590; margin-bottom: 1rem; }
+
+        .btn { padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; border: none; transition: background 0.2s; text-align: center; }
+        .btn-install { background: #238636; color: white; }
+        .btn-install:hover { background: #2ea043; }
+        .btn-remove { background: #da3633; color: white; }
+        .btn-remove:hover { background: #b62324; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .console-modal { margin-top: 2rem; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1rem; }
+        .console-title { font-size: 0.9rem; font-weight: 600; color: #8b949e; margin-bottom: 0.5rem; }
+        .console-output { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; height: 160px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>APT Package & Plugin Manager</h2>
+    <p class="subtitle">Install or remove underlying Debian packages required for system management plugins.</p>
+
+    <div class="plugin-grid" id="pluginContainer">
+        <!-- Dynamically rendered -->
+    </div>
+
+    <div class="console-modal">
+        <div class="console-title">Execution Terminal Output</div>
+        <div id="consoleOutput" class="console-output">Ready. Select an action above to manage packages...</div>
+    </div>
+
+    <script>
+        async function loadAptPlugins() {
+            try {
+                const res = await fetch('/api/plugins');
+                const plugins = await res.json();
+                renderPlugins(plugins);
+            } catch (err) {
+                logConsole('Error fetching plugin list: ' + err.message);
+            }
+        }
+
+        function renderPlugins(plugins) {
+            const container = document.getElementById('pluginContainer');
+            container.innerHTML = '';
+
+            plugins.forEach(p => {
+                if (p.id === 'apt') return; // Skip APT installer itself
+
+                const card = document.createElement('div');
+                card.className = 'plugin-card';
+
+                let badgeHtml = '';
+                let buttonHtml = '';
+
+                if (p.default) {
+                    badgeHtml = '<span class="status-badge status-default">Built-in</span>';
+                    buttonHtml = '<button class="btn" disabled>Core Module</button>';
+                } else if (p.installed) {
+                    badgeHtml = '<span class="status-badge status-installed">Installed</span>';
+                    buttonHtml = `<button class="btn btn-remove" onclick="executeAptCmd('${p.id}', 'remove_cmd')">Remove Package</button>`;
+                } else {
+                    badgeHtml = '<span class="status-badge status-not-installed">Not Installed</span>';
+                    buttonHtml = `<button class="btn btn-install" onclick="executeAptCmd('${p.id}', 'install_cmd')">Install Package</button>`;
+                }
+
+                card.innerHTML = `
+                    <div>
+                        <div class="plugin-header">
+                            <span class="plugin-title">${p.name}</span>
+                            ${badgeHtml}
+                        </div>
+                        <div class="plugin-desc">${p.description || 'No description provided.'}</div>
+                        <div class="plugin-pkg">Package: ${p.apt_package || 'None'}</div>
+                    </div>
+                    <div>${buttonHtml}</div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        async function executeAptCmd(pluginId, cmdKey) {
+            logConsole(`Executing ${cmdKey} for ${pluginId}... Please wait.`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: pluginId, cmd_key: cmdKey, args: {} })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    logConsole(`SUCCESS [${pluginId}]:\n` + data.output);
+                } else {
+                    logConsole(`FAILED [${pluginId}]:\n` + (data.output || '') + '\nError: ' + data.error);
+                }
+                // Reload list to update status badges
+                setTimeout(loadAptPlugins, 1000);
+            } catch (err) {
+                logConsole(`Execution error: ${err.message}`);
+            }
+        }
+
+        function logConsole(text) {
+            const consoleEl = document.getElementById('consoleOutput');
+            consoleEl.innerText = text;
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        window.onload = loadAptPlugins;
+    </script>
+</body>
+</html>
