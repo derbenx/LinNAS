@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>VeraCrypt Config</title>
+    <title>VeraCrypt / TrueCrypt Config (tcplay)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
@@ -12,17 +12,19 @@
         .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
         .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
 
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
         .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
         .form-group label { font-size: 0.85rem; color: #8b949e; }
         .form-group input { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
         .form-group input:focus { border-color: #58a6ff; outline: none; }
 
         .checkbox-group { display: flex; align-items: center; gap: 8px; margin-top: 0.5rem; font-size: 0.9rem; color: #c9d1d9; }
-        .checkbox-group input:disabled + label { color: #484f58; cursor: not-allowed; }
 
-        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn-row { display: flex; gap: 0.8rem; align-items: center; }
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
         .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
         .btn-danger { background: #da3633; color: white; }
         .btn-danger:hover { background: #b62324; }
 
@@ -34,52 +36,53 @@
     </style>
 </head>
 <body>
-    <h2>VeraCrypt Encryption Config</h2>
-    <p class="subtitle">Mount and dismount encrypted VeraCrypt file containers or physical disk volumes safely.</p>
+    <h2>VeraCrypt / TrueCrypt Container Config (tcplay)</h2>
+    <p class="subtitle">Mount encrypted volume files using <code>tcplay</code> (Debian APT compatible) and optionally export them over SMB shares.</p>
 
     <!-- Mount Container Form -->
     <div class="section">
-        <div class="section-title">Mount VeraCrypt Volume</div>
+        <div class="section-title">Mount Encrypted Volume</div>
         <div class="form-grid">
             <div class="form-group">
-                <label>Volume File / Device Path</label>
-                <input type="text" id="volPath" placeholder="/data/encrypted.hc or /dev/sdb1">
+                <label>Volume File Path (.hc / .tc)</label>
+                <input type="text" id="volumePath" placeholder="/mnt/data/vault.hc">
             </div>
             <div class="form-group">
-                <label>Target Mount Point (e.g. /mnt/veracrypt or /media/mounted_drive/vc_vault)</label>
-                <input type="text" id="mountPoint" placeholder="/mnt/veracrypt1">
+                <label>Mount Point Folder</label>
+                <input type="text" id="mountPoint" placeholder="/media/secure_vault">
+            </div>
+            <div class="form-group">
+                <label>Mapped Device Name</label>
+                <input type="text" id="mapName" placeholder="tc_vault">
             </div>
             <div class="form-group">
                 <label>Password</label>
-                <input type="password" id="password" placeholder="Volume password">
+                <input type="password" id="volumePass" placeholder="••••••••">
             </div>
         </div>
         <div class="checkbox-group">
-            <input type="checkbox" id="addVcToSmb">
-            <label for="addVcToSmb" id="vcSmbLabel">Automatically share this mounted VeraCrypt volume via SMB</label>
-        </div>
-        <div class="form-group" id="vcSmbNameGroup" style="margin-top: 0.8rem; max-width: 300px; display: none;">
-            <label>SMB Share Name</label>
-            <input type="text" id="vcSmbShareName" placeholder="EncryptedVault">
+            <input type="checkbox" id="autoSmb">
+            <label for="autoSmb">Automatically share mounted volume via SMB network share</label>
         </div>
         <br>
-        <button class="btn" onclick="mountVolume()">Mount Volume</button>
+        <button class="btn" onclick="mountVolume()">Mount Volume (tcplay)</button>
     </div>
 
-    <!-- Active Mounted Volumes -->
+    <!-- Active Mounted Volumes List -->
     <div class="section">
-        <div class="section-title">Mounted VeraCrypt Containers</div>
-        <button class="btn btn-danger" style="margin-bottom: 1rem;" onclick="dismountAll()">Dismount All Volumes</button>
+        <div class="section-title">Active Mounted Containers</div>
         <table>
             <thead>
                 <tr>
+                    <th>Mapped Device</th>
                     <th>Volume Path</th>
                     <th>Mount Point</th>
+                    <th>Shared SMB</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody id="mountedTableBody">
-                <tr><td colspan="3" style="text-align: center; color: #8b949e;">Loading mounted containers...</td></tr>
+                <tr><td colspan="5" style="text-align: center; color: #8b949e;">Loading active containers...</td></tr>
             </tbody>
         </table>
     </div>
@@ -87,61 +90,35 @@
     <div id="outputBox" class="output-box"></div>
 
     <script>
-        let mountedList = [];
-        let isSmbInstalled = false;
+        let mounts = [];
 
-        async function checkSmbStatus() {
-            try {
-                const res = await fetch('/api/plugins');
-                const plugins = await res.json();
-                const smbPlugin = plugins.find(p => p.id === 'smb');
-                isSmbInstalled = smbPlugin && smbPlugin.installed;
-
-                const checkbox = document.getElementById('addVcToSmb');
-                const label = document.getElementById('vcSmbLabel');
-
-                if (!isSmbInstalled) {
-                    checkbox.disabled = true;
-                    checkbox.checked = false;
-                    label.innerText = 'Automatically share this mounted VeraCrypt volume via SMB (Requires SMB package installed)';
-                } else {
-                    checkbox.disabled = false;
-                    label.innerText = 'Automatically share this mounted VeraCrypt volume via SMB';
-                }
-            } catch (err) {
-                console.error('Error checking SMB status:', err);
-            }
-        }
-
-        document.getElementById('addVcToSmb').addEventListener('change', (e) => {
-            document.getElementById('vcSmbNameGroup').style.display = e.target.checked ? 'block' : 'none';
-        });
-
-        async function loadMountedData() {
+        async function loadMounts() {
             try {
                 const res = await fetch('/api/plugin/data?plugin=veracrypt');
                 const data = await res.json();
-                mountedList = data.volumes || [];
-                renderList();
+                mounts = data.mounts || [];
+                renderMounts();
             } catch (err) {
-                showOutput('Failed to load VeraCrypt data: ' + err.message);
+                showOutput('Failed to load mounted volume list: ' + err.message);
             }
         }
 
-        function renderList() {
+        function renderMounts() {
             const tbody = document.getElementById('mountedTableBody');
             tbody.innerHTML = '';
 
-            if (mountedList.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #8b949e;">No active VeraCrypt volumes mounted via panel.</td></tr>';
+            if (mounts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #8b949e;">No active VeraCrypt/tcplay containers recorded.</td></tr>';
                 return;
             }
 
-            mountedList.forEach((v, idx) => {
+            mounts.forEach((m, idx) => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td><strong>${v.volume_path}</strong></td>
-                    <td>${v.mount_point}</td>
+                    <td><strong>${m.map_name || 'tc_map'}</strong></td>
+                    <td>${m.volume_path}</td>
+                    <td>${m.mount_point}</td>
+                    <td>${m.smb_shared ? 'Yes' : 'No'}</td>
                     <td>
                         <button class="btn btn-danger" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="dismountVolume(${idx})">Dismount</button>
                     </td>
@@ -150,32 +127,32 @@
             });
         }
 
-        async function saveMountedData() {
+        async function saveMounts() {
             try {
                 await fetch('/api/plugin/data?plugin=veracrypt', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ volumes: mountedList })
+                    body: JSON.stringify({ mounts: mounts })
                 });
-                renderList();
+                renderMounts();
             } catch (err) {
-                showOutput('Failed to save data: ' + err.message);
+                showOutput('Failed to save container data: ' + err.message);
             }
         }
 
         async function mountVolume() {
-            const volPath = document.getElementById('volPath').value.trim();
-            const mountPoint = document.getElementById('mountPoint').value.trim();
-            const password = document.getElementById('password').value;
-            const addToSmb = document.getElementById('addVcToSmb').checked && isSmbInstalled;
-            let shareName = document.getElementById('vcSmbShareName').value.trim();
+            const volume_path = document.getElementById('volumePath').value.trim();
+            const mount_point = document.getElementById('mountPoint').value.trim();
+            const map_name = document.getElementById('mapName').value.trim() || 'tc_volume';
+            const password = document.getElementById('volumePass').value;
+            const autoSmb = document.getElementById('autoSmb').checked;
 
-            if (!volPath || !mountPoint || !password) {
-                showOutput('Please enter Volume Path, Mount Point, and Password.');
+            if (!volume_path || !mount_point || !password) {
+                showOutput('Please specify Volume Path, Mount Point, Mapped Name, and Password.');
                 return;
             }
 
-            showOutput(`Mounting volume ${volPath}...`);
+            showOutput(`Mounting encrypted volume using tcplay...`);
 
             try {
                 const res = await fetch('/api/plugin/exec', {
@@ -184,65 +161,32 @@
                     body: JSON.stringify({
                         plugin: 'veracrypt',
                         cmd_key: 'mount_volume_sudo',
-                        args: {
-                            volume_path: volPath,
-                            mount_point: mountPoint,
-                            password: password
-                        }
+                        args: { volume_path, mount_point, password, map_name }
                     })
                 });
 
                 const data = await res.json();
                 if (data.success) {
-                    mountedList.push({ volume_path: volPath, mount_point: mountPoint });
-                    await saveMountedData();
-                    document.getElementById('password').value = '';
+                    mounts.push({ volume_path, mount_point, map_name, smb_shared: autoSmb });
+                    await saveMounts();
 
-                    let msg = `VeraCrypt volume mounted successfully at ${mountPoint}.\n` + data.output;
-                    if (addToSmb) {
-                        if (!shareName) shareName = mountPoint.split('/').pop() || 'EncryptedVault';
-                        const smbRes = await addSMBShare(shareName, mountPoint);
-                        msg += '\n' + smbRes;
+                    if (autoSmb) {
+                        await addSmbShare(mount_point, map_name);
                     }
-                    showOutput(msg);
+
+                    document.getElementById('volumePass').value = '';
+                    showOutput(`Volume mounted successfully at ${mount_point}.\n` + data.output);
                 } else {
-                    showOutput(`Failed to mount VeraCrypt volume: ${data.error}\n${data.output}`);
+                    showOutput('Mount failed: ' + data.error + '\n' + data.output);
                 }
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
             }
         }
 
-        async function addSMBShare(name, path) {
-            try {
-                const dataRes = await fetch('/api/plugin/data?plugin=smb');
-                let smbData = await dataRes.json();
-                if (!Array.isArray(smbData.shares)) smbData.shares = [];
-
-                let finalName = name;
-                let count = 2;
-                while (smbData.shares.some(s => s.name.toLowerCase() === finalName.toLowerCase())) {
-                    finalName = `${name}${count}`;
-                    count++;
-                }
-
-                smbData.shares.push({ name: finalName, path: path, comment: 'VeraCrypt Vault SMB Share', read_only: false, enabled: true });
-
-                await fetch('/api/plugin/data?plugin=smb', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ shares: smbData.shares })
-                });
-
-                return `SMB Share '${finalName}' added for VeraCrypt mount path ${path}.`;
-            } catch (err) {
-                return `Mounted VeraCrypt, but failed to create SMB share: ${err.message}`;
-            }
-        }
-
         async function dismountVolume(index) {
-            const item = mountedList[index];
-            showOutput(`Dismounting volume at ${item.mount_point}...`);
+            const item = mounts[index];
+            showOutput(`Dismounting ${item.mount_point}...`);
 
             try {
                 const res = await fetch('/api/plugin/exec', {
@@ -251,42 +195,37 @@
                     body: JSON.stringify({
                         plugin: 'veracrypt',
                         cmd_key: 'dismount_volume_sudo',
-                        args: { mount_point: item.mount_point }
+                        args: { mount_point: item.mount_point, map_name: item.map_name || 'tc_volume' }
                     })
                 });
 
                 const data = await res.json();
                 if (data.success) {
-                    mountedList.splice(index, 1);
-                    await saveMountedData();
-                    showOutput(`Volume at ${item.mount_point} dismounted.`);
+                    mounts.splice(index, 1);
+                    await saveMounts();
+                    showOutput(`Dismounted ${item.mount_point}.\n` + data.output);
                 } else {
-                    showOutput(`Dismount failed: ${data.error}\n${data.output}`);
+                    showOutput('Dismount failed: ' + data.error + '\n' + data.output);
                 }
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
             }
         }
 
-        async function dismountAll() {
-            showOutput('Dismounting all VeraCrypt volumes...');
+        async function addSmbShare(path, name) {
             try {
-                const res = await fetch('/api/plugin/exec', {
+                const res = await fetch('/api/plugin/data?plugin=smb');
+                const data = await res.json();
+                const shares = data.shares || [];
+                shares.push({ name: name || 'VeraCryptShare', path: path, comment: 'Mounted encrypted volume', read_only: false, enabled: true });
+
+                await fetch('/api/plugin/data?plugin=smb', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        plugin: 'veracrypt',
-                        cmd_key: 'dismount_all_sudo',
-                        args: {}
-                    })
+                    body: JSON.stringify({ shares: shares })
                 });
-
-                const data = await res.json();
-                mountedList = [];
-                await saveMountedData();
-                showOutput('All volumes dismounted.\n' + data.output);
             } catch (err) {
-                showOutput('Execution error: ' + err.message);
+                console.error('Failed to auto-add SMB share:', err);
             }
         }
 
@@ -296,10 +235,7 @@
             box.innerText = text;
         }
 
-        window.onload = () => {
-            checkSmbStatus();
-            loadMountedData();
-        };
+        window.onload = loadMounts;
     </script>
 </body>
 </html>
