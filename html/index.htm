@@ -10,12 +10,15 @@
 
         /* Sidebar Styling */
         #sidebar { width: 260px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; }
-        .sidebar-header { padding: 1.2rem; font-size: 1.1rem; font-weight: bold; color: #58a6ff; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+        .sidebar-header { padding: 1rem 1.2rem; font-size: 1.1rem; font-weight: bold; color: #58a6ff; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
         .plugin-category { padding: 0.6rem 1rem 0.3rem 1rem; font-size: 0.75rem; text-transform: uppercase; color: #8b949e; letter-spacing: 0.05rem; }
         .nav-list { list-style: none; overflow-y: auto; flex: 1; }
         .nav-item { padding: 0.75rem 1.2rem; cursor: pointer; color: #c9d1d9; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; transition: all 0.2s; }
         .nav-item:hover { background: #1f242d; color: #fff; }
         .nav-item.active { background: #1f242d; color: #58a6ff; border-left-color: #58a6ff; font-weight: 600; }
+
+        .bright-green-btn { padding: 0.5rem 1rem; background: #238636; color: white; border: 1px solid #2ea043; border-radius: 6px; font-weight: bold; cursor: pointer; text-decoration: none; font-size: 0.85rem; box-shadow: 0 0 8px rgba(46,160,67,0.4); }
+        .bright-green-btn:hover { background: #2ea043; }
 
         .user-status { padding: 0.8rem; border-top: 1px solid #30363d; font-size: 0.8rem; color: #8b949e; display: flex; justify-content: space-between; align-items: center; background: #0d1117; }
         .logout-btn { color: #f85149; cursor: pointer; border: none; background: none; font-size: 0.8rem; font-weight: bold; }
@@ -37,32 +40,40 @@
         <div id="navList" class="nav-list"></div>
         <div class="user-status">
             <span id="userInfo">Logged In</span>
-            <button class="logout-btn" onclick="logout()">Logout</button>
+            <button id="authBtn" class="logout-btn" onclick="toggleAuth()">Logout</button>
         </div>
     </div>
 
     <div id="content-area">
-        <iframe id="plugin-frame" src="about:blank"></iframe>
+        <iframe id="plugin-frame" src="/status/index.htm"></iframe>
     </div>
 
     <script>
         let installedPlugins = [];
+        let isLoggedIn = false;
 
         async function checkAuth() {
             try {
                 const res = await fetch('/api/auth/status');
                 const data = await res.json();
-                if (data.auth_enabled && !data.logged_in) {
-                    window.location.href = '/login.htm';
-                    return;
-                }
+                isLoggedIn = data.logged_in || !data.auth_enabled;
+
                 const badge = document.getElementById('rootBadge');
-                if (data.is_root) {
-                    badge.innerText = 'Root Mode';
-                    badge.className = 'badge-root';
+                const authBtn = document.getElementById('authBtn');
+                const userInfo = document.getElementById('userInfo');
+
+                if (isLoggedIn) {
+                    badge.innerText = data.is_root ? 'Root Mode' : 'Sudo / User';
+                    badge.className = data.is_root ? 'badge-root' : 'badge-user';
+                    userInfo.innerText = 'Authenticated';
+                    authBtn.innerText = 'Logout';
+                    authBtn.className = 'logout-btn';
                 } else {
-                    badge.innerText = 'Sudo / User';
+                    badge.innerText = 'Public View';
                     badge.className = 'badge-user';
+                    userInfo.innerText = 'Read-Only Mode';
+                    authBtn.innerText = '🔑 Login';
+                    authBtn.className = 'bright-green-btn';
                 }
             } catch (err) {
                 console.error('Auth check error:', err);
@@ -94,20 +105,20 @@
             const nav = document.getElementById('navList');
             nav.innerHTML = '';
 
-            const activeItem = document.querySelector('.nav-item.active')?.dataset?.id || 'overview';
+            const activeItem = document.querySelector('.nav-item.active')?.dataset?.id || 'status';
 
-            // Add Default System Overview
-            const overviewItem = document.createElement('div');
-            overviewItem.className = `nav-item ${activeItem === 'overview' ? 'active' : ''}`;
-            overviewItem.dataset.id = 'overview';
-            overviewItem.innerHTML = '📊 Overview & Dashboard';
-            overviewItem.onclick = () => loadDashboard();
-            nav.appendChild(overviewItem);
+            // Add Default System Status & Overview
+            const statusItem = document.createElement('div');
+            statusItem.className = `nav-item ${activeItem === 'status' ? 'active' : ''}`;
+            statusItem.dataset.id = 'status';
+            statusItem.innerHTML = '🖥️ Server Status & Health';
+            statusItem.onclick = () => openPlugin('status', statusItem);
+            nav.appendChild(statusItem);
 
             // Group Plugins by Category
             const categories = {};
             installedPlugins.forEach(p => {
-                // Show plugin if default OR if installed
+                if (p.id === 'status') return; // Handled at top
                 if (p.default || p.installed) {
                     const cat = p.category || 'Tools';
                     if (!categories[cat]) categories[cat] = [];
@@ -134,6 +145,7 @@
 
         function getPluginIcon(id) {
             const icons = {
+                'status': '🖥️',
                 'apt': '📦',
                 'smb': '📁',
                 'veracrypt': '🔒',
@@ -142,6 +154,8 @@
                 'dhcp': '🌐',
                 'lan': '🔌',
                 'wifi': '📶',
+                'editor': '📝',
+                'ping': '📡',
                 'apache': '🌐',
                 'mysql': '🗄️',
                 'php': '🐘'
@@ -150,6 +164,11 @@
         }
 
         function openPlugin(pluginId, el) {
+            if (!isLoggedIn && pluginId !== 'status') {
+                window.location.href = '/login.htm';
+                return;
+            }
+
             document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
             if (!el) {
                 el = document.querySelector(`[data-id="${pluginId}"]`);
@@ -161,56 +180,18 @@
             frame.src = `/${pluginId}/index.htm`;
         }
 
-        function loadDashboard() {
-            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-            const overviewNav = document.querySelector('[data-id="overview"]');
-            if (overviewNav) overviewNav.classList.add('active');
-
-            const frame = document.getElementById('plugin-frame');
-            frame.srcdoc = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <style>
-                        body { background: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', sans-serif; padding: 2rem; }
-                        h1 { color: #58a6ff; margin-bottom: 0.5rem; }
-                        p { color: #8b949e; margin-bottom: 2rem; }
-                        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.2rem; }
-                        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; transition: transform 0.2s, border-color 0.2s; cursor: pointer; }
-                        .card:hover { border-color: #58a6ff; transform: translateY(-2px); }
-                        .card h3 { color: #f0f6fc; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 8px; }
-                        .card p { font-size: 0.85rem; color: #8b949e; margin: 0; }
-                    </style>
-                </head>
-                <body>
-                    <h1>Debian Server Control Center</h1>
-                    <p>Click on any module below to launch configuration options, or manage packages via the APT Installer.</p>
-                    <div class="grid">
-                        ${installedPlugins.map(p => `
-                            <div class="card" onclick="window.parent.postMessage('open_plugin:${p.installed || p.default ? p.id : 'apt'}', '*')">
-                                <h3>${getPluginIcon(p.id)} ${p.name}</h3>
-                                <p>${p.description}</p>
-                                <br>
-                                <small style="color: ${p.installed || p.default ? '#7ee787' : '#f85149'};">
-                                    ${p.default ? 'System Core' : (p.installed ? '✓ Active / Installed' : ' Click to Install via APT')}
-                                </small>
-                            </div>
-                        `).join('')}
-                    </div>
-                </body>
-                </html>
-            `;
-        }
-
-        async function logout() {
-            await fetch('/api/logout', { method: 'POST' });
-            window.location.href = '/login.htm';
+        async function toggleAuth() {
+            if (isLoggedIn) {
+                await fetch('/api/logout', { method: 'POST' });
+                window.location.reload();
+            } else {
+                window.location.href = '/login.htm';
+            }
         }
 
         window.onload = async () => {
             await checkAuth();
             await loadPlugins();
-            loadDashboard();
         };
     </script>
 </body>

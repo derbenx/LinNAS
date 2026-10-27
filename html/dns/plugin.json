@@ -1,7 +1,7 @@
 {
   "id": "dns",
-  "name": "DNS Config & AdBlock",
-  "description": "Configure upstream DNS forwarders, ad blocking domain lists, and auto-convert blocklist formats",
+  "name": "DNS & AdBlock Config",
+  "description": "Configure upstream DNS resolvers and network-wide ad blocking rules",
   "category": "Network",
   "default": true,
   "apt_package": "dnsmasq",
@@ -9,7 +9,7 @@
   "install_sudo": "apt-get update && apt-get install -y dnsmasq",
   "remove_sudo": "apt-get remove -y dnsmasq",
   "commands": {
-    "restart_dns_sudo": "systemctl restart dnsmasq || service dnsmasq restart",
-    "status_dns_cmd": "systemctl status dnsmasq || service dnsmasq status"
+    "status_dns_cmd": "systemctl status dnsmasq || service dnsmasq status",
+    "restart_dns_sudo": "systemctl restart dnsmasq || service dnsmasq restart"
   }
 }

@@ -59,11 +59,12 @@ type FileEntry struct {
 }
 
 type SMBShare struct {
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	Comment  string `json:"comment"`
-	ReadOnly bool   `json:"read_only"`
-	Enabled  bool   `json:"enabled"`
+	Name       string   `json:"name"`
+	Path       string   `json:"path"`
+	Comment    string   `json:"comment"`
+	ReadOnly   bool     `json:"read_only"`
+	Enabled    bool     `json:"enabled"`
+	ValidUsers []string `json:"valid_users,omitempty"`
 }
 
 type SMBData struct {
@@ -90,8 +91,8 @@ var (
 	appConfig  Config
 	sessions   = make(map[string]time.Time)
 	sessionsMu sync.RWMutex
-	// Prohibit shell metacharacters $, `, |, &, ;, <, >, (, ), \, *, ?
-	safeVarReg = regexp.MustCompile(`^[a-zA-Z0-9_\-\.\/\:\ \@\!\#\%\^\=\+\{\}\[\]\~]+$`)
+	// Prohibit shell metacharacters $, `, |, &, ;, <, >, (, ), \, *, ?, newlines \r \n
+	safeVarReg = regexp.MustCompile(`^[a-zA-Z0-9_\-\.\/\:\ \@\!\#\%\^\=\+\{\}\[\]\~\t]+$`)
 )
 
 func loadConfig() {
@@ -145,6 +146,11 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if !isAuthorized(r) {
+			// Allow unauthenticated GET requests to static HTML/CSS/JS files and status views
+			if r.Method == http.MethodGet && !strings.HasPrefix(path, "/api/") {
+				next(w, r)
+				return
+			}
 			if strings.HasPrefix(path, "/api/") {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 			} else {
@@ -414,15 +420,24 @@ func syncSystemConfigs(pluginID string, body []byte) {
 					} else {
 						sb.WriteString("   read only = no\n")
 					}
-					sb.WriteString("   guest ok = yes\n\n")
+					if len(share.ValidUsers) > 0 {
+						sb.WriteString(fmt.Sprintf("   valid users = %s\n", strings.Join(share.ValidUsers, " ")))
+						sb.WriteString("   guest ok = no\n\n")
+					} else {
+						sb.WriteString("   guest ok = yes\n\n")
+					}
 				}
 			}
-			// Attempt to write to /etc/samba/conf.d/shares.conf or /etc/samba/smb.conf
 			_ = os.MkdirAll("/etc/samba/conf.d", 0755)
 			confPath := "/etc/samba/conf.d/shares.conf"
-			if err := os.WriteFile(confPath, []byte(sb.String()), 0644); err != nil {
-				// Fallback to /tmp or local data config snippet
-				_ = os.WriteFile(filepath.Join("html", "smb", "smb_shares.conf"), []byte(sb.String()), 0644)
+			_ = os.WriteFile(confPath, []byte(sb.String()), 0644)
+
+			// Ensure smb.conf includes shares.conf
+			if mainConf, err := os.ReadFile("/etc/samba/smb.conf"); err == nil {
+				if !strings.Contains(string(mainConf), "/etc/samba/conf.d/shares.conf") {
+					newConf := string(mainConf) + "\n\n# Include Debian Server Manager Shares\ninclude = /etc/samba/conf.d/shares.conf\n"
+					_ = os.WriteFile("/etc/samba/smb.conf", []byte(newConf), 0644)
+				}
 			}
 		}
 
@@ -508,6 +523,66 @@ func handlePluginData(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func handleFileWrite(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		FilePath string `json:"filepath"`
+		Content  string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.FilePath == "" {
+		http.Error(w, "Invalid JSON body or missing filepath", http.StatusBadRequest)
+		return
+	}
+
+	cleanPath := filepath.Clean(req.FilePath)
+
+	// If running as non-root and path needs root permissions, fallback to sudo tee
+	if os.Getuid() != 0 {
+		cmd := exec.Command("sudo", "-n", "tee", cleanPath)
+		cmd.Stdin = strings.NewReader(req.Content)
+		outBytes, err := cmd.CombinedOutput()
+		if err != nil {
+			jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error(), "output": string(outBytes)})
+			return
+		}
+	} else {
+		if err := os.WriteFile(cleanPath, []byte(req.Content), 0644); err != nil {
+			jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+			return
+		}
+	}
+
+	jsonResponse(w, map[string]interface{}{"success": true, "path": cleanPath})
+}
+
+func handleFsMkdir(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	cleanPath := filepath.Clean(req.Path)
+	err := os.MkdirAll(cleanPath, 0755)
+	if err != nil {
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	jsonResponse(w, map[string]interface{}{"success": true, "path": cleanPath})
 }
 
 func handleFsBrowse(w http.ResponseWriter, r *http.Request) {
@@ -611,17 +686,50 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// API Endpoints
+	// API Endpoints protected by authMiddleware
 	mux.HandleFunc("/api/login", handleLogin)
 	mux.HandleFunc("/api/logout", handleLogout)
 	mux.HandleFunc("/api/auth/status", handleAuthStatus)
-	mux.HandleFunc("/api/plugins", handleListPlugins)
-	mux.HandleFunc("/api/plugin/exec", handleExecPluginCmd)
-	mux.HandleFunc("/api/plugin/data", handlePluginData)
-	mux.HandleFunc("/api/fs/browse", handleFsBrowse)
-	mux.HandleFunc("/api/dns/convert", handleDNSConvert)
+	// Public status execution helper for pre-login status view
+	publicExecMiddleware := func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !isAuthorized(r) {
+				// Allow read-only status queries pre-login
+				if r.URL.Path == "/api/plugins" {
+					next(w, r)
+					return
+				}
+			}
+			authMiddleware(next)(w, r)
+		}
+	}
 
-	// Static HTML File server
+	mux.HandleFunc("/api/plugins", publicExecMiddleware(handleListPlugins))
+	mux.HandleFunc("/api/plugin/exec", func(w http.ResponseWriter, r *http.Request) {
+		if !isAuthorized(r) {
+			// Allow read-only status queries when unauthenticated
+			var req ExecRequest
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err == nil {
+				_ = json.Unmarshal(bodyBytes, &req)
+				r.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+				if req.Plugin == "status" && (req.CmdKey == "sys_info_cmd" || req.CmdKey == "disk_space_cmd" || req.CmdKey == "smart_health_sudo" || req.CmdKey == "service_status_cmd") {
+					handleExecPluginCmd(w, r)
+					return
+				}
+			}
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		handleExecPluginCmd(w, r)
+	})
+	mux.HandleFunc("/api/plugin/data", authMiddleware(handlePluginData))
+	mux.HandleFunc("/api/fs/browse", authMiddleware(handleFsBrowse))
+	mux.HandleFunc("/api/fs/mkdir", authMiddleware(handleFsMkdir))
+	mux.HandleFunc("/api/file/write", authMiddleware(handleFileWrite))
+	mux.HandleFunc("/api/dns/convert", authMiddleware(handleDNSConvert))
+
+	// Static HTML File server protected by authMiddleware
 	fileServer := http.FileServer(http.Dir("html"))
 	mux.Handle("/", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" {

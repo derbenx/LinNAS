@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Network Diagnostics</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .install-card { background: #161b22; border: 1px solid #d29922; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; display: none; }
+        .install-title { font-size: 1.1rem; font-weight: bold; color: #f2cc60; margin-bottom: 0.5rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus, .form-group select:focus { border-color: #58a6ff; outline: none; }
+
+        .btn-row { display: flex; gap: 0.8rem; margin-top: 1rem; flex-wrap: wrap; }
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 1rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h2>Network Diagnostics & Troubleshooting</h2>
+    <p class="subtitle">Test network connectivity, ping remote domain hosts, or trace packet routes across local and internet gateways.</p>
+
+    <!-- Missing Software Banner -->
+    <div id="installPromptCard" class="install-card">
+        <div class="install-title">⚠️ Diagnostic Tools Missing (netinstall)</div>
+        <p style="color: #c9d1d9; font-size: 0.9rem; margin-bottom: 1rem;">
+            Minimal Debian netinstall images might not include <code>traceroute</code> or <code>iputils-ping</code> by default. Click below to install diagnostic utilities via APT.
+        </p>
+        <button class="btn" onclick="installDiagnosticTools()">Install Ping & Traceroute via APT</button>
+    </div>
+
+    <!-- Diagnostic Form -->
+    <div class="section">
+        <div class="section-title">Run Ping / Traceroute</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Diagnostic Tool</label>
+                <select id="toolSelect" onchange="toggleToolOptions()">
+                    <option value="ping">Ping (ICMP Echo Latency)</option>
+                    <option value="traceroute">Traceroute (Network Route Hop Trace)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Target Hostname or IP Address</label>
+                <input type="text" id="targetHost" value="1.1.1.1" placeholder="google.com or 192.168.1.1">
+            </div>
+            <div class="form-group" id="countGroup">
+                <label>Ping Count</label>
+                <input type="number" id="pingCount" value="4" min="1" max="20">
+            </div>
+            <div class="form-group" id="hopsGroup" style="display: none;">
+                <label>Max Hop Limit</label>
+                <input type="number" id="maxHops" value="15" min="1" max="30">
+            </div>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn" onclick="runDiagnostic()">Run Test</button>
+            <button class="btn btn-secondary" onclick="openQuickTarget('1.1.1.1')">Cloudflare (1.1.1.1)</button>
+            <button class="btn btn-secondary" onclick="openQuickTarget('8.8.8.8')">Google DNS (8.8.8.8)</button>
+        </div>
+    </div>
+
+    <div id="outputBox" class="output-box"></div>
+
+    <script>
+        function toggleToolOptions() {
+            const tool = document.getElementById('toolSelect').value;
+            document.getElementById('countGroup').style.display = (tool === 'ping') ? 'flex' : 'none';
+            document.getElementById('hopsGroup').style.display = (tool === 'traceroute') ? 'flex' : 'none';
+        }
+
+        function openQuickTarget(host) {
+            document.getElementById('targetHost').value = host;
+            runDiagnostic();
+        }
+
+        async function runDiagnostic() {
+            const tool = document.getElementById('toolSelect').value;
+            const host = document.getElementById('targetHost').value.trim();
+            const count = document.getElementById('pingCount').value || 4;
+            const max_hops = document.getElementById('maxHops').value || 15;
+
+            if (!host) {
+                showOutput('Please enter a target domain name or IP address.');
+                return;
+            }
+
+            const cleanHost = host.replace(/[^a-zA-Z0-9\.\-]/g, '');
+            const cmdKey = (tool === 'traceroute') ? 'traceroute_cmd' : 'ping_cmd';
+
+            showOutput(`Running ${tool.toUpperCase()} against ${cleanHost}... Please wait...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'ping',
+                        cmd_key: cmdKey,
+                        args: { host: cleanHost, count: count.toString(), max_hops: max_hops.toString() }
+                    })
+                });
+
+                const data = await res.json();
+                const output = data.output || '';
+
+                if (output.includes('not found') || output.includes('No such file')) {
+                    document.getElementById('installPromptCard').style.display = 'block';
+                    showOutput(`Error: ${tool} command not found. Click 'Install Ping & Traceroute via APT' above.`);
+                } else if (data.success) {
+                    showOutput(output);
+                } else {
+                    showOutput(`Diagnostic execution finished with status error:\n${data.error}\n\n${output}`);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function installDiagnosticTools() {
+            showOutput('Installing iputils-ping and traceroute packages via APT...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'ping',
+                        cmd_key: 'install_sudo',
+                        args: {}
+                    })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    showOutput('Diagnostic tools installed successfully!\n' + data.output);
+                    document.getElementById('installPromptCard').style.display = 'none';
+                } else {
+                    showOutput('Installation failed: ' + data.error + '\n' + data.output);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            const box = document.getElementById('outputBox');
+            box.style.display = 'block';
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        window.onload = toggleToolOptions;
+    </script>
+</body>
+</html>

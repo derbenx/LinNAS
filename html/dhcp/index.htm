@@ -9,12 +9,16 @@
         h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
         p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
 
+        .install-card { background: #161b22; border: 1px solid #d29922; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; display: none; }
+        .install-title { font-size: 1.1rem; font-weight: bold; color: #f2cc60; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 8px; }
+
         .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
         .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
 
         .status-badge { padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
         .status-running { background: #238636; color: #fff; }
         .status-stopped { background: #da3633; color: #fff; }
+        .status-missing { background: #d29922; color: #000; }
         .status-unknown { background: #6e7681; color: #fff; }
 
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
@@ -25,7 +29,7 @@
 
         .checkbox-group { display: flex; align-items: center; gap: 8px; margin-top: 0.5rem; font-size: 0.9rem; color: #c9d1d9; font-weight: 600; }
 
-        .btn-row { display: flex; gap: 0.8rem; margin-top: 1rem; }
+        .btn-row { display: flex; gap: 0.8rem; margin-top: 1rem; flex-wrap: wrap; }
         .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
         .btn:hover { background: #2ea043; }
         .btn-secondary { background: #30363d; color: white; }
@@ -37,6 +41,17 @@
 <body>
     <h2>DHCP Server Config (dnsmasq)</h2>
     <p class="subtitle">Configure automatic local IP address assignment pools, subnet ranges, and default gateway options.</p>
+
+    <!-- Missing Software Prompt (Debian Netinstall) -->
+    <div id="installPromptCard" class="install-card">
+        <div class="install-title">
+            <span>⚠️ Package 'dnsmasq' Not Installed</span>
+        </div>
+        <p style="color: #c9d1d9; font-size: 0.9rem; margin-bottom: 1rem;">
+            Debian netinstall minimal installations do not include the <code>dnsmasq</code> DHCP service package by default. Click the button below to install <code>dnsmasq</code> via APT.
+        </p>
+        <button class="btn" onclick="installDnsmasqPackage()">Install dnsmasq Package via APT</button>
+    </div>
 
     <!-- Status Overview -->
     <div class="section">
@@ -98,7 +113,6 @@
                 const res = await fetch('/api/plugin/data?plugin=dhcp');
                 const data = await res.json();
 
-                // Default to disabled (false) unless explicitly saved as true
                 document.getElementById('dhcpEnabled').checked = (data.enabled === true);
                 document.getElementById('iface').value = data.interface || 'eth0';
                 document.getElementById('netmask').value = data.netmask || '255.255.255.0';
@@ -116,6 +130,7 @@
         async function checkServiceStatus() {
             const badge = document.getElementById('serviceBadge');
             const statusDesc = document.getElementById('statusDesc');
+            const promptCard = document.getElementById('installPromptCard');
 
             try {
                 const res = await fetch('/api/plugin/exec', {
@@ -131,22 +146,58 @@
                 const data = await res.json();
                 const output = data.output || '';
 
-                if (data.success || output.includes('active (running)')) {
+                if (output.includes('could not be found') || output.includes('not-found') || output.includes('no such file')) {
+                    badge.innerText = 'Package Not Installed';
+                    badge.className = 'status-badge status-missing';
+                    statusDesc.innerText = 'The dnsmasq service package is not installed on this server.';
+                    promptCard.style.display = 'block';
+                    showOutput('dnsmasq service unit is missing. Click "Install dnsmasq Package via APT" to install it.');
+                } else if (data.success || output.includes('active (running)')) {
+                    promptCard.style.display = 'none';
                     badge.innerText = 'Service Running';
                     badge.className = 'status-badge status-running';
                     statusDesc.innerText = 'DHCP server (dnsmasq) is currently active and listening for client lease requests.';
                 } else {
+                    promptCard.style.display = 'none';
                     badge.innerText = 'Service Stopped';
                     badge.className = 'status-badge status-stopped';
-                    statusDesc.innerText = 'DHCP server (dnsmasq) is currently stopped or inactive.';
+                    statusDesc.innerText = 'DHCP server (dnsmasq) is installed but currently stopped.';
                     if (output) {
-                        showOutput('DHCP Service Logs / Error output:\n' + output);
+                        showOutput('DHCP Service Logs / Status Output:\n' + output);
                     }
                 }
             } catch (err) {
                 badge.innerText = 'Status Error';
                 badge.className = 'status-badge status-stopped';
                 statusDesc.innerText = 'Error querying DHCP status: ' + err.message;
+            }
+        }
+
+        async function installDnsmasqPackage() {
+            showOutput('Installing dnsmasq package via APT... Please wait...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'dhcp',
+                        cmd_key: 'install_sudo',
+                        args: {}
+                    })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    showOutput('dnsmasq installed successfully!\n' + data.output);
+                    if (window.parent) {
+                        window.parent.postMessage('reload_plugins', '*');
+                    }
+                    await checkServiceStatus();
+                } else {
+                    showOutput('Package installation failed: ' + data.error + '\n' + data.output);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
             }
         }
 

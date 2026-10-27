@@ -16,21 +16,25 @@
         .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
         .form-group label { font-size: 0.85rem; color: #8b949e; }
         .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
-        .form-group input:focus { border-color: #58a6ff; outline: none; }
+        .form-group input:focus, .form-group select:focus { border-color: #58a6ff; outline: none; }
+        .form-group input:disabled { background: #161b22; color: #6e7681; border-color: #21262d; cursor: not-allowed; }
 
-        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn-row { display: flex; gap: 0.8rem; margin-top: 1rem; flex-wrap: wrap; }
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
         .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
 
         .no-hardware-box { background: #21262d; border: 1px solid #d29922; border-radius: 6px; padding: 1.2rem; color: #e3b341; margin-bottom: 1.5rem; display: none; }
         .no-hardware-box h3 { margin-bottom: 0.5rem; font-size: 1rem; }
         .no-hardware-box p { font-size: 0.85rem; color: #c9d1d9; line-height: 1.4; }
 
-        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; white-space: pre-wrap; }
     </style>
 </head>
 <body>
     <h2>LAN Network Settings</h2>
-    <p class="subtitle">Configure static IPv4 address, netmask, and link state for physical Ethernet network interfaces.</p>
+    <p class="subtitle">Configure Ethernet interfaces with Automatic (DHCP) or Manual (Static) IP addressing and custom DNS server overrides.</p>
 
     <div id="hardwareWarning" class="no-hardware-box">
         <h3>⚠️ No Ethernet LAN Hardware Detected</h3>
@@ -48,6 +52,13 @@
                 <select id="ifaceSelect" onchange="onIfaceSelect()"></select>
             </div>
             <div class="form-group">
+                <label>IP Assignment Mode</label>
+                <select id="ipModeSelect" onchange="toggleIpMode()">
+                    <option value="dhcp">Automatic (DHCP)</option>
+                    <option value="manual">Manual (Static IP)</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>IPv4 Address</label>
                 <input type="text" id="ipAddr" placeholder="192.168.1.50">
             </div>
@@ -56,7 +67,26 @@
                 <input type="text" id="cidrMask" placeholder="24">
             </div>
         </div>
-        <button class="btn" onclick="applyLanConfig()">Apply Network Settings</button>
+    </div>
+
+    <div class="section" id="dnsSection">
+        <div class="section-title">DNS Server Overrides (/etc/resolv.conf)</div>
+        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Set custom DNS servers to override DHCP or manual defaults.</p>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Primary DNS Server</label>
+                <input type="text" id="dns1" placeholder="1.1.1.1">
+            </div>
+            <div class="form-group">
+                <label>Secondary DNS Server (Optional)</label>
+                <input type="text" id="dns2" placeholder="8.8.8.8">
+            </div>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn" onclick="applyLanConfig()">Apply IP & DNS Settings</button>
+            <button class="btn btn-secondary" id="renewBtn" onclick="renewDhcpLease()">Renew DHCP Lease</button>
+        </div>
     </div>
 
     <div id="outputBox" class="output-box"></div>
@@ -79,9 +109,11 @@
                     if (lanInterfaces.length === 0) {
                         document.getElementById('hardwareWarning').style.display = 'block';
                         document.getElementById('configSection').style.display = 'none';
+                        document.getElementById('dnsSection').style.display = 'none';
                     } else {
                         document.getElementById('hardwareWarning').style.display = 'none';
                         document.getElementById('configSection').style.display = 'block';
+                        document.getElementById('dnsSection').style.display = 'block';
                         populateIfaceSelect();
                     }
                 }
@@ -128,30 +160,86 @@
             }
         }
 
+        function toggleIpMode() {
+            const mode = document.getElementById('ipModeSelect').value;
+            const isManual = (mode === 'manual');
+            document.getElementById('ipAddr').disabled = !isManual;
+            document.getElementById('cidrMask').disabled = !isManual;
+            document.getElementById('renewBtn').style.display = isManual ? 'none' : 'inline-block';
+        }
+
         async function applyLanConfig() {
             const iface = document.getElementById('ifaceSelect').value;
+            const mode = document.getElementById('ipModeSelect').value;
             const ip = document.getElementById('ipAddr').value.trim();
             const cidr = document.getElementById('cidrMask').value.trim();
+            const dns1 = document.getElementById('dns1').value.trim();
+            const dns2 = document.getElementById('dns2').value.trim();
 
-            if (!iface || !ip || !cidr) {
-                showOutput('Please fill in Interface, IP Address, and Subnet CIDR.');
-                return;
+            showOutput(`Applying network settings to ${iface}...`);
+
+            try {
+                if (mode === 'manual') {
+                    if (!ip || !cidr) {
+                        showOutput('Please fill in IPv4 Address and Subnet CIDR Mask for Manual mode.');
+                        return;
+                    }
+                    const ipRes = await fetch('/api/plugin/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            plugin: 'lan',
+                            cmd_key: 'set_ip_sudo',
+                            args: { iface, ip, cidr }
+                        })
+                    });
+                    const ipData = await ipRes.json();
+                    if (!ipData.success) {
+                        showOutput(`IP assignment failed: ${ipData.error}\n${ipData.output}`);
+                        return;
+                    }
+                } else {
+                    await renewDhcpLease();
+                }
+
+                if (dns1) {
+                    const dnsRes = await fetch('/api/plugin/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            plugin: 'lan',
+                            cmd_key: 'set_dns_sudo',
+                            args: { dns1, dns2 }
+                        })
+                    });
+                    const dnsData = await dnsRes.json();
+                    if (dnsData.success) {
+                        showOutput(`Successfully updated network settings and set DNS overrides (${dns1}${dns2 ? ', ' + dns2 : ''}).`);
+                    }
+                } else {
+                    showOutput(`Successfully applied IP settings for ${iface}.`);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
             }
+        }
 
-            showOutput(`Applying static IP ${ip}/${cidr} to ${iface}...`);
-
+        async function renewDhcpLease() {
+            const iface = document.getElementById('ifaceSelect').value;
+            showOutput(`Renewing DHCP lease on ${iface}...`);
             try {
                 const res = await fetch('/api/plugin/exec', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         plugin: 'lan',
-                        cmd_key: 'set_ip_sudo',
-                        args: { iface, ip, cidr }
+                        cmd_key: 'dhcp_renew_sudo',
+                        args: { iface }
                     })
                 });
                 const data = await res.json();
-                showOutput(data.success ? `Successfully configured ${iface}.` : `Configuration failed: ${data.error}\n${data.output}`);
+                showOutput(data.success ? `DHCP lease renewed on ${iface}.\n` + data.output : `DHCP renewal warning: ${data.error}\n${data.output}`);
+                await onIfaceSelect();
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
             }
@@ -163,7 +251,10 @@
             box.innerText = text;
         }
 
-        window.onload = detectLanInterfaces;
+        window.onload = () => {
+            detectLanInterfaces();
+            toggleIpMode();
+        };
     </script>
 </body>
 </html>

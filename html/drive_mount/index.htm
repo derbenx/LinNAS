@@ -38,6 +38,7 @@
         .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
         .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 10% auto; padding: 1.5rem; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
+        .modal-actions { display: flex; gap: 0.5rem; align-items: center; }
         .file-list { max-height: 300px; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; }
         .file-item { padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #21262d; font-family: monospace; }
         .file-item:hover { background: #1f242d; color: #58a6ff; }
@@ -47,7 +48,7 @@
 </head>
 <body>
     <h2>Local Drives, ISO & VHD Image Mount Manager</h2>
-    <p class="subtitle">Mount physical disk partitions, ISO optical disc images, or VHD virtual disk containers into your server filesystem.</p>
+    <p class="subtitle">Mount physical disk partitions, ISO optical disc images, or VHD virtual disk containers into your server filesystem with optional startup boot persistence.</p>
 
     <!-- Physical Disk Partitions -->
     <div class="section">
@@ -85,7 +86,7 @@
             </div>
             <div class="form-group">
                 <label>Target Mount Point</label>
-                <input type="text" id="imgMount" placeholder="/mnt/iso_image">
+                <input type="text" id="imgMount" placeholder="/mnt/debian_iso">
             </div>
             <div class="form-group">
                 <label>Format Type</label>
@@ -108,7 +109,10 @@
         <div class="modal-content">
             <div class="modal-header">
                 <span id="modalPath">/</span>
-                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeModal()">✕</button>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;" onclick="createNewFolder()">+ Create Folder</button>
+                    <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeModal()">✕</button>
+                </div>
             </div>
             <div id="fileList" class="file-list"></div>
         </div>
@@ -152,19 +156,22 @@
         function renderDeviceRow(dev, tbody, indent) {
             const tr = document.createElement('tr');
             const devName = dev.name ? '/dev/' + dev.name : '-';
-            const fstype = dev.fstype || '-';
+            const fstype = dev.fstype || 'ext4';
             const label = dev.label || '-';
-            const uuid = dev.uuid || '-';
+            const uuid = dev.uuid || '';
             const mount = dev.mountpoint || dev.mountpoints?.join(', ') || '-';
             const size = dev.size || '-';
             const type = dev.type || '-';
 
+            const hasChildren = dev.children && dev.children.length > 0;
+
             let actionBtn = '-';
-            if (dev.type === 'part' || dev.type === 'disk') {
+            if (dev.type === 'part' || (dev.type === 'disk' && !hasChildren)) {
                 if (dev.mountpoint) {
-                    actionBtn = `<button class="btn btn-danger" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="unmountPartition('${dev.mountpoint}')">Unmount</button>`;
+                    actionBtn = `<button class="btn btn-danger" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="unmountPartition('${dev.mountpoint}', '${uuid}')">Unmount</button>`;
                 } else {
-                    actionBtn = `<button class="btn" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="mountPartition('${devName}')">Mount</button>`;
+                    const cleanName = dev.label ? dev.label.replace(/[^a-zA-Z0-9_]/g, '_') : dev.name;
+                    actionBtn = `<button class="btn" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="mountPartitionPrompt('${devName}', '${cleanName}', '${uuid}', '${fstype}')">Mount</button>`;
                 }
             }
 
@@ -174,20 +181,23 @@
                 <td>${fstype}</td>
                 <td><strong style="color: #58a6ff;">${label}</strong></td>
                 <td>${size}</td>
-                <td><small style="color: #8b949e; font-family: monospace;">${uuid}</small></td>
+                <td><small style="color: #8b949e; font-family: monospace;">${uuid || 'N/A'}</small></td>
                 <td>${mount !== '-' ? `<span style="color:#7ee787;">${mount}</span>` : 'Unmounted'}</td>
                 <td>${actionBtn}</td>
             `;
             tbody.appendChild(tr);
 
-            if (dev.children && dev.children.length > 0) {
+            if (hasChildren) {
                 dev.children.forEach(child => renderDeviceRow(child, tbody, '└─ '));
             }
         }
 
-        async function mountPartition(device) {
-            const target = prompt(`Enter target mount point folder for ${device}:`, `/mnt/${device.replace('/dev/', '')}`);
+        async function mountPartitionPrompt(device, defaultName, uuid, fstype) {
+            const defaultPath = `/mnt/${defaultName || device.replace('/dev/', '')}`;
+            const target = prompt(`Enter target mount point folder for ${device}:`, defaultPath);
             if (!target) return;
+
+            const autoFstab = confirm(`Auto-mount this drive at server boot via UUID in /etc/fstab?\n\nUUID: ${uuid || 'N/A'}\nMount Point: ${target}`);
 
             showOutput(`Mounting ${device} to ${target}...`);
             try {
@@ -201,14 +211,32 @@
                     })
                 });
                 const data = await res.json();
-                showOutput(data.success ? `Successfully mounted ${device} to ${target}` : `Mount error: ${data.error}\n${data.output}`);
+
+                if (data.success) {
+                    let msg = `Successfully mounted ${device} to ${target}`;
+                    if (autoFstab && uuid) {
+                        await fetch('/api/plugin/exec', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                plugin: 'drive_mount',
+                                cmd_key: 'fstab_add_sudo',
+                                args: { uuid, mountpoint: target, fstype: fstype || 'auto' }
+                            })
+                        });
+                        msg += ` and added boot entry to /etc/fstab (UUID=${uuid}).`;
+                    }
+                    showOutput(msg);
+                } else {
+                    showOutput(`Mount error: ${data.error}\n${data.output}`);
+                }
                 loadDriveList();
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
             }
         }
 
-        async function unmountPartition(mountpoint) {
+        async function unmountPartition(mountpoint, uuid) {
             showOutput(`Unmounting ${mountpoint}...`);
             try {
                 const res = await fetch('/api/plugin/exec', {
@@ -221,7 +249,22 @@
                     })
                 });
                 const data = await res.json();
-                showOutput(data.success ? `Unmounted ${mountpoint}` : `Unmount error: ${data.error}\n${data.output}`);
+                if (data.success) {
+                    if (uuid) {
+                        await fetch('/api/plugin/exec', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                plugin: 'drive_mount',
+                                cmd_key: 'fstab_remove_sudo',
+                                args: { uuid }
+                            })
+                        });
+                    }
+                    showOutput(`Unmounted ${mountpoint} and cleaned /etc/fstab.`);
+                } else {
+                    showOutput(`Unmount error: ${data.error}\n${data.output}`);
+                }
                 loadDriveList();
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
@@ -328,8 +371,37 @@
             }
         }
 
+        async function createNewFolder() {
+            const folderName = prompt(`Create new folder inside ${currentBrowserPath}:`);
+            if (!folderName) return;
+
+            const cleanFolder = folderName.trim().replace(/[^a-zA-Z0-9_\-]/g, '_');
+            const targetPath = (currentBrowserPath === '/' ? '' : currentBrowserPath) + '/' + cleanFolder;
+
+            try {
+                const res = await fetch('/api/fs/mkdir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: targetPath })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    openFileBrowser(currentBrowserPath);
+                } else {
+                    showOutput('Failed to create folder: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Failed to create folder: ' + err.message);
+            }
+        }
+
         function selectFile(path) {
             document.getElementById('imgPath').value = path;
+            const filename = path.split('/').pop().split('.')[0].replace(/[^a-zA-Z0-9_]/g, '_');
+            if (filename) {
+                document.getElementById('imgMount').value = `/mnt/${filename}`;
+            }
+
             const ext = path.split('.').pop().toLowerCase();
             if (['vhd', 'vhdx', 'img', 'raw'].includes(ext)) {
                 document.getElementById('imgType').value = 'vhd';

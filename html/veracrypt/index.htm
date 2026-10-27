@@ -38,6 +38,7 @@
         .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
         .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 10% auto; padding: 1.5rem; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
+        .modal-actions { display: flex; gap: 0.5rem; align-items: center; }
         .file-list { max-height: 300px; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; }
         .file-item { padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #21262d; font-family: monospace; }
         .file-item:hover { background: #1f242d; color: #58a6ff; }
@@ -63,7 +64,7 @@
             <div class="form-group">
                 <label>Mount Point Folder</label>
                 <div class="path-input-group">
-                    <input type="text" id="mountPoint" placeholder="/media/secure_vault">
+                    <input type="text" id="mountPoint" placeholder="/mnt/vault">
                     <button class="btn btn-secondary" onclick="openFileBrowser('folder')">Browse...</button>
                 </div>
             </div>
@@ -108,7 +109,8 @@
         <div class="modal-content">
             <div class="modal-header">
                 <span id="modalPath">/</span>
-                <div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;" onclick="createNewFolder()">+ Create Folder</button>
                     <button id="selectFolderBtn" class="btn" style="padding: 0.2rem 0.6rem; font-size: 0.8rem; display: none;" onclick="selectCurrentFolder()">Select This Folder</button>
                     <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeModal()">✕</button>
                 </div>
@@ -305,10 +307,35 @@
             }
         }
 
+        async function createNewFolder() {
+            const folderName = prompt(`Create new folder inside ${currentBrowserPath}:`);
+            if (!folderName) return;
+
+            const cleanFolder = folderName.trim().replace(/[^a-zA-Z0-9_\-]/g, '_');
+            const targetPath = (currentBrowserPath === '/' ? '' : currentBrowserPath) + '/' + cleanFolder;
+
+            try {
+                const res = await fetch('/api/fs/mkdir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: targetPath })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    openFileBrowser(browseTargetMode, currentBrowserPath);
+                } else {
+                    showOutput('Failed to create folder: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Failed to create folder: ' + err.message);
+            }
+        }
+
         function selectFile(path) {
             document.getElementById('volumePath').value = path;
             const filename = path.split('/').pop().split('.')[0].replace(/[^a-zA-Z0-9_]/g, '_');
-            if (filename && !document.getElementById('mapName').value) {
+            if (filename) {
+                document.getElementById('mountPoint').value = `/mnt/${filename}`;
                 document.getElementById('mapName').value = 'tc_' + filename;
             }
             closeModal();

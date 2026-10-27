@@ -1,0 +1,12 @@
+{
+  "id": "editor",
+  "name": "System File Editor",
+  "description": "View and edit system configuration files with size safety limits and root warnings",
+  "category": "System",
+  "default": true,
+  "commands": {
+    "check_file_cmd": "wc -c < \"{filepath}\"",
+    "read_file_cmd": "cat \"{filepath}\"",
+    "save_file_sudo": "cat << 'EOF' > \"{filepath}\"\n{content}\nEOF"
+  }
+}

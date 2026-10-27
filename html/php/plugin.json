@@ -1,14 +1,15 @@
 {
   "id": "php",
   "name": "PHP Scripting Engine",
-  "description": "Configure PHP runtime version, memory limits, and file upload execution settings",
+  "description": "Install PHP runtime versions, FPM service, and php.ini directives",
   "category": "Web Services",
   "default": false,
   "apt_package": "php",
   "check_cmd": "which php",
-  "install_sudo": "apt-get update && apt-get install -y php{version} php{version}-cli php{version}-mysql libapache2-mod-php{version}",
-  "remove_sudo": "apt-get remove -y php* libapache2-mod-php*",
+  "install_sudo": "apt-get update && apt-get install -y php php-fpm php-cli php-mysql php-mbstring php-xml",
+  "remove_sudo": "apt-get remove -y php*",
   "commands": {
-    "restart_php_sudo": "systemctl restart apache2 || service apache2 restart"
+    "install_ver_sudo": "apt-get update && apt-get install -y php{version} php{version}-fpm php{version}-cli php{version}-mysql",
+    "switch_version_sudo": "update-alternatives --set php /usr/bin/php{version}"
   }
 }

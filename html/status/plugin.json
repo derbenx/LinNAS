@@ -1,0 +1,23 @@
+{
+  "id": "status",
+  "name": "Server Status & Power",
+  "description": "Monitor CPU, RAM, SMART drive health, disk space, Conky-like system stats, service states, and schedule power off/reboot",
+  "category": "System",
+  "default": true,
+  "apt_package": "smartmontools",
+  "check_cmd": "which smartctl",
+  "install_sudo": "apt-get update && apt-get install -y smartmontools",
+  "commands": {
+    "sys_info_cmd": "echo '===HOST==='; hostname; uname -r; echo '===CPU==='; lscpu | grep -E 'Model name|CPU\\(s\\):'; echo '===LOAD==='; cat /proc/loadavg; echo '===MEM==='; free -m; echo '===UPTIME==='; uptime; echo '===NET==='; ip -brief addr",
+    "disk_space_cmd": "df -h -x tmpfs -x devtmpfs -x squashfs",
+    "smart_info_sudo": "smartctl -A /dev/{drive} || smartctl -i /dev/{drive}",
+    "smart_health_sudo": "smartctl -H /dev/{drive}",
+    "service_status_cmd": "systemctl status {service} || service {service} status",
+    "service_control_sudo": "systemctl {action} {service} || service {service} {action}",
+    "poweroff_sudo": "shutdown -h now",
+    "reboot_sudo": "reboot",
+    "schedule_poweroff_sudo": "shutdown -h +{minutes}",
+    "schedule_reboot_sudo": "shutdown -r +{minutes}",
+    "cancel_shutdown_sudo": "shutdown -c"
+  }
+}
