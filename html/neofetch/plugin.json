@@ -1,0 +1,14 @@
+{
+  "id": "neofetch",
+  "name": "Neofetch System Info",
+  "description": "Display Debian system summary, OS version, kernel, uptime, packages, and ASCII art logo",
+  "category": "System",
+  "default": true,
+  "apt_package": "neofetch",
+  "check_cmd": "which neofetch || which fastfetch",
+  "install_sudo": "apt-get update && (apt-get install -y neofetch || apt-get install -y fastfetch)",
+  "remove_sudo": "apt-get remove -y neofetch fastfetch",
+  "commands": {
+    "neofetch_cmd": "(neofetch --off || fastfetch) | sed 's/\\x1B\\[[0-9;]*[a-zA-Z]//g'"
+  }
+}

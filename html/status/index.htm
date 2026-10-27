@@ -46,7 +46,8 @@
         .btn-secondary:hover { background: #484f58; }
         .btn-danger { background: #da3633; color: white; }
         .btn-danger:hover { background: #b62324; }
-        .btn-disabled { background: #21262d; color: #6e7681; cursor: not-allowed; border: 1px solid #30363d; }
+
+        .auth-only { display: none; }
 
         .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; white-space: pre-wrap; }
     </style>
@@ -55,7 +56,7 @@
     <div class="header-bar">
         <div>
             <h2>Server Monitor & Status Center</h2>
-            <p class="subtitle">Real-time system health, Conky system metrics, SMART drive diagnostics, disk space, and service controls.</p>
+            <p class="subtitle">Real-time system health, SMART drive diagnostics, disk space, and service status.</p>
         </div>
         <div id="loginHeader">
             <button id="mainLoginBtn" class="bright-login-btn" onclick="redirectToLogin()">🔑 LOGIN TO MANAGE SERVER</button>
@@ -66,54 +67,41 @@
     <div class="grid-cards">
         <div class="stat-card">
             <h4>Host & Kernel</h4>
-            <div id="hostVal" class="stat-value">Loading...</div>
+            <div id="hostVal" class="stat-value">checking...</div>
             <div id="kernelSub" class="stat-sub">Linux Kernel</div>
         </div>
         <div class="stat-card">
             <h4>Processor / Cores</h4>
-            <div id="cpuVal" class="stat-value">Loading...</div>
-            <div id="cpuSub" class="stat-sub">Scanning CPU...</div>
+            <div id="cpuVal" class="stat-value">checking...</div>
+            <div id="cpuSub" class="stat-sub">checking...</div>
         </div>
         <div class="stat-card">
             <h4>Free Memory (RAM)</h4>
-            <div id="ramVal" class="stat-value">Loading...</div>
-            <div id="ramSub" class="stat-sub">Calculating RAM...</div>
+            <div id="ramVal" class="stat-value">checking...</div>
+            <div id="ramSub" class="stat-sub">checking...</div>
         </div>
         <div class="stat-card">
             <h4>System Uptime</h4>
-            <div id="uptimeVal" class="stat-value">Loading...</div>
+            <div id="uptimeVal" class="stat-value">checking...</div>
             <div id="uptimeSub" class="stat-sub">Server Online</div>
         </div>
     </div>
 
     <!-- Conky-style System Information Summary -->
     <div class="conky-section">
-        <div class="section-title">Conky System Information & Network Summary</div>
+        <div class="section-title">System Load & Memory Summary</div>
         <div class="conky-grid">
             <div class="conky-box">
                 <div class="conky-title">⚡ CPU Load & Swap</div>
                 <div><strong>System Load (1m 5m 15m):</strong></div>
-                <div id="loadAvgVal" style="color: #7ee787; margin-bottom: 0.5rem;">Loading...</div>
+                <div id="loadAvgVal" style="color: #7ee787; margin-bottom: 0.5rem;">checking...</div>
                 <div><strong>Swap Memory Usage:</strong></div>
-                <div id="swapVal" style="color: #e3b341;">Loading...</div>
+                <div id="swapVal" style="color: #e3b341;">checking...</div>
             </div>
-            <div class="conky-box">
+            <div class="conky-box auth-only" id="netIpBox">
                 <div class="conky-title">🌐 Active Network IP Addresses</div>
-                <div id="netIpList" style="color: #58a6ff;">Scanning interfaces...</div>
+                <div id="netIpList" style="color: #58a6ff;">checking...</div>
             </div>
-        </div>
-    </div>
-
-    <!-- Application Boot Service Control -->
-    <div class="section">
-        <div class="section-title">
-            <span>Automatic Application Boot Service</span>
-            <span id="bootServiceBadge" class="badge-inactive">Checking...</span>
-        </div>
-        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Configure Debian Server Manager to automatically start in background upon system bootup via systemd service.</p>
-        <div class="btn-row">
-            <button id="enableBootBtn" class="btn auth-required" onclick="toggleBootService(true)">Enable Start on Boot</button>
-            <button id="disableBootBtn" class="btn btn-danger auth-required" onclick="toggleBootService(false)">Disable Start on Boot</button>
         </div>
     </div>
 
@@ -132,7 +120,7 @@
                 </tr>
             </thead>
             <tbody id="dfTableBody">
-                <tr><td colspan="6" style="text-align: center; color: #8b949e;">Loading storage filesystems...</td></tr>
+                <tr><td colspan="6" style="text-align: center; color: #8b949e;">checking...</td></tr>
             </tbody>
         </table>
     </div>
@@ -150,14 +138,14 @@
                 </tr>
             </thead>
             <tbody id="smartTableBody">
-                <tr><td colspan="4" style="text-align: center; color: #8b949e;">Scanning storage drives...</td></tr>
+                <tr><td colspan="4" style="text-align: center; color: #8b949e;">checking...</td></tr>
             </tbody>
         </table>
     </div>
 
-    <!-- Services Status & Controls -->
-    <div class="section">
-        <div class="section-title">System Services Status</div>
+    <!-- Services Status (Authenticated Only) -->
+    <div class="section auth-only" id="servicesSection">
+        <div class="section-title">Installed System Services Status</div>
         <table>
             <thead>
                 <tr>
@@ -168,23 +156,23 @@
                 </tr>
             </thead>
             <tbody id="servicesTableBody">
-                <tr><td colspan="4" style="text-align: center; color: #8b949e;">Checking services...</td></tr>
+                <tr><td colspan="4" style="text-align: center; color: #8b949e;">checking...</td></tr>
             </tbody>
         </table>
     </div>
 
-    <!-- Power Off / Reboot Controls -->
-    <div class="section">
+    <!-- Power Control (Authenticated Only) - Second to last section -->
+    <div class="section auth-only" id="powerSection">
         <div class="section-title">Power Control & Scheduled Shutdown / Reboot</div>
         <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Execute instant or scheduled power operations on this Debian server.</p>
 
         <div class="btn-row">
-            <button class="btn btn-danger auth-required" onclick="poweroffNow()">Instant Power Off</button>
-            <button class="btn btn-secondary auth-required" style="background:#d29922; color:#000;" onclick="rebootNow()">Instant Reboot</button>
-            <button class="btn btn-secondary auth-required" onclick="cancelScheduledPower()">Cancel Scheduled Power Tasks</button>
+            <button class="btn btn-danger" onclick="poweroffNow()">Instant Power Off</button>
+            <button class="btn btn-secondary" style="background:#d29922; color:#000;" onclick="rebootNow()">Instant Reboot</button>
+            <button class="btn btn-secondary" onclick="cancelScheduledPower()">Cancel Scheduled Power Tasks</button>
         </div>
 
-        <div class="form-inline auth-required">
+        <div class="form-inline">
             <label style="font-size: 0.85rem; color: #8b949e;">Schedule Action:</label>
             <select id="schedAction">
                 <option value="poweroff">Scheduled Power Off</option>
@@ -193,6 +181,19 @@
             <label style="font-size: 0.85rem; color: #8b949e;">In Minutes:</label>
             <input type="number" id="schedMinutes" value="30" min="1" max="1440" style="width: 90px;">
             <button class="btn btn-secondary" onclick="schedulePowerAction()">Set Schedule Timer</button>
+        </div>
+    </div>
+
+    <!-- Application Boot Service Control (Authenticated Only) - Last section -->
+    <div class="section auth-only" id="bootServiceSection">
+        <div class="section-title">
+            <span>Automatic Application Boot Service</span>
+            <span id="bootServiceBadge" class="badge-inactive">checking...</span>
+        </div>
+        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Configure Debian Server Manager to automatically start in background upon system bootup via systemd service.</p>
+        <div class="btn-row">
+            <button id="enableBootBtn" class="btn" onclick="toggleBootService(true)">Enable Start on Boot</button>
+            <button id="disableBootBtn" class="btn btn-danger" onclick="toggleBootService(false)">Disable Start on Boot</button>
         </div>
     </div>
 
@@ -210,13 +211,10 @@
                 const loginBtn = document.getElementById('loginHeader');
                 if (isLoggedIn) {
                     loginBtn.style.display = 'none';
-                    document.querySelectorAll('.auth-required').forEach(el => el.classList.remove('btn-disabled'));
+                    document.querySelectorAll('.auth-only').forEach(el => el.style.display = 'block');
                 } else {
                     loginBtn.style.display = 'block';
-                    document.querySelectorAll('.auth-required').forEach(el => {
-                        el.disabled = true;
-                        el.classList.add('btn-disabled');
-                    });
+                    document.querySelectorAll('.auth-only').forEach(el => el.style.display = 'none');
                 }
             } catch (err) {
                 console.error('Auth state check error:', err);
@@ -232,6 +230,7 @@
         }
 
         function checkBootServiceStatusLazy() {
+            if (!isLoggedIn) return;
             const badge = document.getElementById('bootServiceBadge');
             fetch('/api/plugin/exec', {
                 method: 'POST',
@@ -283,7 +282,6 @@
         }
 
         function parseSysInfo(output) {
-            const sections = output.split('===');
             let hostName = 'DebianServer';
             let kernelVer = 'Linux';
             let cpuModel = 'Standard Processor';
@@ -291,25 +289,36 @@
             let ramFree = 'N/A';
             let ramTotal = 'N/A';
             let uptimeText = 'N/A';
-            let loadAvg = '0.00 0.00 0.00';
-            let swapText = '0 MB / 0 MB';
+            let loadAvg = 'N/A';
+            let swapText = 'N/A';
             let netIps = [];
 
-            sections.forEach(sec => {
-                if (sec.startsWith('HOST')) {
-                    const lines = sec.replace('HOST', '').trim().split('\n');
+            const parts = output.split('===');
+            for (let i = 0; i < parts.length; i++) {
+                const tag = parts[i].trim();
+                const content = (i + 1 < parts.length) ? parts[i + 1].trim() : '';
+
+                if (tag === 'HOST') {
+                    const lines = content.split('\n');
                     if (lines[0]) hostName = lines[0].trim();
                     if (lines[1]) kernelVer = lines[1].trim();
-                } else if (sec.startsWith('CPU')) {
-                    const lines = sec.replace('CPU', '').trim().split('\n');
+                } else if (tag === 'CPU') {
+                    const lines = content.split('\n');
                     lines.forEach(l => {
                         if (l.includes('Model name:')) cpuModel = l.split(':')[1].trim();
                         if (l.includes('CPU(s):')) cpuCores = l.split(':')[1].trim() + ' Cores';
                     });
-                } else if (sec.startsWith('LOAD')) {
-                    loadAvg = sec.replace('LOAD', '').trim();
-                } else if (sec.startsWith('MEM')) {
-                    const lines = sec.replace('MEM', '').trim().split('\n');
+                } else if (tag === 'LOAD') {
+                    if (content) {
+                        const lp = content.split(/\s+/);
+                        if (lp.length >= 3) {
+                            loadAvg = `${lp[0]} ${lp[1]} ${lp[2]}`;
+                        } else {
+                            loadAvg = content;
+                        }
+                    }
+                } else if (tag === 'MEM') {
+                    const lines = content.split('\n');
                     lines.forEach(l => {
                         if (l.startsWith('Mem:')) {
                             const p = l.split(/\s+/);
@@ -324,18 +333,19 @@
                             }
                         }
                     });
-                } else if (sec.startsWith('UPTIME')) {
-                    const line = sec.replace('UPTIME', '').trim();
-                    if (line.includes('up ')) {
-                        uptimeText = line.split('up ')[1].split(',')[0].trim();
+                } else if (tag === 'UPTIME') {
+                    if (content.includes('up ')) {
+                        uptimeText = content.split('up ')[1].split(',')[0].trim();
+                    } else if (content) {
+                        uptimeText = content;
                     }
-                } else if (sec.startsWith('NET')) {
-                    const lines = sec.replace('NET', '').trim().split('\n');
+                } else if (tag === 'NET') {
+                    const lines = content.split('\n');
                     lines.forEach(l => {
                         if (l.trim()) netIps.push(l.trim());
                     });
                 }
-            });
+            }
 
             document.getElementById('hostVal').innerText = hostName;
             document.getElementById('kernelSub').innerText = kernelVer;
@@ -390,15 +400,18 @@
             const drives = ['sda', 'sdb', 'sdc', 'sdd', 'sde', 'nvme0n1'];
             const tbody = document.getElementById('smartTableBody');
 
+            let foundDrive = false;
             drives.forEach(drive => {
                 fetch('/api/plugin/exec', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ plugin: 'status', cmd_key: 'smart_health_sudo', args: { drive } })
                 }).then(res => res.json()).then(data => {
-                    if (data.success) {
-                        const placeholder = tbody.querySelector('td[colspan="4"]');
-                        if (placeholder) tbody.innerHTML = '';
+                    if (data.success && !data.output.includes('No such device') && !data.output.includes('Unable to detect')) {
+                        if (!foundDrive) {
+                            tbody.innerHTML = '';
+                            foundDrive = true;
+                        }
 
                         const tr = document.createElement('tr');
                         const isPassed = data.output.includes('PASSED') || data.output.includes('OK');
@@ -417,6 +430,12 @@
                     }
                 }).catch(() => {});
             });
+
+            setTimeout(() => {
+                if (!foundDrive && tbody.children.length === 1 && tbody.innerText.includes('checking...')) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #8b949e;">N/A (No SMART storage drives detected or smartmontools not configured).</td></tr>';
+                }
+            }, 3000);
         }
 
         async function viewSmartDetails(drive) {
@@ -443,9 +462,11 @@
         ];
 
         function loadServicesStatusLazy() {
+            if (!isLoggedIn) return;
             const tbody = document.getElementById('servicesTableBody');
             tbody.innerHTML = '';
 
+            let foundService = false;
             managedServices.forEach(s => {
                 fetch('/api/plugin/exec', {
                     method: 'POST',
@@ -453,24 +474,31 @@
                     body: JSON.stringify({ plugin: 'status', cmd_key: 'service_status_cmd', args: { service: s.id } })
                 }).then(res => res.json()).then(data => {
                     const output = data.output || '';
-                    const isRunning = data.success || output.includes('active (running)');
+                    if (!output.includes('Unit ' + s.id + '.service could not be found') && !output.includes('not-found') && !output.includes('no such file')) {
+                        foundService = true;
+                        const isRunning = data.success || output.includes('active (running)');
 
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td><strong>${s.name}</strong> (${s.id})</td>
-                        <td><span class="${isRunning ? 'badge-active' : 'badge-inactive'}">${isRunning ? 'Active / Running' : 'Stopped / Inactive'}</span></td>
-                        <td>${s.desc}</td>
-                        <td>
-                            ${isLoggedIn ? `
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td><strong>${s.name}</strong> (${s.id})</td>
+                            <td><span class="${isRunning ? 'badge-active' : 'badge-inactive'}">${isRunning ? 'Active / Running' : 'Stopped / Inactive'}</span></td>
+                            <td>${s.desc}</td>
+                            <td>
                                 <button class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.75rem;" onclick="controlService('${s.id}', 'start')">Start</button>
                                 <button class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.75rem;" onclick="controlService('${s.id}', 'stop')">Stop</button>
                                 <button class="btn" style="padding:0.2rem 0.5rem; font-size:0.75rem;" onclick="controlService('${s.id}', 'restart')">Restart</button>
-                            ` : '<span style="color:#6e7681; font-size:0.8rem;">Login required to control service</span>'}
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    }
                 }).catch(err => console.error('Service status check error:', err));
             });
+
+            setTimeout(() => {
+                if (!foundService && tbody.children.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #8b949e;">N/A (No managed system services currently installed).</td></tr>';
+                }
+            }, 3000);
         }
 
         async function controlService(service, action) {
@@ -554,8 +582,8 @@
             box.innerText = text;
         }
 
-        window.onload = () => {
-            checkAuthState();
+        window.onload = async () => {
+            await checkAuthState();
             checkBootServiceStatusLazy();
             loadSystemStatsLazy();
             loadDiskSpaceLazy();

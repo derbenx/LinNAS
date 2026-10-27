@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -18,10 +19,11 @@ import (
 )
 
 type Config struct {
-	Port        int    `json:"port"`
-	AuthEnabled bool   `json:"auth_enabled"`
-	Username    string `json:"username"`
-	Password    string `json:"password"`
+	Port         int    `json:"port"`
+	AuthEnabled  bool   `json:"auth_enabled"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	PasswordHash string `json:"password_hash"`
 }
 
 type PluginManifest struct {
@@ -95,6 +97,11 @@ var (
 	safeVarReg = regexp.MustCompile(`^[a-zA-Z0-9_\-\.\/\:\ \@\!\#\%\^\=\+\{\}\[\]\~\t]+$`)
 )
 
+func hashPassword(pwd string) string {
+	h := sha256.Sum256([]byte(pwd))
+	return hex.EncodeToString(h[:])
+}
+
 func loadConfig() {
 	appConfig = Config{
 		Port:        8080,
@@ -107,6 +114,38 @@ func loadConfig() {
 	if err == nil {
 		_ = json.Unmarshal(data, &appConfig)
 	}
+
+	// Check for linnas.data overrides
+	if lData, err := os.ReadFile("linnas.data"); err == nil {
+		var lConfig struct {
+			Username     string `json:"username"`
+			PasswordHash string `json:"password_hash"`
+		}
+		if err := json.Unmarshal(lData, &lConfig); err == nil {
+			if lConfig.Username != "" {
+				appConfig.Username = lConfig.Username
+			}
+			if lConfig.PasswordHash != "" {
+				appConfig.PasswordHash = lConfig.PasswordHash
+			}
+		}
+	}
+
+	if appConfig.PasswordHash == "" && appConfig.Password != "" {
+		appConfig.PasswordHash = hashPassword(appConfig.Password)
+	}
+}
+
+func saveLinnasData(username string, passwordHash string) error {
+	lData, err := json.Marshal(map[string]string{
+		"username":      username,
+		"password_hash": passwordHash,
+		"updated_at":    time.Now().Format(time.RFC3339),
+	})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile("linnas.data", lData, 0600)
 }
 
 func generateToken() string {
@@ -178,7 +217,8 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if creds.Username == appConfig.Username && creds.Password == appConfig.Password {
+	providedHash := hashPassword(creds.Password)
+	if creds.Username == appConfig.Username && (providedHash == appConfig.PasswordHash || creds.Password == appConfig.Password) {
 		token := generateToken()
 		sessionsMu.Lock()
 		sessions[token] = time.Now().Add(24 * time.Hour)
@@ -195,6 +235,39 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
 	}
+}
+
+func handlePasswordChange(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.NewPassword == "" {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	currentHash := hashPassword(req.CurrentPassword)
+	if currentHash != appConfig.PasswordHash && req.CurrentPassword != appConfig.Password {
+		jsonResponse(w, map[string]interface{}{"success": false, "error": "Incorrect current password"})
+		return
+	}
+
+	newHash := hashPassword(req.NewPassword)
+	appConfig.PasswordHash = newHash
+	appConfig.Password = "" // Clear plaintext password
+
+	if err := saveLinnasData(appConfig.Username, newHash); err != nil {
+		jsonResponse(w, map[string]interface{}{"success": false, "error": "Failed to save password hash to linnas.data: " + err.Error()})
+		return
+	}
+
+	jsonResponse(w, map[string]interface{}{"success": true, "message": "Password updated and saved to linnas.data"})
 }
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -690,6 +763,7 @@ func main() {
 	mux.HandleFunc("/api/login", handleLogin)
 	mux.HandleFunc("/api/logout", handleLogout)
 	mux.HandleFunc("/api/auth/status", handleAuthStatus)
+	mux.HandleFunc("/api/auth/password", authMiddleware(handlePasswordChange))
 	// Public status execution helper for pre-login status view
 	publicExecMiddleware := func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {

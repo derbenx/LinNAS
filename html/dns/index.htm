@@ -5,7 +5,7 @@
     <title>DNS & AdBlock Config</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
         h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
         p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
 
@@ -35,7 +35,30 @@
         .btn-secondary { background: #30363d; color: white; }
         .btn-secondary:hover { background: #484f58; }
 
-        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; white-space: pre-wrap; }
+        /* Floating Bottom Console Drawer */
+        .sticky-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 2px solid #58a6ff;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+        }
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #58a6ff;
+            font-size: 0.95rem;
+        }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
     </style>
 </head>
 <body>
@@ -101,7 +124,14 @@
         </div>
     </div>
 
-    <div id="outputBox" class="output-box"></div>
+    <!-- Floating Output Console Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-danger" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
 
     <script>
         async function loadDNSConfig() {
@@ -263,9 +293,14 @@
         }
 
         function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
             const box = document.getElementById('outputBox');
-            box.style.display = 'block';
             box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
         }
 
         window.onload = loadDNSConfig;

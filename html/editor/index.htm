@@ -5,7 +5,7 @@
     <title>System File Editor</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
         h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
         p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
 
@@ -32,6 +32,29 @@
         .btn-secondary { background: #30363d; color: white; }
         .btn-secondary:hover { background: #484f58; }
 
+        /* Floating Bottom Console Drawer */
+        .sticky-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 2px solid #58a6ff;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+        }
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #58a6ff;
+            font-size: 0.95rem;
+        }
+
         /* Modal Styles */
         .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
         .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 10% auto; padding: 1.5rem; }
@@ -40,7 +63,7 @@
         .file-item { padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #21262d; font-family: monospace; }
         .file-item:hover { background: #1f242d; color: #58a6ff; }
 
-        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; white-space: pre-wrap; }
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
     </style>
 </head>
 <body>
@@ -91,7 +114,14 @@
         </div>
     </div>
 
-    <div id="outputBox" class="output-box"></div>
+    <!-- Floating Output Console Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
 
     <script>
         const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB safety limit
@@ -103,7 +133,12 @@
 
         async function loadFile() {
             const filepath = document.getElementById('filePath').value.trim();
+            const editor = document.getElementById('editorContent');
+            const info = document.getElementById('fileInfo');
+
             if (!filepath) {
+                editor.value = '';
+                info.innerText = '';
                 showOutput('Please specify a file path to load.');
                 return;
             }
@@ -120,12 +155,16 @@
                 const checkData = await checkRes.json();
 
                 if (!checkData.success) {
+                    editor.value = '';
+                    info.innerText = 'Failed to load file';
                     showOutput('Failed to inspect file size: ' + checkData.error + '\n' + checkData.output);
                     return;
                 }
 
                 const size = parseInt(checkData.output.trim(), 10) || 0;
                 if (size > MAX_FILE_SIZE) {
+                    editor.value = '';
+                    info.innerText = 'File too large (> 2 MB)';
                     showOutput(`ERROR: File size is ${formatBytes(size)}, which exceeds the maximum editor limit (2 MB). File loading aborted to prevent browser crash.`);
                     return;
                 }
@@ -140,13 +179,17 @@
 
                 const readData = await readRes.json();
                 if (readData.success) {
-                    document.getElementById('editorContent').value = readData.output;
-                    document.getElementById('fileInfo').innerText = `Loaded ${filepath} (${formatBytes(size)})`;
+                    editor.value = readData.output;
+                    info.innerText = `Loaded ${filepath} (${formatBytes(size)})`;
                     showOutput(`Loaded ${filepath} successfully.`);
                 } else {
+                    editor.value = '';
+                    info.innerText = 'Failed to read file';
                     showOutput('Failed to read file: ' + readData.error + '\n' + readData.output);
                 }
             } catch (err) {
+                editor.value = '';
+                info.innerText = 'Execution error';
                 showOutput('Execution error: ' + err.message);
             }
         }
@@ -246,9 +289,14 @@
         }
 
         function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
             const box = document.getElementById('outputBox');
-            box.style.display = 'block';
             box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
         }
 
         window.onload = () => {

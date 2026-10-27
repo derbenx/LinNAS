@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Neofetch System Summary</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .install-card { background: #161b22; border: 1px solid #d29922; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; display: none; }
+        .install-title { font-size: 1.1rem; font-weight: bold; color: #f2cc60; margin-bottom: 0.5rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+
+        .terminal-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1.2rem; font-family: 'Courier New', Courier, monospace; font-size: 0.9rem; color: #58a6ff; line-height: 1.4; white-space: pre-wrap; word-break: break-all; min-height: 300px; max-height: 500px; overflow-y: auto; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>Neofetch System Information Summary</h2>
+    <p class="subtitle">Display Debian Linux OS version, kernel, architecture, uptime, memory, and package count.</p>
+
+    <!-- Missing Software Prompt -->
+    <div id="installPromptCard" class="install-card">
+        <div class="install-title">⚠️ Neofetch Package Not Installed</div>
+        <p style="color: #c9d1d9; font-size: 0.9rem; margin-bottom: 1rem;">
+            The <code>neofetch</code> system information tool is not installed on this server. Click below to install it via APT.
+        </p>
+        <button class="btn" onclick="installNeofetchPackage()">Install Neofetch via APT</button>
+    </div>
+
+    <div class="section">
+        <div class="section-title">
+            <span>System Summary Output</span>
+            <button class="btn btn-secondary" style="padding: 0.3rem 0.8rem; font-size: 0.85rem;" onclick="loadNeofetch()">Refresh Info</button>
+        </div>
+        <div id="terminalOutput" class="terminal-box">Loading Neofetch system summary...</div>
+    </div>
+
+    <div id="outputBox" class="output-box"></div>
+
+    <script>
+        async function loadNeofetch() {
+            const term = document.getElementById('terminalOutput');
+            const promptCard = document.getElementById('installPromptCard');
+            term.innerText = 'Loading Neofetch system summary...';
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'neofetch',
+                        cmd_key: 'neofetch_cmd',
+                        args: {}
+                    })
+                });
+
+                const data = await res.json();
+                const output = data.output || '';
+
+                if (output.includes('not found') || output.includes('No such file') || !data.success) {
+                    promptCard.style.display = 'block';
+                    term.innerText = 'Neofetch package is not installed on this system.';
+                } else {
+                    promptCard.style.display = 'none';
+                    term.innerText = output;
+                }
+            } catch (err) {
+                term.innerText = 'Failed to execute neofetch: ' + err.message;
+            }
+        }
+
+        async function installNeofetchPackage() {
+            showOutput('Installing neofetch package via APT... Please wait...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'neofetch', cmd_key: 'install_sudo', args: {} })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    showOutput('Neofetch installed successfully!\n' + data.output);
+                    document.getElementById('installPromptCard').style.display = 'none';
+                    if (window.parent) {
+                        window.parent.postMessage('reload_plugins', '*');
+                    }
+                    await loadNeofetch();
+                } else {
+                    showOutput('Installation failed: ' + data.error + '\n' + data.output);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            const box = document.getElementById('outputBox');
+            box.style.display = 'block';
+            box.innerText = text;
+        }
+
+        window.onload = loadNeofetch;
+    </script>
+</body>
+</html>
