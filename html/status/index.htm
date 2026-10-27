@@ -104,6 +104,19 @@
         </div>
     </div>
 
+    <!-- Application Boot Service Control -->
+    <div class="section">
+        <div class="section-title">
+            <span>Automatic Application Boot Service</span>
+            <span id="bootServiceBadge" class="badge-inactive">Checking...</span>
+        </div>
+        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Configure Debian Server Manager to automatically start in background upon system bootup via systemd service.</p>
+        <div class="btn-row">
+            <button id="enableBootBtn" class="btn auth-required" onclick="toggleBootService(true)">Enable Start on Boot</button>
+            <button id="disableBootBtn" class="btn btn-danger auth-required" onclick="toggleBootService(false)">Disable Start on Boot</button>
+        </div>
+    </div>
+
     <!-- Drive Space Table -->
     <div class="section">
         <div class="section-title">Disk Space Available</div>
@@ -218,7 +231,47 @@
             }
         }
 
-        // Lazy non-blocking loading of System Stats
+        function checkBootServiceStatusLazy() {
+            const badge = document.getElementById('bootServiceBadge');
+            fetch('/api/plugin/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin: 'status', cmd_key: 'boot_service_status_cmd', args: {} })
+            }).then(res => res.json()).then(data => {
+                const output = data.output || '';
+                const isEnabled = data.success || output.includes('enabled');
+                if (isEnabled) {
+                    badge.innerText = 'Enabled on Boot';
+                    badge.className = 'badge-active';
+                } else {
+                    badge.innerText = 'Disabled';
+                    badge.className = 'badge-inactive';
+                }
+            }).catch(() => {
+                badge.innerText = 'Disabled';
+                badge.className = 'badge-inactive';
+            });
+        }
+
+        async function toggleBootService(enable) {
+            if (!isLoggedIn) return;
+            const cmdKey = enable ? 'enable_boot_service_sudo' : 'disable_boot_service_sudo';
+            showOutput(`${enable ? 'Enabling' : 'Disabling'} application boot service...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'status', cmd_key: cmdKey, args: {} })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Successfully ${enable ? 'enabled' : 'disabled'} application autostart on boot.\n` + (data.output || '') : `Operation failed: ${data.error}\n${data.output}`);
+                checkBootServiceStatusLazy();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
         function loadSystemStatsLazy() {
             fetch('/api/plugin/exec', {
                 method: 'POST',
@@ -297,7 +350,6 @@
             document.getElementById('netIpList').innerHTML = netIps.length ? netIps.map(ip => `<div>• ${ip}</div>`).join('') : '<div>• 127.0.0.1/8</div>';
         }
 
-        // Lazy non-blocking loading of Disk Space
         function loadDiskSpaceLazy() {
             fetch('/api/plugin/exec', {
                 method: 'POST',
@@ -334,7 +386,6 @@
             }
         }
 
-        // Lazy non-blocking loading of SMART Drive Health
         function loadSmartHealthLazy() {
             const drives = ['sda', 'sdb', 'sdc', 'sdd', 'sde', 'nvme0n1'];
             const tbody = document.getElementById('smartTableBody');
@@ -391,7 +442,6 @@
             { id: 'ssh', name: 'SSH Remote Console', desc: 'Secure shell remote terminal access' }
         ];
 
-        // Lazy non-blocking loading of Services Status
         function loadServicesStatusLazy() {
             const tbody = document.getElementById('servicesTableBody');
             tbody.innerHTML = '';
@@ -506,6 +556,7 @@
 
         window.onload = () => {
             checkAuthState();
+            checkBootServiceStatusLazy();
             loadSystemStatsLazy();
             loadDiskSpaceLazy();
             loadSmartHealthLazy();
