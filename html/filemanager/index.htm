@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>File Manager - LinNAS</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 1.5rem; padding-bottom: 220px; user-select: none; }
+        h2 { font-size: 1.4rem; color: #58a6ff; margin-bottom: 0.3rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1rem; font-size: 0.85rem; }
+
+        .admin-warning { background: #381e1d; border: 1px solid #f85149; border-radius: 6px; padding: 0.8rem 1rem; color: #ff7b72; margin-bottom: 1rem; font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between; }
+
+        .top-bar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: space-between; background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 0.8rem; margin-bottom: 1rem; }
+        .breadcrumbs { display: flex; align-items: center; gap: 4px; font-family: monospace; font-size: 0.9rem; color: #58a6ff; flex: 1; flex-wrap: wrap; }
+        .breadcrumb-item { cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+        .breadcrumb-item:hover { background: #30363d; color: #79c0ff; }
+
+        .toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+        .btn { padding: 0.45rem 0.9rem; background: #238636; color: white; border: none; border-radius: 5px; font-weight: 600; cursor: pointer; font-size: 0.82rem; transition: background 0.2s; display: flex; align-items: center; gap: 5px; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #30363d; color: white; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #b62324; }
+        .btn:disabled { background: #30363d; color: #6e7681; cursor: not-allowed; border: none; }
+
+        .file-container { background: #161b22; border: 2px dashed #30363d; border-radius: 8px; min-height: 400px; position: relative; overflow: hidden; }
+        .file-container.drag-over { border-color: #58a6ff; background: rgba(88, 166, 255, 0.05); }
+
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th, td { text-align: left; padding: 0.65rem 0.8rem; border-bottom: 1px solid #21262d; }
+        th { color: #8b949e; font-weight: 600; background: #0d1117; position: sticky; top: 0; }
+        tr.file-row { cursor: pointer; transition: background 0.15s; }
+        tr.file-row:hover { background: #1f242d; }
+        tr.file-row.selected { background: #263850 !important; color: #79c0ff; }
+
+        .item-icon { margin-right: 8px; font-size: 1.05rem; }
+
+        /* Context Menu */
+        .context-menu { position: fixed; background: #161b22; border: 1px solid #30363d; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); padding: 0.4rem 0; z-index: 500; display: none; min-width: 170px; }
+        .context-item { padding: 0.5rem 1rem; font-size: 0.85rem; color: #c9d1d9; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .context-item:hover { background: #1f242d; color: #58a6ff; }
+        .context-divider { height: 1px; background: #30363d; margin: 0.3rem 0; }
+
+        /* Hidden Upload Input */
+        #fileUploadInput { display: none; }
+
+        /* Output / Console Drawer */
+        .sticky-console { position: fixed; bottom: 0; left: 0; right: 0; background: #161b22; border-top: 2px solid #58a6ff; box-shadow: 0 -4px 20px rgba(0,0,0,0.5); padding: 0.8rem 1.2rem; display: none; z-index: 1000; }
+        .console-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; font-weight: bold; color: #58a6ff; font-size: 0.9rem; }
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.6rem; font-family: monospace; font-size: 0.82rem; color: #7ee787; max-height: 120px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <div id="adminWarning" class="admin-warning" style="display: none;">
+        <span>⚠️ <strong>Admin / Root Privileged Mode:</strong> You are browsing the file system with root permissions. Exercise caution when modifying or deleting system files.</span>
+    </div>
+
+    <h2>LinNAS File Manager</h2>
+    <p class="subtitle">Navigate directories, upload, download, move, edit, and organize files across your storage devices.</p>
+
+    <div class="top-bar">
+        <div class="breadcrumbs" id="breadcrumbArea">
+            <span>Loading path...</span>
+        </div>
+        <div class="toolbar">
+            <button class="btn btn-secondary" onclick="navigateUp()">⬆ Up</button>
+            <button class="btn btn-secondary" onclick="refreshDirectory()">🔄 Refresh</button>
+            <button class="btn" onclick="promptNewFolder()">📁+ New Folder</button>
+            <button class="btn btn-secondary" id="pasteBtn" onclick="pasteClipboard()" disabled>📋 Paste</button>
+            <button class="btn" onclick="triggerUpload()">📤 Upload File</button>
+            <input type="file" id="fileUploadInput" multiple onchange="handleFileSelect(this.files)">
+        </div>
+    </div>
+
+    <!-- Action Toolbar for Selected Items -->
+    <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.8rem; font-size: 0.85rem; color: #8b949e;">
+        <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+            <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)">
+            <span>Select All</span>
+        </label>
+        <span id="selectedCount" style="margin-left: 0.5rem; color: #58a6ff;">0 selected</span>
+        <div style="display: flex; gap: 0.4rem; margin-left: auto;">
+            <button class="btn btn-secondary" style="padding: 0.3rem 0.6rem;" onclick="copySelected('cut')">✂️ Cut</button>
+            <button class="btn btn-secondary" style="padding: 0.3rem 0.6rem;" onclick="copySelected('copy')">📋 Copy</button>
+            <button class="btn btn-secondary" style="padding: 0.3rem 0.6rem;" onclick="renameSelected()">✏️ Rename</button>
+            <button class="btn btn-secondary" style="padding: 0.3rem 0.6rem;" onclick="openSelectedEditor()">📝 Text Edit</button>
+            <button class="btn btn-danger" style="padding: 0.3rem 0.6rem;" onclick="deleteSelected()">🗑️ Delete</button>
+        </div>
+    </div>
+
+    <div id="fileDropZone" class="file-container">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 38px;"></th>
+                    <th>Name</th>
+                    <th style="width: 140px;">Size</th>
+                    <th style="width: 120px;">Type</th>
+                </tr>
+            </thead>
+            <tbody id="fileTableBody">
+                <tr><td colspan="4" style="text-align: center; color: #8b949e;">Loading directory contents...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Context Menu -->
+    <div id="contextMenu" class="context-menu">
+        <div class="context-item" id="ctxOpen" onclick="ctxOpenItem()">📄 Open / View</div>
+        <div class="context-item" id="ctxEdit" onclick="ctxEditText()">📝 Text Edit</div>
+        <div class="context-divider"></div>
+        <div class="context-item" onclick="promptNewFolder()">📁 New Folder</div>
+        <div class="context-item" onclick="copySelected('cut')">✂️ Cut</div>
+        <div class="context-item" onclick="copySelected('copy')">📋 Copy</div>
+        <div class="context-item" id="ctxPaste" onclick="pasteClipboard()">📌 Paste</div>
+        <div class="context-divider"></div>
+        <div class="context-item" onclick="renameSelected()">✏️ Rename</div>
+        <div class="context-item" style="color: #f85149;" onclick="deleteSelected()">🗑️ Delete</div>
+    </div>
+
+    <!-- Floating Output Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-danger" style="padding: 0.15rem 0.4rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
+
+    <script>
+        let currentPath = '/';
+        let currentItems = [];
+        let selectedPaths = new Set();
+        let clipboard = { action: null, sources: [] }; // action: 'cut' or 'copy'
+        let rightClickedItem = null;
+
+        async function checkAuthMode() {
+            try {
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+                if (data.is_root) {
+                    document.getElementById('adminWarning').style.display = 'flex';
+                }
+            } catch (e) {}
+        }
+
+        async function loadDirectory(path) {
+            currentPath = path || currentPath;
+            selectedPaths.clear();
+            updateSelectedUI();
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentPath)}`);
+                const data = await res.json();
+                if (data.error) {
+                    showOutput('Directory load error: ' + data.error);
+                    return;
+                }
+                currentPath = data.path || '/';
+                currentItems = data.items || [];
+                renderBreadcrumbs();
+                renderFileList();
+            } catch (err) {
+                showOutput('Failed to fetch directory: ' + err.message);
+            }
+        }
+
+        function renderBreadcrumbs() {
+            const area = document.getElementById('breadcrumbArea');
+            area.innerHTML = '';
+
+            const parts = currentPath.split('/').filter(Boolean);
+
+            const rootSpan = document.createElement('span');
+            rootSpan.className = 'breadcrumb-item';
+            rootSpan.innerText = '📁 / (root)';
+            rootSpan.onclick = () => loadDirectory('/');
+            area.appendChild(rootSpan);
+
+            let accumulated = '';
+            parts.forEach((p, idx) => {
+                accumulated += '/' + p;
+                const sep = document.createElement('span');
+                sep.innerText = ' / ';
+                sep.style.color = '#8b949e';
+                area.appendChild(sep);
+
+                const item = document.createElement('span');
+                item.className = 'breadcrumb-item';
+                item.innerText = p;
+                const targetPath = accumulated;
+                item.onclick = () => loadDirectory(targetPath);
+                area.appendChild(item);
+            });
+        }
+
+        function renderFileList() {
+            const tbody = document.getElementById('fileTableBody');
+            tbody.innerHTML = '';
+
+            if (currentItems.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #8b949e; padding: 2rem;">Directory is empty. Drag files here to upload.</td></tr>';
+                return;
+            }
+
+            currentItems.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = 'file-row';
+                if (selectedPaths.has(item.path)) tr.classList.add('selected');
+
+                const isImage = isImageFile(item.name);
+                const isText = isTextFile(item.name);
+
+                let icon = '📄';
+                if (item.is_dir) icon = '📁';
+                else if (isImage) icon = '🖼️';
+                else if (isText) icon = '📝';
+
+                tr.innerHTML = `
+                    <td>
+                        <input type="checkbox" ${selectedPaths.has(item.path) ? 'checked' : ''} onclick="toggleItemSelect(event, '${escapeJs(item.path)}')">
+                    </td>
+                    <td>
+                        <span class="item-icon">${icon}</span>
+                        <strong>${escapeHtml(item.name)}</strong>
+                    </td>
+                    <td>${item.is_dir ? '--' : formatBytes(item.size)}</td>
+                    <td>${item.is_dir ? 'Folder' : getFileExtension(item.name)}</td>
+                `;
+
+                tr.onclick = (e) => {
+                    if (e.target.tagName === 'INPUT') return;
+                    if (e.ctrlKey || e.metaKey) {
+                        togglePathSelected(item.path);
+                    } else {
+                        selectedPaths.clear();
+                        selectedPaths.add(item.path);
+                        updateSelectedUI();
+                    }
+                };
+
+                tr.ondblclick = () => {
+                    if (item.is_dir) {
+                        loadDirectory(item.path);
+                    } else if (isImage) {
+                        openImageViewer(item.path);
+                    } else if (isText) {
+                        openTextEditor(item.path);
+                    }
+                };
+
+                tr.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    rightClickedItem = item;
+                    if (!selectedPaths.has(item.path)) {
+                        selectedPaths.clear();
+                        selectedPaths.add(item.path);
+                        updateSelectedUI();
+                    }
+                    showContextMenu(e.clientX, e.clientY, item);
+                };
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        function toggleItemSelect(e, path) {
+            e.stopPropagation();
+            togglePathSelected(path);
+        }
+
+        function togglePathSelected(path) {
+            if (selectedPaths.has(path)) selectedPaths.delete(path);
+            else selectedPaths.add(path);
+            updateSelectedUI();
+        }
+
+        function toggleSelectAll(checked) {
+            selectedPaths.clear();
+            if (checked) {
+                currentItems.forEach(i => selectedPaths.add(i.path));
+            }
+            updateSelectedUI();
+        }
+
+        function updateSelectedUI() {
+            document.getElementById('selectAllCheckbox').checked = (selectedPaths.size > 0 && selectedPaths.size === currentItems.length);
+            document.getElementById('selectedCount').innerText = `${selectedPaths.size} selected`;
+            renderFileListSelectionState();
+        }
+
+        function renderFileListSelectionState() {
+            const rows = document.querySelectorAll('#fileTableBody tr.file-row');
+            rows.forEach((row, idx) => {
+                if (currentItems[idx]) {
+                    const isSel = selectedPaths.has(currentItems[idx].path);
+                    row.classList.toggle('selected', isSel);
+                    const chk = row.querySelector('input[type="checkbox"]');
+                    if (chk) chk.checked = isSel;
+                }
+            });
+        }
+
+        function navigateUp() {
+            if (currentPath === '/') return;
+            const parts = currentPath.split('/').filter(Boolean);
+            parts.pop();
+            const parent = '/' + parts.join('/');
+            loadDirectory(parent);
+        }
+
+        function refreshDirectory() {
+            loadDirectory(currentPath);
+        }
+
+        async function promptNewFolder() {
+            const folderName = prompt('Enter new folder name:');
+            if (!folderName) return;
+            const cleanName = folderName.trim().replace(/[^a-zA-Z0-9_\-\.\ ]/g, '_');
+            const target = (currentPath === '/' ? '' : currentPath) + '/' + cleanName;
+
+            try {
+                const res = await fetch('/api/fs/mkdir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: target })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showOutput(`Folder '${cleanName}' created successfully.`);
+                    refreshDirectory();
+                } else {
+                    showOutput('Failed to create folder: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Failed to create folder: ' + err.message);
+            }
+        }
+
+        function copySelected(action) {
+            if (selectedPaths.size === 0) {
+                showOutput('No items selected to ' + action + '.');
+                return;
+            }
+            clipboard.action = action;
+            clipboard.sources = Array.from(selectedPaths);
+            document.getElementById('pasteBtn').disabled = false;
+            document.getElementById('pasteBtn').innerText = `📋 Paste (${clipboard.sources.length} items)`;
+            showOutput(`${clipboard.sources.length} item(s) ${action === 'cut' ? 'cut' : 'copied'} to clipboard.`);
+            hideContextMenu();
+        }
+
+        async function pasteClipboard() {
+            if (!clipboard.action || clipboard.sources.length === 0) return;
+
+            const endpoint = (clipboard.action === 'cut') ? '/api/fs/move' : '/api/fs/copy';
+            showOutput(`Executing ${clipboard.action} on ${clipboard.sources.length} item(s)...`);
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sources: clipboard.sources, destination: currentPath })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showOutput(`Pasted successfully into ${currentPath}.`);
+                    if (clipboard.action === 'cut') {
+                        clipboard = { action: null, sources: [] };
+                        document.getElementById('pasteBtn').disabled = true;
+                        document.getElementById('pasteBtn').innerText = '📋 Paste';
+                    }
+                    refreshDirectory();
+                } else {
+                    showOutput('Paste operation error: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+            hideContextMenu();
+        }
+
+        async function renameSelected() {
+            if (selectedPaths.size !== 1) {
+                showOutput('Please select exactly 1 item to rename.');
+                return;
+            }
+            const oldPath = Array.from(selectedPaths)[0];
+            const oldName = oldPath.split('/').pop();
+            const newName = prompt('Enter new name:', oldName);
+            if (!newName || newName === oldName) return;
+
+            const parent = oldPath.substring(0, oldPath.lastIndexOf('/')) || '/';
+            const newPath = (parent === '/' ? '' : parent) + '/' + newName.trim();
+
+            try {
+                const res = await fetch('/api/fs/rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ old_path: oldPath, new_path: newPath })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showOutput(`Renamed to '${newName}'.`);
+                    refreshDirectory();
+                } else {
+                    showOutput('Rename failed: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+            hideContextMenu();
+        }
+
+        async function deleteSelected() {
+            if (selectedPaths.size === 0) {
+                showOutput('No items selected to delete.');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete ${selectedPaths.size} selected item(s)?`)) return;
+
+            showOutput(`Deleting ${selectedPaths.size} item(s)...`);
+
+            try {
+                const res = await fetch('/api/fs/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ paths: Array.from(selectedPaths) })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showOutput('Deleted successfully.');
+                    refreshDirectory();
+                } else {
+                    showOutput('Delete failed: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+            hideContextMenu();
+        }
+
+        function openSelectedEditor() {
+            if (selectedPaths.size !== 1) {
+                showOutput('Please select 1 file to edit.');
+                return;
+            }
+            const path = Array.from(selectedPaths)[0];
+            openTextEditor(path);
+        }
+
+        function openTextEditor(filepath) {
+            if (window.parent) {
+                window.parent.postMessage(`open_plugin:editor?file=${encodeURIComponent(filepath)}`, '*');
+            }
+            window.location.href = `/editor/index.htm?file=${encodeURIComponent(filepath)}`;
+        }
+
+        function openImageViewer(filepath) {
+            if (window.parent) {
+                window.parent.postMessage(`open_plugin:imageviewer?file=${encodeURIComponent(filepath)}&dir=${encodeURIComponent(currentPath)}`, '*');
+            }
+            window.location.href = `/imageviewer/index.htm?file=${encodeURIComponent(filepath)}&dir=${encodeURIComponent(currentPath)}`;
+        }
+
+        /* Upload Handlers */
+        function triggerUpload() {
+            document.getElementById('fileUploadInput').click();
+        }
+
+        async function handleFileSelect(files) {
+            if (!files || files.length === 0) return;
+            for (let i = 0; i < files.length; i++) {
+                await uploadSingleFile(files[i]);
+            }
+            refreshDirectory();
+        }
+
+        function uploadSingleFile(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                showOutput(`Uploading ${file.name} (${formatBytes(file.size)})...`);
+
+                reader.onload = async function(e) {
+                    const b64 = e.target.result.split(',')[1];
+                    const destPath = (currentPath === '/' ? '' : currentPath) + '/' + file.name;
+
+                    try {
+                        const res = await fetch('/api/fs/upload', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ path: destPath, content_b64: b64 })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            showOutput(`Uploaded '${file.name}' successfully.`);
+                        } else {
+                            showOutput(`Upload failed for '${file.name}': ` + data.error);
+                        }
+                    } catch (err) {
+                        showOutput(`Upload error: ` + err.message);
+                    }
+                    resolve();
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        /* Drag and Drop Zone */
+        const dropZone = document.getElementById('fileDropZone');
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                await handleFileSelect(e.dataTransfer.files);
+            }
+        });
+
+        /* Context Menu */
+        function showContextMenu(x, y, item) {
+            const menu = document.getElementById('contextMenu');
+            menu.style.display = 'block';
+            menu.style.left = Math.min(x, window.innerWidth - 180) + 'px';
+            menu.style.top = Math.min(y, window.innerHeight - 250) + 'px';
+
+            const ctxOpen = document.getElementById('ctxOpen');
+            const ctxEdit = document.getElementById('ctxEdit');
+
+            if (item.is_dir) {
+                ctxOpen.innerText = '📁 Open Directory';
+                ctxEdit.style.display = 'none';
+            } else if (isImageFile(item.name)) {
+                ctxOpen.innerText = '🖼️ View Image';
+                ctxEdit.style.display = 'none';
+            } else {
+                ctxOpen.innerText = '📄 Open File';
+                ctxEdit.style.display = 'flex';
+            }
+
+            document.getElementById('ctxPaste').style.display = clipboard.action ? 'flex' : 'none';
+        }
+
+        function hideContextMenu() {
+            document.getElementById('contextMenu').style.display = 'none';
+        }
+
+        document.addEventListener('click', hideContextMenu);
+
+        function ctxOpenItem() {
+            if (!rightClickedItem) return;
+            if (rightClickedItem.is_dir) {
+                loadDirectory(rightClickedItem.path);
+            } else if (isImageFile(rightClickedItem.name)) {
+                openImageViewer(rightClickedItem.path);
+            } else {
+                openTextEditor(rightClickedItem.path);
+            }
+            hideContextMenu();
+        }
+
+        function ctxEditText() {
+            if (rightClickedItem && !rightClickedItem.is_dir) {
+                openTextEditor(rightClickedItem.path);
+            }
+            hideContextMenu();
+        }
+
+        /* Utility Helpers */
+        function isImageFile(filename) {
+            const ext = getFileExtension(filename).toLowerCase();
+            return ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'].includes(ext);
+        }
+
+        function isTextFile(filename) {
+            const ext = getFileExtension(filename).toLowerCase();
+            return ['txt', 'conf', 'json', 'sh', 'py', 'go', 'js', 'html', 'htm', 'css', 'md', 'log', 'yaml', 'yml', 'ini', 'xml', 'csv'].includes(ext);
+        }
+
+        function getFileExtension(filename) {
+            if (!filename || !filename.includes('.')) return 'File';
+            return filename.split('.').pop();
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function escapeJs(str) {
+            return (str || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        }
+
+        function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
+            const box = document.getElementById('outputBox');
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        window.onload = async () => {
+            await checkAuthMode();
+            const urlParams = new URLSearchParams(window.location.search);
+            const dir = urlParams.get('dir') || '/';
+            loadDirectory(dir);
+        };
+    </script>
+</body>
+</html>

@@ -165,6 +165,46 @@
         </table>
     </div>
 
+    <!-- Edit Share Modal Popup -->
+    <div id="editShareModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span>Edit SMB Network Share</span>
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeEditShareModal()">✕</button>
+            </div>
+            <input type="hidden" id="editShareIndex">
+            <div class="form-group" style="margin-bottom: 1rem;">
+                <label>Share Name</label>
+                <input type="text" id="editShareName">
+            </div>
+            <div class="form-group" style="margin-bottom: 1rem;">
+                <label>Directory Path</label>
+                <div class="path-input-group">
+                    <input type="text" id="editSharePath">
+                    <button class="btn btn-secondary" onclick="openFolderBrowserForEdit()">Browse...</button>
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 1rem;">
+                <label>Allowed User Access</label>
+                <select id="editShareUserAccess">
+                    <option value="public">Public (Guest Access Allowed)</option>
+                </select>
+            </div>
+            <div class="checkbox-group" style="margin-bottom: 1rem;">
+                <input type="checkbox" id="editShareReadOnly">
+                <label for="editShareReadOnly">Read-Only access (Guest Write Disabled)</label>
+            </div>
+            <div class="checkbox-group" style="margin-bottom: 1.5rem;">
+                <input type="checkbox" id="editShareEnabled">
+                <label for="editShareEnabled">Enable / Active Share</label>
+            </div>
+            <div style="display: flex; gap: 0.8rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="closeEditShareModal()">Cancel</button>
+                <button class="btn" onclick="saveEditShareModal()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Folder Browser Modal -->
     <div id="folderModal" class="modal">
         <div class="modal-content">
@@ -202,10 +242,39 @@
                 users = data.users || [];
                 hideHomes = data.hide_homes || false;
                 document.getElementById('hideHomesCheckbox').checked = hideHomes;
+
+                await recallSystemSmbUsers();
+
                 renderUsers();
                 renderShares();
             } catch (err) {
                 showOutput('Failed to load SMB data: ' + err.message);
+            }
+        }
+
+        async function recallSystemSmbUsers() {
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'smb', cmd_key: 'list_smb_users_sudo', args: {} })
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    const systemUsers = data.output.split('\n').map(u => u.trim()).filter(Boolean);
+                    let updated = false;
+                    systemUsers.forEach(u => {
+                        if (!users.includes(u)) {
+                            users.push(u);
+                            updated = true;
+                        }
+                    });
+                    if (updated) {
+                        await saveSMBData();
+                    }
+                }
+            } catch (err) {
+                console.error('Error recalling system SMB users:', err);
             }
         }
 
@@ -273,7 +342,7 @@
                     <td>${accessText}</td>
                     <td>${s.read_only ? 'Yes' : 'No'}</td>
                     <td>
-                        <button class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-right: 4px;" onclick="editSharePrompt(${idx})">Edit</button>
+                        <button class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-right: 4px;" onclick="openEditShareModal(${idx})">Edit</button>
                         <button class="btn btn-danger" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="deleteShare(${idx})">Delete</button>
                     </td>
                 `;
@@ -366,22 +435,65 @@
             showOutput(`Share '${shares[index].name}' status set to ${shares[index].enabled ? 'Active' : 'Disabled'}. Restart service to apply.`);
         }
 
-        async function editSharePrompt(index) {
+        function openEditShareModal(index) {
             const s = shares[index];
-            const newName = prompt(`Edit share name:`, s.name);
-            if (!newName) return;
+            document.getElementById('editShareIndex').value = index;
+            document.getElementById('editShareName').value = s.name;
+            document.getElementById('editSharePath').value = s.path;
+            document.getElementById('editShareReadOnly').checked = !!s.read_only;
+            document.getElementById('editShareEnabled').checked = s.enabled !== false;
 
-            const newPath = prompt(`Edit directory path:`, s.path);
-            if (!newPath) return;
+            const select = document.getElementById('editShareUserAccess');
+            select.innerHTML = '<option value="public">Public (Guest Access Allowed)</option>';
+            users.forEach(u => {
+                const opt = document.createElement('option');
+                opt.value = u;
+                opt.innerText = `Restricted to User: ${u}`;
+                select.appendChild(opt);
+            });
 
-            const newReadOnly = confirm(`Set share as Read-Only? (OK = Read-Only, Cancel = Read/Write)`);
+            if (s.valid_users && s.valid_users.length > 0) {
+                select.value = s.valid_users[0];
+            } else {
+                select.value = 'public';
+            }
 
-            s.name = newName.trim();
-            s.path = newPath.trim();
-            s.read_only = newReadOnly;
+            document.getElementById('editShareModal').style.display = 'block';
+        }
 
+        function closeEditShareModal() {
+            document.getElementById('editShareModal').style.display = 'none';
+        }
+
+        function openFolderBrowserForEdit() {
+            const current = document.getElementById('editSharePath').value.trim() || '/';
+            openFolderBrowser(current, (selectedPath) => {
+                document.getElementById('editSharePath').value = selectedPath;
+            });
+        }
+
+        async function saveEditShareModal() {
+            const index = parseInt(document.getElementById('editShareIndex').value, 10);
+            const name = document.getElementById('editShareName').value.trim();
+            const path = document.getElementById('editSharePath').value.trim();
+            const userAccess = document.getElementById('editShareUserAccess').value;
+            const readOnly = document.getElementById('editShareReadOnly').checked;
+            const enabled = document.getElementById('editShareEnabled').checked;
+
+            if (!name || !path) {
+                showOutput('Share Name and Path cannot be empty.');
+                return;
+            }
+
+            shares[index].name = name;
+            shares[index].path = path;
+            shares[index].read_only = readOnly;
+            shares[index].enabled = enabled;
+            shares[index].valid_users = (userAccess !== 'public') ? [userAccess] : [];
+
+            closeEditShareModal();
             await saveSMBData();
-            showOutput(`Updated share '${s.name}'. Click "Restart Samba Service" to apply changes.`);
+            showOutput(`Updated share '${name}'. Click "Restart Samba Service" to apply changes.`);
         }
 
         async function addShare() {
@@ -443,9 +555,11 @@
 
         /* Directory Browser Modal */
         let currentBrowserPath = '/';
+        let browserSelectCallback = null;
 
-        async function openFolderBrowser(path) {
+        async function openFolderBrowser(path, onSelect) {
             currentBrowserPath = path || currentBrowserPath;
+            browserSelectCallback = onSelect || null;
             document.getElementById('modalPath').innerText = currentBrowserPath;
             document.getElementById('folderModal').style.display = 'block';
 
@@ -459,7 +573,7 @@
                     const upDiv = document.createElement('div');
                     upDiv.className = 'file-item';
                     upDiv.innerText = '📁 .. (Parent Directory)';
-                    upDiv.onclick = () => openFolderBrowser(data.parent);
+                    upDiv.onclick = () => openFolderBrowser(data.parent, browserSelectCallback);
                     container.appendChild(upDiv);
                 }
 
@@ -469,7 +583,7 @@
                             const itemDiv = document.createElement('div');
                             itemDiv.className = 'file-item';
                             itemDiv.innerText = '📁 ' + item.name;
-                            itemDiv.onclick = () => openFolderBrowser(item.path);
+                            itemDiv.onclick = () => openFolderBrowser(item.path, browserSelectCallback);
                             container.appendChild(itemDiv);
                         }
                     });
@@ -504,10 +618,14 @@
         }
 
         function selectCurrentFolder() {
-            document.getElementById('sharePath').value = currentBrowserPath;
-            const folderName = currentBrowserPath.split('/').filter(Boolean).pop();
-            if (folderName && !document.getElementById('shareName').value) {
-                document.getElementById('shareName').value = folderName;
+            if (typeof browserSelectCallback === 'function') {
+                browserSelectCallback(currentBrowserPath);
+            } else {
+                document.getElementById('sharePath').value = currentBrowserPath;
+                const folderName = currentBrowserPath.split('/').filter(Boolean).pop();
+                if (folderName && !document.getElementById('shareName').value) {
+                    document.getElementById('shareName').value = folderName;
+                }
             }
             closeModal();
         }

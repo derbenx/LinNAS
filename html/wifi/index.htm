@@ -130,23 +130,29 @@
                     body: JSON.stringify({ plugin: 'wifi', cmd_key: 'list_wifi_cmd', args: {} })
                 });
                 const data = await res.json();
-                if (data.success) {
-                    const links = JSON.parse(data.output);
-                    wifiInterfaces = links.filter(l => l.ifname.startsWith('wl'));
-
-                    if (wifiInterfaces.length === 0) {
-                        document.getElementById('hardwareWarning').style.display = 'block';
-                        document.getElementById('wifiSection').style.display = 'none';
-                        document.getElementById('connectSection').style.display = 'none';
-                    } else {
-                        document.getElementById('hardwareWarning').style.display = 'none';
-                        document.getElementById('wifiSection').style.display = 'block';
-                        document.getElementById('connectSection').style.display = 'block';
-                        populateWifiSelect();
+                if (data.success && data.output) {
+                    try {
+                        const links = JSON.parse(data.output);
+                        wifiInterfaces = links.filter(l => l.ifname && l.ifname.startsWith('wl'));
+                    } catch (e) {
+                        wifiInterfaces = [];
                     }
+                } else {
+                    wifiInterfaces = [];
                 }
             } catch (err) {
-                showOutput('Failed to scan wireless adapters: ' + err.message);
+                wifiInterfaces = [];
+            }
+
+            if (wifiInterfaces.length === 0) {
+                document.getElementById('hardwareWarning').style.display = 'block';
+                document.getElementById('wifiSection').style.display = 'none';
+                document.getElementById('connectSection').style.display = 'none';
+            } else {
+                document.getElementById('hardwareWarning').style.display = 'none';
+                document.getElementById('wifiSection').style.display = 'block';
+                document.getElementById('connectSection').style.display = 'block';
+                populateWifiSelect();
             }
         }
 

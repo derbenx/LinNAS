@@ -1,0 +1,7 @@
+{
+  "id": "imageviewer",
+  "name": "Image Viewer",
+  "description": "Standalone image viewer with image gallery slideshow navigation (Next, Previous) and File Manager integration",
+  "category": "Tools",
+  "default": true
+}

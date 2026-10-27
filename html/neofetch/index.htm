@@ -68,12 +68,12 @@
                 const data = await res.json();
                 const output = data.output || '';
 
-                if (output.includes('not found') || output.includes('No such file') || !data.success) {
-                    promptCard.style.display = 'block';
-                    term.innerText = 'Neofetch package is not installed on this system.';
-                } else {
+                if (data.success && output.trim().length > 0) {
                     promptCard.style.display = 'none';
                     term.innerText = output;
+                } else {
+                    promptCard.style.display = 'block';
+                    term.innerText = 'Neofetch/Fastfetch is not installed or returned an error.\n' + (data.error || output);
                 }
             } catch (err) {
                 term.innerText = 'Failed to execute neofetch: ' + err.message;

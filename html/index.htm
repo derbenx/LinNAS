@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Debian Server Manager</title>
+    <title>LinNAS</title>
     <script src="/js/crypto.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -46,7 +46,7 @@
 <body>
     <div id="sidebar">
         <div class="sidebar-header">
-            <span>Debian Server</span>
+            <span>LinNAS</span>
             <span id="rootBadge" class="badge-user">User</span>
         </div>
         <div id="navList" class="nav-list"></div>
@@ -136,7 +136,7 @@
             const categories = {};
             installedPlugins.forEach(p => {
                 if (p.id === 'status') return; // Handled at top
-                if (p.default || p.installed) {
+                if (p.enabled !== false && (p.default || p.installed)) {
                     const cat = p.category || 'Tools';
                     if (!categories[cat]) categories[cat] = [];
                     categories[cat].push(p);
@@ -171,6 +171,8 @@
                 'dhcp': '🌐',
                 'lan': '🔌',
                 'wifi': '📶',
+                'filemanager': '📂',
+                'imageviewer': '🖼️',
                 'editor': '📝',
                 'ping': '📡',
                 'apache': '🌐',

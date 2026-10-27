@@ -1,8 +1,8 @@
-# Debian Server Manager
+# LinNAS
 
 A lightweight, high-performance web-based server management control panel for **Debian Linux** written in Golang, listening on port **8080**.
 
-Featuring a modular, decoupled plugin architecture, **Debian Server Manager** enables users to configure network interfaces, manage Samba shares and users, mount physical partitions/ISOs/VHDs/VeraCrypt containers, convert adblock lists into `dnsmasq` rules, edit system configuration files, monitor SMART drive health and system telemetry, and manage server power options—all through a clean, router-style dark interface.
+Featuring a modular, decoupled plugin architecture, **LinNAS** enables users to configure network interfaces, manage Samba shares and users, mount physical partitions/ISOs/VHDs/VeraCrypt containers, convert adblock lists into `dnsmasq` rules, edit system configuration files, monitor SMART drive health and system telemetry, and manage server power options—all through a clean, router-style dark interface.
 
 ---
 
@@ -113,8 +113,8 @@ Featuring a modular, decoupled plugin architecture, **Debian Server Manager** en
 
 1. Clone or download the repository to your Debian server:
    ```bash
-   git clone https://github.com/your-user/debian-server-manager.git
-   cd debian-server-manager
+   git clone https://github.com/your-user/linnas.git
+   cd linnas
    ```
 
 2. Run the application:

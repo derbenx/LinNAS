@@ -69,7 +69,7 @@
 <body>
     <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.5rem;">
         <h2>System Configuration File Editor</h2>
-        <span style="background: #381e1d; border: 1px solid #f85149; color: #ff7b72; padding: 0.3rem 0.8rem; border-radius: 6px; font-size: 0.8rem; font-weight: bold;">
+        <span id="adminWarningBadge" style="background: #381e1d; border: 1px solid #f85149; color: #ff7b72; padding: 0.3rem 0.8rem; border-radius: 6px; font-size: 0.8rem; font-weight: bold;">
             ⚠️ Admin / Root Privilege Mode: Verify syntax before saving
         </span>
     </div>
@@ -305,7 +305,19 @@
             document.getElementById('stickyConsole').style.display = 'none';
         }
 
-        window.onload = () => {
+        async function checkAuthStatus() {
+            try {
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+                if (!data.is_root) {
+                    const badge = document.getElementById('adminWarningBadge');
+                    if (badge) badge.style.display = 'none';
+                }
+            } catch (e) {}
+        }
+
+        window.onload = async () => {
+            await checkAuthStatus();
             document.getElementById('filePath').value = '/etc/fstab';
             loadFile();
         };

@@ -1,4 +1,4 @@
-/* Web Crypto Helper for Debian Server Manager */
+/* Web Crypto Helper for LinNAS */
 let serverPublicKeyObj = null;
 
 async function fetchServerPublicKey() {
