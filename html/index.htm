@@ -84,6 +84,9 @@
         window.addEventListener('message', function(event) {
             if (event.data === 'reload_plugins') {
                 loadPlugins();
+            } else if (typeof event.data === 'string' && event.data.startsWith('open_plugin:')) {
+                const pluginId = event.data.split(':')[1];
+                openPlugin(pluginId);
             }
         });
 
@@ -148,8 +151,14 @@
 
         function openPlugin(pluginId, el) {
             document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            if (!el) {
+                el = document.querySelector(`[data-id="${pluginId}"]`);
+            }
             if (el) el.classList.add('active');
-            document.getElementById('plugin-frame').src = `/${pluginId}/index.htm`;
+
+            const frame = document.getElementById('plugin-frame');
+            frame.removeAttribute('srcdoc');
+            frame.src = `/${pluginId}/index.htm`;
         }
 
         function loadDashboard() {
@@ -159,6 +168,7 @@
 
             const frame = document.getElementById('plugin-frame');
             frame.srcdoc = `
+                <!DOCTYPE html>
                 <html>
                 <head>
                     <style>
@@ -166,7 +176,7 @@
                         h1 { color: #58a6ff; margin-bottom: 0.5rem; }
                         p { color: #8b949e; margin-bottom: 2rem; }
                         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.2rem; }
-                        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; transition: transform 0.2s; }
+                        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; transition: transform 0.2s, border-color 0.2s; cursor: pointer; }
                         .card:hover { border-color: #58a6ff; transform: translateY(-2px); }
                         .card h3 { color: #f0f6fc; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 8px; }
                         .card p { font-size: 0.85rem; color: #8b949e; margin: 0; }
@@ -174,15 +184,15 @@
                 </head>
                 <body>
                     <h1>Debian Server Control Center</h1>
-                    <p>Select a plugin module from the sidebar to configure server options, services, and hardware devices.</p>
+                    <p>Click on any module below to launch configuration options, or manage packages via the APT Installer.</p>
                     <div class="grid">
                         ${installedPlugins.map(p => `
-                            <div class="card">
+                            <div class="card" onclick="window.parent.postMessage('open_plugin:${p.installed || p.default ? p.id : 'apt'}', '*')">
                                 <h3>${getPluginIcon(p.id)} ${p.name}</h3>
                                 <p>${p.description}</p>
                                 <br>
                                 <small style="color: ${p.installed || p.default ? '#7ee787' : '#f85149'};">
-                                    ${p.default ? 'System Core' : (p.installed ? '✓ Active / Installed' : '✗ Not Installed')}
+                                    ${p.default ? 'System Core' : (p.installed ? '✓ Active / Installed' : ' Click to Install via APT')}
                                 </small>
                             </div>
                         `).join('')}

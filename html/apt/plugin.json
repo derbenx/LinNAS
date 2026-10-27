@@ -1,7 +1,7 @@
 {
   "id": "apt",
-  "name": "APT Installer",
-  "description": "Manage Debian package installation for plugin applications",
-  "category": "Management",
+  "name": "APT Package Installer",
+  "description": "Install or remove software packages and plugin modules on this server",
+  "category": "System",
   "default": true
 }
