@@ -135,7 +135,8 @@ Featuring a modular, decoupled plugin architecture, **Debian Server Manager** en
 4. **Authentication**:
    - **Default Username**: `admin`
    - **Default Password**: `adminpassword`
-   - *Note*: Unauthenticated users can view read-only Server Status telemetry. Click the bright green **LOGIN TO MANAGE SERVER** button or the **🔑 Pass** button in the sidebar to change your account password (saved as a SHA-256 hash in `linnas.data`).
+   - **Security Recommendation**: Change the default credentials immediately upon first login under **Server Settings** -> **Admin Account Password**.
+   - *Note*: Plaintext password string in `config.json` is used solely as an initial fallback when `linnas.data` is absent. Upon changing the password in the UI, the new SHA-256 password hash is persisted to `linnas.data` and plaintext password fields are zeroed out in memory.
 
 ---
 

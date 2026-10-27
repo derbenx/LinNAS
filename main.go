@@ -266,6 +266,7 @@ func loadConfig() {
 
 	if appConfig.PasswordHash == "" && appConfig.Password != "" {
 		appConfig.PasswordHash = hashPassword(appConfig.Password)
+		appConfig.Password = "" // Clear plaintext default password from memory
 	}
 }
 
