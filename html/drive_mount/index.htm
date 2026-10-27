@@ -31,6 +31,15 @@
         th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
         th { color: #8b949e; font-weight: 600; background: #1f242d; }
 
+        /* Compact half-height style for parent disk rows */
+        tr.disk-parent-row td {
+            padding: 0.3rem 0.75rem;
+            background: #11151c;
+            color: #8b949e;
+            font-size: 0.8rem;
+            border-bottom: 1px solid #21262d;
+        }
+
         .path-input-group { display: flex; gap: 0.5rem; }
         .path-input-group input { flex: 1; }
 
@@ -186,22 +195,43 @@
         function renderDeviceRow(dev, tbody, indent) {
             const tr = document.createElement('tr');
             const devName = dev.name ? '/dev/' + dev.name : '-';
-            const fstype = dev.fstype || 'ext4';
-            const label = dev.label || '-';
-            const uuid = dev.uuid || '';
-            const mount = dev.mountpoint || dev.mountpoints?.join(', ') || '-';
-            const size = dev.size || '-';
+            const hasChildren = dev.children && dev.children.length > 0;
             const type = dev.type || '-';
 
-            const hasChildren = dev.children && dev.children.length > 0;
+            // Is this a parent physical disk device containing partitions?
+            const isParentDisk = (type === 'disk' && hasChildren);
+
+            // Is this an MBR extended partition container (e.g. sda2, 1K size, containing logical partitions)?
+            const isExtendedContainer = hasChildren && type === 'part';
+            const isSwap = dev.fstype === 'swap';
+
+            let fstype = dev.fstype || '-';
+            let mount = dev.mountpoint || dev.mountpoints?.join(', ') || '-';
+
+            if (isParentDisk) {
+                tr.className = 'disk-parent-row';
+                fstype = '-';
+                mount = '-';
+            } else if (isExtendedContainer) {
+                fstype = 'Extended Container';
+                mount = '-';
+            } else if (isSwap) {
+                mount = '[SWAP]';
+            }
+
+            const label = dev.label || '-';
+            const uuid = dev.uuid || '';
+            const size = dev.size || '-';
 
             let actionBtn = '-';
-            if (dev.type === 'part' || (dev.type === 'disk' && !hasChildren)) {
-                if (dev.mountpoint) {
-                    actionBtn = `<button class="btn btn-danger" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="unmountPartition('${dev.mountpoint}', '${uuid}')">Unmount</button>`;
-                } else {
-                    const cleanName = dev.label ? dev.label.replace(/[^a-zA-Z0-9_]/g, '_') : dev.name;
-                    actionBtn = `<button class="btn" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="mountPartitionPrompt('${devName}', '${cleanName}', '${uuid}', '${fstype}')">Mount</button>`;
+            if (!isParentDisk && !isExtendedContainer && !isSwap) {
+                if (dev.type === 'part' || (dev.type === 'disk' && !hasChildren)) {
+                    if (dev.mountpoint) {
+                        actionBtn = `<button class="btn btn-danger" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="unmountPartition('${dev.mountpoint}', '${uuid}')">Unmount</button>`;
+                    } else {
+                        const cleanName = dev.label ? dev.label.replace(/[^a-zA-Z0-9_]/g, '_') : dev.name;
+                        actionBtn = `<button class="btn" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="mountPartitionPrompt('${devName}', '${cleanName}', '${uuid}', '${fstype}')">Mount</button>`;
+                    }
                 }
             }
 

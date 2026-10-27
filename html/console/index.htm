@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Web Terminal Console</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        h2 { font-size: 1.4rem; color: #58a6ff; }
+        p.subtitle { color: #8b949e; font-size: 0.85rem; }
+
+        .terminal-container { flex: 1; background: #090d13; border: 1px solid #30363d; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        .terminal-header { background: #161b22; padding: 0.6rem 1rem; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #8b949e; font-family: monospace; }
+        .terminal-body { flex: 1; padding: 1rem; overflow-y: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.9rem; color: #7ee787; line-height: 1.4; white-space: pre-wrap; word-break: break-all; }
+
+        .cmd-line { display: flex; align-items: center; background: #161b22; border-top: 1px solid #30363d; padding: 0.8rem 1rem; gap: 0.5rem; }
+        .prompt-symbol { color: #58a6ff; font-family: monospace; font-weight: bold; font-size: 1rem; }
+        .cmd-input { flex: 1; background: transparent; border: none; outline: none; color: #fff; font-family: monospace; font-size: 0.95rem; }
+
+        .btn { padding: 0.5rem 1rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; font-size: 0.85rem; }
+        .btn:hover { background: #2ea043; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #b62324; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+    </style>
+</head>
+<body>
+    <div class="header-bar">
+        <div>
+            <h2>Interactive Web Terminal Console</h2>
+            <p class="subtitle">Execute system commands with real-time streaming output without launching SSH.</p>
+        </div>
+        <div>
+            <button class="btn btn-secondary" onclick="clearTerminal()">Clear Console</button>
+        </div>
+    </div>
+
+    <div class="terminal-container">
+        <div class="terminal-header">
+            <span>root@debian-server:~# (Interactive Streaming Shell)</span>
+            <span id="termStatus" style="color: #7ee787;">● Ready</span>
+        </div>
+        <div id="terminalBody" class="terminal-body">Debian Server Manager Web Terminal Console
+Type commands below and press ENTER to execute with real-time streaming output.
+──────────────────────────────────────────────────────────────────────────────────────────
+
+</div>
+        <div class="cmd-line">
+            <span class="prompt-symbol">#</span>
+            <input type="text" id="cmdInput" class="cmd-input" placeholder="Enter shell command (e.g. ls -la, htop, apt update, ip a)..." autofocus>
+            <button id="runBtn" class="btn" onclick="executeCommand()">Run</button>
+            <button id="stopBtn" class="btn btn-danger" style="display:none;" onclick="cancelCommand()">Stop</button>
+        </div>
+    </div>
+
+    <script>
+        let cmdHistory = [];
+        let historyIdx = -1;
+        let activeReader = null;
+        let activeController = null;
+
+        const inputEl = document.getElementById('cmdInput');
+        const termBody = document.getElementById('terminalBody');
+        const termStatus = document.getElementById('termStatus');
+        const runBtn = document.getElementById('runBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        inputEl.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                executeCommand();
+            } else if (e.key === 'ArrowUp') {
+                if (cmdHistory.length > 0 && historyIdx < cmdHistory.length - 1) {
+                    historyIdx++;
+                    inputEl.value = cmdHistory[cmdHistory.length - 1 - historyIdx];
+                }
+            } else if (e.key === 'ArrowDown') {
+                if (historyIdx > 0) {
+                    historyIdx--;
+                    inputEl.value = cmdHistory[cmdHistory.length - 1 - historyIdx];
+                } else if (historyIdx === 0) {
+                    historyIdx = -1;
+                    inputEl.value = '';
+                }
+            }
+        });
+
+        async function executeCommand() {
+            const cmd = inputEl.value.trim();
+            if (!cmd) return;
+
+            cmdHistory.push(cmd);
+            historyIdx = -1;
+            inputEl.value = '';
+
+            termBody.innerText += `# ${cmd}\n`;
+            scrollToBottom();
+
+            setRunningState(true);
+
+            activeController = new AbortController();
+
+            try {
+                const response = await fetch('/api/console/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: cmd }),
+                    signal: activeController.signal
+                });
+
+                if (response.status === 401) {
+                    termBody.innerText += 'Error: Unauthorized session. Please login to use terminal.\n\n';
+                    setRunningState(false);
+                    return;
+                }
+
+                if (!response.body) {
+                    termBody.innerText += 'Error: Streaming unsupported by browser response.\n\n';
+                    setRunningState(false);
+                    return;
+                }
+
+                activeReader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await activeReader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    termBody.innerText += chunk;
+                    scrollToBottom();
+                }
+
+                termBody.innerText += '\n';
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    termBody.innerText += `\n[Command error: ${err.message}]\n\n`;
+                } else {
+                    termBody.innerText += `\n[Process cancelled by user]\n\n`;
+                }
+            } finally {
+                setRunningState(false);
+                activeReader = null;
+                activeController = null;
+                scrollToBottom();
+            }
+        }
+
+        function cancelCommand() {
+            if (activeController) {
+                activeController.abort();
+            }
+        }
+
+        function setRunningState(running) {
+            if (running) {
+                termStatus.innerText = '● Executing Stream...';
+                termStatus.style.color = '#d29922';
+                runBtn.style.display = 'none';
+                stopBtn.style.display = 'inline-block';
+            } else {
+                termStatus.innerText = '● Ready';
+                termStatus.style.color = '#7ee787';
+                runBtn.style.display = 'inline-block';
+                stopBtn.style.display = 'none';
+            }
+        }
+
+        function clearTerminal() {
+            termBody.innerText = 'Debian Server Manager Web Terminal Console\n──────────────────────────────────────────────────────────────────────────────────────────\n\n';
+        }
+
+        function scrollToBottom() {
+            termBody.scrollTop = termBody.scrollHeight;
+        }
+    </script>
+</body>
+</html>

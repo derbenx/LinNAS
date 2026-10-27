@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NTP Time Server (Chrony)</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+
+        .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem; margin-bottom: 1.5rem; }
+        .stat-card { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1.2rem; }
+        .stat-card h4 { color: #8b949e; font-size: 0.85rem; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .stat-value { font-size: 1.2rem; font-weight: bold; color: #f0f6fc; word-break: break-all; }
+        .stat-sub { font-size: 0.8rem; color: #7ee787; margin-top: 0.3rem; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+
+        .code-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; white-space: pre-wrap; max-height: 250px; overflow-y: auto; }
+
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        textarea { padding: 0.8rem; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #fff; font-family: monospace; font-size: 0.9rem; min-height: 120px; resize: vertical; }
+
+        /* Floating Console Drawer */
+        .sticky-console { position: fixed; bottom: 0; left: 0; right: 0; background: #161b22; border-top: 2px solid #58a6ff; box-shadow: 0 -4px 20px rgba(0,0,0,0.5); padding: 1rem 1.5rem; display: none; z-index: 1000; }
+        .console-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-weight: bold; color: #58a6ff; font-size: 0.95rem; }
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>NTP Time Server & Sync Center (Chrony)</h2>
+    <p class="subtitle">Provide network time service to local clients and keep Debian server system clock accurately synchronized with pool servers.</p>
+
+    <!-- Clock Stats -->
+    <div class="grid-cards">
+        <div class="stat-card">
+            <h4>Current System Date & Time</h4>
+            <div id="sysTimeVal" class="stat-value">checking...</div>
+            <div id="sysTimeSub" class="stat-sub">Local Clock</div>
+        </div>
+        <div class="stat-card">
+            <h4>Time Zone Setting</h4>
+            <div id="tzVal" class="stat-value">checking...</div>
+            <div id="tzSub" class="stat-sub">System Timezone</div>
+        </div>
+    </div>
+
+    <!-- Actions Bar -->
+    <div class="section">
+        <div class="section-title">Time Server Quick Operations</div>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <button class="btn" onclick="forceTimeSync()">⚡ Force Immediate Step Sync</button>
+            <button class="btn btn-secondary" onclick="restartNtpService()">🔄 Restart Chrony NTP Daemon</button>
+            <button class="btn btn-secondary" onclick="loadNtpStatus()">📡 Refresh Status & Sources</button>
+        </div>
+    </div>
+
+    <!-- Chrony Tracking -->
+    <div class="section">
+        <div class="section-title">NTP Daemon Tracking Diagnostics</div>
+        <div id="trackingOutput" class="code-box">Loading Chrony tracking metrics...</div>
+    </div>
+
+    <!-- Upstream NTP Sources -->
+    <div class="section">
+        <div class="section-title">Upstream NTP Pool Servers & Sources</div>
+        <div id="sourcesOutput" class="code-box">Loading Chrony peer sources...</div>
+    </div>
+
+    <!-- Config Editor for /etc/chrony/chrony.conf -->
+    <div class="section">
+        <div class="section-title">NTP Server Configuration (/etc/chrony/chrony.conf)</div>
+        <p style="font-size:0.85rem; color:#8b949e; margin-bottom:1rem;">Customize upstream pools and local network subnet allow rules (e.g. <code>allow 192.168.1.0/24</code> to serve LAN clients).</p>
+        <div class="form-group">
+            <textarea id="chronyConfText" placeholder="Loading /etc/chrony/chrony.conf..."></textarea>
+        </div>
+        <button class="btn" onclick="saveChronyConfig()">Save & Apply Chrony Configuration</button>
+    </div>
+
+    <!-- Output Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn" style="background:#da3633; padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
+
+    <script>
+        async function loadTimeInfo() {
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'ntp', cmd_key: 'get_time_info_cmd', args: {} })
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    const parts = data.output.split('===TZ===');
+                    document.getElementById('sysTimeVal').innerText = parts[0] ? parts[0].trim() : 'N/A';
+                    document.getElementById('tzVal').innerText = parts[1] ? parts[1].trim() : 'UTC';
+                }
+            } catch (err) {
+                console.error('Time info error:', err);
+            }
+        }
+
+        async function loadNtpStatus() {
+            loadTimeInfo();
+
+            // Tracking
+            fetch('/api/plugin/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin: 'ntp', cmd_key: 'get_ntp_status_cmd', args: {} })
+            }).then(r => r.json()).then(d => {
+                document.getElementById('trackingOutput').innerText = d.output || d.error || 'NTP service not active.';
+            }).catch(e => {
+                document.getElementById('trackingOutput').innerText = 'Error: ' + e.message;
+            });
+
+            // Sources
+            fetch('/api/plugin/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin: 'ntp', cmd_key: 'get_ntp_sources_cmd', args: {} })
+            }).then(r => r.json()).then(d => {
+                document.getElementById('sourcesOutput').innerText = d.output || d.error || 'No active NTP sources.';
+            }).catch(e => {
+                document.getElementById('sourcesOutput').innerText = 'Error: ' + e.message;
+            });
+        }
+
+        async function loadChronyConfig() {
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'editor', cmd_key: 'read_file_cmd', args: { filepath: '/etc/chrony/chrony.conf' } })
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    document.getElementById('chronyConfText').value = data.output;
+                } else {
+                    document.getElementById('chronyConfText').value = '# /etc/chrony/chrony.conf\npool 0.debian.pool.ntp.org iburst\npool 1.debian.pool.ntp.org iburst\nkeyfile /etc/chrony/chrony.keys\ndriftfile /var/lib/chrony/chrony.drift\nlogdir /var/log/chrony\nmaxupdateskew 100.0\nrtcsync\nmakestep 1 3\n# Allow local subnet to query NTP server:\n# allow 192.168.1.0/24\n';
+                }
+            } catch (err) {
+                console.error('Config load error:', err);
+            }
+        }
+
+        async function saveChronyConfig() {
+            const content = document.getElementById('chronyConfText').value;
+            showOutput('Saving /etc/chrony/chrony.conf...');
+
+            try {
+                const res = await fetch('/api/file/write', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filepath: '/etc/chrony/chrony.conf', content })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showOutput('Saved /etc/chrony/chrony.conf. Restarting Chrony service...');
+                    await restartNtpService();
+                } else {
+                    showOutput('Failed to write chrony.conf: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Write error: ' + err.message);
+            }
+        }
+
+        async function forceTimeSync() {
+            showOutput('Forcing immediate NTP time step sync...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'ntp', cmd_key: 'sync_time_sudo', args: {} })
+                });
+                const data = await res.json();
+                showOutput(data.success ? 'Clock step synchronization completed successfully.\n' + (data.output || '') : 'Sync error: ' + data.error);
+                loadNtpStatus();
+            } catch (err) {
+                showOutput('Sync error: ' + err.message);
+            }
+        }
+
+        async function restartNtpService() {
+            showOutput('Restarting Chrony NTP daemon...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'ntp', cmd_key: 'restart_ntp_sudo', args: {} })
+                });
+                const data = await res.json();
+                showOutput(data.success ? 'Chrony service restarted successfully.' : 'Restart error: ' + data.error);
+                loadNtpStatus();
+            } catch (err) {
+                showOutput('Restart error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
+            const box = document.getElementById('outputBox');
+            box.innerText = text;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        window.onload = () => {
+            loadNtpStatus();
+            loadChronyConfig();
+        };
+    </script>
+</body>
+</html>

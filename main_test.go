@@ -131,6 +131,51 @@ func TestCommandKeyValidationAndSudoTags(t *testing.T) {
 	}
 }
 
+func TestFsBrowseSortingOrder(t *testing.T) {
+	tmpDir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(tmpDir, "b_folder"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "a_folder"), 0755)
+	_ = os.WriteFile(filepath.Join(tmpDir, "Z_file.txt"), []byte("z"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "a_file.txt"), []byte("a"), 0644)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/fs/browse?path="+tmpDir, nil)
+	w := httptest.NewRecorder()
+
+	handleFsBrowse(w, req)
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200 OK, got %d", w.Result().StatusCode)
+	}
+
+	var resp struct {
+		Items []FileEntry `json:"items"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if len(resp.Items) != 4 {
+		t.Fatalf("Expected 4 items, got %d", len(resp.Items))
+	}
+
+	// Order should be: a_folder (dir), b_folder (dir), a_file.txt (file), Z_file.txt (file)
+	expectedOrder := []struct {
+		name  string
+		isDir bool
+	}{
+		{"a_folder", true},
+		{"b_folder", true},
+		{"a_file.txt", false},
+		{"Z_file.txt", false},
+	}
+
+	for i, exp := range expectedOrder {
+		if resp.Items[i].Name != exp.name || resp.Items[i].IsDir != exp.isDir {
+			t.Errorf("Item %d: expected name=%s isDir=%v, got name=%s isDir=%v", i, exp.name, exp.isDir, resp.Items[i].Name, resp.Items[i].IsDir)
+		}
+	}
+}
+
 func TestPluginDataStorage(t *testing.T) {
 	tmpDir := t.TempDir()
 	origDir, _ := os.Getwd()

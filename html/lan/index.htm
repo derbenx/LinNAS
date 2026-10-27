@@ -12,12 +12,11 @@
         .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
         .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
 
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
-        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin-bottom: 1.2rem; background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; flex: 1; min-width: 180px; }
         .form-group label { font-size: 0.85rem; color: #8b949e; }
-        .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input, .form-group select { padding: 0.6rem; background: #161b22; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
         .form-group input:focus, .form-group select:focus { border-color: #58a6ff; outline: none; }
-        .form-group input:disabled { background: #161b22; color: #6e7681; border-color: #21262d; cursor: not-allowed; }
 
         .btn-row { display: flex; gap: 0.8rem; margin-top: 1rem; flex-wrap: wrap; }
         .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
@@ -57,7 +56,7 @@
 </head>
 <body>
     <h2>LAN Network Settings</h2>
-    <p class="subtitle">Configure Ethernet interfaces with Automatic (DHCP) or Manual (Static) IP addressing and custom DNS server overrides.</p>
+    <p class="subtitle">Configure Ethernet interface addressing and DNS server resolvers with independent DHCP or Manual modes and field overrides.</p>
 
     <div id="hardwareWarning" class="no-hardware-box">
         <h3>⚠️ No Ethernet LAN Hardware Detected</h3>
@@ -67,18 +66,36 @@
            3. Install driver firmware via Debian APT (e.g., <code>apt install firmware-realtek</code> or <code>firmware-linux-nonfree</code>).</p>
     </div>
 
+    <!-- Server System Hostname Section -->
+    <div class="section">
+        <div class="section-title">Server System Hostname</div>
+        <div class="form-row">
+            <div class="form-group" style="max-width: 320px;">
+                <label>System Hostname</label>
+                <input type="text" id="sysHostname" placeholder="debian-server">
+            </div>
+            <button class="btn" style="height: 38px; align-self: flex-end;" onclick="saveSystemHostname()">Set Hostname</button>
+        </div>
+    </div>
+
     <div class="section" id="configSection">
         <div class="section-title">Ethernet Interface Configuration</div>
-        <div class="form-grid">
-            <div class="form-group">
-                <label>Ethernet Interface</label>
+
+        <!-- Interface Selector -->
+        <div class="form-row">
+            <div class="form-group" style="max-width: 320px;">
+                <label>Network Interface</label>
                 <select id="ifaceSelect" onchange="onIfaceSelect()"></select>
             </div>
-            <div class="form-group">
-                <label>IP Assignment Mode</label>
-                <select id="ipModeSelect" onchange="toggleIpMode()">
-                    <option value="dhcp">Automatic (DHCP)</option>
-                    <option value="manual">Manual (Static IP)</option>
+        </div>
+
+        <!-- IP Mode Row -->
+        <div class="form-row">
+            <div class="form-group" style="max-width: 220px;">
+                <label>IP Mode</label>
+                <select id="ipModeSelect">
+                    <option value="dhcp">DHCP (Automatic)</option>
+                    <option value="manual">Manual (Static)</option>
                 </select>
             </div>
             <div class="form-group">
@@ -90,25 +107,30 @@
                 <input type="text" id="cidrMask" placeholder="24">
             </div>
         </div>
-    </div>
 
-    <div class="section" id="dnsSection">
-        <div class="section-title">DNS Server Overrides (/etc/resolv.conf)</div>
-        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Set custom DNS servers to override DHCP or manual defaults.</p>
-        <div class="form-grid">
+        <!-- DNS Mode Row -->
+        <div class="form-row">
+            <div class="form-group" style="max-width: 220px;">
+                <label>DNS Mode</label>
+                <select id="dnsModeSelect">
+                    <option value="dhcp">DHCP (Automatic)</option>
+                    <option value="manual">Manual (Override)</option>
+                </select>
+            </div>
             <div class="form-group">
-                <label>Primary DNS Server</label>
+                <label>Primary DNS (DNS1)</label>
                 <input type="text" id="dns1" placeholder="1.1.1.1">
             </div>
             <div class="form-group">
-                <label>Secondary DNS Server (Optional)</label>
+                <label>Secondary DNS (DNS2)</label>
                 <input type="text" id="dns2" placeholder="8.8.8.8">
             </div>
         </div>
 
         <div class="btn-row">
-            <button class="btn" onclick="applyLanConfig()">Apply IP & DNS Settings</button>
-            <button class="btn btn-secondary" id="renewBtn" onclick="renewDhcpLease()">Renew DHCP Lease</button>
+            <button class="btn" onclick="applyLanConfig()">Apply Settings</button>
+            <button class="btn btn-secondary" onclick="renewDhcpLease()">Renew DHCP Lease</button>
+            <button class="btn btn-secondary" onclick="onIfaceSelect()">Refresh Details</button>
         </div>
     </div>
 
@@ -123,6 +145,43 @@
 
     <script>
         let lanInterfaces = [];
+
+        async function loadSystemHostname() {
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'lan', cmd_key: 'get_hostname_cmd', args: {} })
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    document.getElementById('sysHostname').value = data.output.trim();
+                }
+            } catch (err) {
+                console.error('Failed to load hostname:', err);
+            }
+        }
+
+        async function saveSystemHostname() {
+            const hostname = document.getElementById('sysHostname').value.trim();
+            if (!hostname) {
+                showOutput('Please enter a valid hostname.');
+                return;
+            }
+
+            showOutput(`Setting system hostname to '${hostname}'...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'lan', cmd_key: 'set_hostname_sudo', args: { hostname } })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `System hostname successfully updated to '${hostname}'.` : `Failed to set hostname: ${data.error}\n${data.output}`);
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
 
         async function detectLanInterfaces() {
             try {
@@ -139,11 +198,9 @@
                     if (lanInterfaces.length === 0) {
                         document.getElementById('hardwareWarning').style.display = 'block';
                         document.getElementById('configSection').style.display = 'none';
-                        document.getElementById('dnsSection').style.display = 'none';
                     } else {
                         document.getElementById('hardwareWarning').style.display = 'none';
                         document.getElementById('configSection').style.display = 'block';
-                        document.getElementById('dnsSection').style.display = 'block';
                         populateIfaceSelect();
                     }
                 }
@@ -168,6 +225,7 @@
             const iface = document.getElementById('ifaceSelect').value;
             if (!iface) return;
 
+            // Query IP Details
             try {
                 const res = await fetch('/api/plugin/exec', {
                     method: 'POST',
@@ -188,30 +246,42 @@
             } catch (err) {
                 console.error('Error getting IP:', err);
             }
-        }
 
-        function toggleIpMode() {
-            const mode = document.getElementById('ipModeSelect').value;
-            const isManual = (mode === 'manual');
-            document.getElementById('ipAddr').disabled = !isManual;
-            document.getElementById('cidrMask').disabled = !isManual;
-            document.getElementById('renewBtn').style.display = isManual ? 'none' : 'inline-block';
+            // Query DNS Details
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'lan', cmd_key: 'get_dns_cmd', args: {} })
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    const dnsList = data.output.trim().split('\n').filter(Boolean);
+                    if (dnsList[0]) document.getElementById('dns1').value = dnsList[0].trim();
+                    if (dnsList[1]) document.getElementById('dns2').value = dnsList[1].trim();
+                }
+            } catch (err) {
+                console.error('Error getting DNS:', err);
+            }
         }
 
         async function applyLanConfig() {
             const iface = document.getElementById('ifaceSelect').value;
-            const mode = document.getElementById('ipModeSelect').value;
+            const ipMode = document.getElementById('ipModeSelect').value;
+            const dnsMode = document.getElementById('dnsModeSelect').value;
+
             const ip = document.getElementById('ipAddr').value.trim();
             const cidr = document.getElementById('cidrMask').value.trim();
             const dns1 = document.getElementById('dns1').value.trim();
             const dns2 = document.getElementById('dns2').value.trim();
 
-            showOutput(`Applying network settings to ${iface}...`);
+            showOutput(`Applying configuration settings to ${iface}...`);
 
             try {
-                if (mode === 'manual') {
+                // Apply IP settings
+                if (ipMode === 'manual' || ip) {
                     if (!ip || !cidr) {
-                        showOutput('Please fill in IPv4 Address and Subnet CIDR Mask for Manual mode.');
+                        showOutput('Please fill in IPv4 Address and Subnet CIDR Mask.');
                         return;
                     }
                     const ipRes = await fetch('/api/plugin/exec', {
@@ -232,7 +302,12 @@
                     await renewDhcpLease();
                 }
 
-                if (dns1) {
+                // Apply DNS settings
+                if (dnsMode === 'manual' || dns1) {
+                    if (!dns1) {
+                        showOutput('Please enter at least Primary DNS (DNS1) for DNS configuration.');
+                        return;
+                    }
                     const dnsRes = await fetch('/api/plugin/exec', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -244,10 +319,21 @@
                     });
                     const dnsData = await dnsRes.json();
                     if (dnsData.success) {
-                        showOutput(`Successfully updated network settings and set DNS overrides (${dns1}${dns2 ? ', ' + dns2 : ''}).`);
+                        showOutput(`Successfully updated settings on ${iface}: IP=${ip}/${cidr}, DNS1=${dns1}${dns2 ? ', DNS2=' + dns2 : ''}.`);
+                    } else {
+                        showOutput(`DNS update error: ${dnsData.error}\n${dnsData.output}`);
                     }
                 } else {
-                    showOutput(`Successfully applied IP settings for ${iface}.`);
+                    await fetch('/api/plugin/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            plugin: 'lan',
+                            cmd_key: 'restore_dhcp_dns_sudo',
+                            args: { iface }
+                        })
+                    });
+                    showOutput(`Successfully applied settings on ${iface}: IP Mode=${ipMode.toUpperCase()}, DNS Mode=DHCP (Automatic).`);
                 }
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
@@ -287,8 +373,8 @@
         }
 
         window.onload = () => {
+            loadSystemHostname();
             detectLanInterfaces();
-            toggleIpMode();
         };
     </script>
 </body>

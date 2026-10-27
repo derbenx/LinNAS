@@ -1,8 +1,13 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -90,12 +96,119 @@ type DHCPData struct {
 }
 
 var (
-	appConfig  Config
-	sessions   = make(map[string]time.Time)
-	sessionsMu sync.RWMutex
+	appConfig     Config
+	sessions      = make(map[string]time.Time)
+	sessionsMu    sync.RWMutex
+	rsaPrivateKey *rsa.PrivateKey
+	usedNonces    = make(map[string]time.Time)
+	noncesMu      sync.Mutex
 	// Prohibit shell metacharacters $, `, |, &, ;, <, >, (, ), \, *, ?, newlines \r \n
-	safeVarReg = regexp.MustCompile(`^[a-zA-Z0-9_\-\.\/\:\ \@\!\#\%\^\=\+\{\}\[\]\~\t]+$`)
+	safeVarReg    = regexp.MustCompile(`^[a-zA-Z0-9_\-\.\/\:\ \@\!\#\%\^\=\+\{\}\[\]\~\t]+$`)
 )
+
+func initRSAKeys() {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		log.Fatalf("Failed to generate RSA key pair: %v", err)
+	}
+	rsaPrivateKey = key
+}
+
+func handleCryptoPubKey(w http.ResponseWriter, r *http.Request) {
+	pubASN1, err := x509.MarshalPKIXPublicKey(&rsaPrivateKey.PublicKey)
+	if err != nil {
+		http.Error(w, "Failed to encode public key", http.StatusInternalServerError)
+		return
+	}
+	pubB64 := base64.StdEncoding.EncodeToString(pubASN1)
+	jsonResponse(w, map[string]interface{}{"public_key": pubB64})
+}
+
+type EncryptedPayload struct {
+	EncryptedKey  string `json:"encrypted_key"`
+	EncryptedData string `json:"encrypted_data"`
+	Nonce         string `json:"nonce"`
+	Timestamp     int64  `json:"timestamp"`
+}
+
+func checkNonceAndTimestamp(nonce string, timestamp int64) error {
+	now := time.Now().Unix()
+	if now-timestamp > 60 || timestamp-now > 60 {
+		return fmt.Errorf("request timestamp expired or out of sync (%d vs %d)", timestamp, now)
+	}
+
+	noncesMu.Lock()
+	defer noncesMu.Unlock()
+
+	// Clean up old nonces
+	for n, t := range usedNonces {
+		if time.Since(t) > 2*time.Minute {
+			delete(usedNonces, n)
+		}
+	}
+
+	if _, exists := usedNonces[nonce]; exists {
+		return fmt.Errorf("replay attack detected: nonce %s already used", nonce)
+	}
+
+	usedNonces[nonce] = time.Now()
+	return nil
+}
+
+func decryptPayload(body []byte) ([]byte, error) {
+	var encPayload EncryptedPayload
+	if err := json.Unmarshal(body, &encPayload); err != nil || encPayload.EncryptedKey == "" {
+		// Return unencrypted raw body if payload isn't encrypted
+		return body, nil
+	}
+
+	if err := checkNonceAndTimestamp(encPayload.Nonce, encPayload.Timestamp); err != nil {
+		return nil, err
+	}
+
+	keyBytes, err := base64.StdEncoding.DecodeString(encPayload.EncryptedKey)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base64 encrypted_key")
+	}
+
+	// Decrypt AES key with RSA private key
+	aesKey, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, rsaPrivateKey, keyBytes, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt AES key with RSA: %v", err)
+	}
+
+	dataBytes, err := base64.StdEncoding.DecodeString(encPayload.EncryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base64 encrypted_data")
+	}
+
+	if len(dataBytes) < 12 {
+		return nil, fmt.Errorf("encrypted_data payload too short for AES-GCM nonce")
+	}
+
+	block, err := aes.NewCipher(aesKey)
+	if err != nil {
+		return nil, err
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := gcm.NonceSize()
+	if len(dataBytes) < nonceSize {
+		return nil, fmt.Errorf("ciphertext too short")
+	}
+
+	aesNonce, ciphertext := dataBytes[:nonceSize], dataBytes[nonceSize:]
+	plaintext, err := gcm.Open(nil, aesNonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt AES-GCM data: %v", err)
+	}
+
+	return plaintext, nil
+}
 
 func hashPassword(pwd string) string {
 	h := sha256.Sum256([]byte(pwd))
@@ -208,11 +321,23 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
 	var creds struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+	if err := json.Unmarshal(decryptedBody, &creds); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -243,11 +368,23 @@ func handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
 	var req struct {
 		CurrentPassword string `json:"current_password"`
 		NewPassword     string `json:"new_password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.NewPassword == "" {
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.NewPassword == "" {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -371,8 +508,20 @@ func handleExecPluginCmd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
 	var req ExecRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(decryptedBody, &req); err != nil {
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 		return
 	}
@@ -576,20 +725,27 @@ func handlePluginData(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Failed to read request body", http.StatusBadRequest)
 			return
 		}
+
+		decryptedBody, err := decryptPayload(body)
+		if err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+			return
+		}
+
 		var js json.RawMessage
-		if err := json.Unmarshal(body, &js); err != nil {
+		if err := json.Unmarshal(decryptedBody, &js); err != nil {
 			http.Error(w, "Invalid JSON data", http.StatusBadRequest)
 			return
 		}
 
 		_ = os.MkdirAll(filepath.Dir(dataPath), 0755)
-		if err := os.WriteFile(dataPath, body, 0644); err != nil {
+		if err := os.WriteFile(dataPath, decryptedBody, 0644); err != nil {
 			http.Error(w, "Failed to write data file", http.StatusInternalServerError)
 			return
 		}
 
 		// Sync data directly to system config files (/etc/samba, /etc/dnsmasq.d)
-		syncSystemConfigs(pluginID, body)
+		syncSystemConfigs(pluginID, decryptedBody)
 
 		jsonResponse(w, map[string]interface{}{"success": true})
 
@@ -598,9 +754,122 @@ func handlePluginData(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func handleConsoleStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Command string `json:"command"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.Command == "" {
+		http.Error(w, "Invalid JSON or empty command", http.StatusBadRequest)
+		return
+	}
+
+	// Flusher interface for streaming chunked HTTP responses
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+
+	// Execute command with sudo -n sh -c if non-root, or sh -c if root
+	var cmd *exec.Cmd
+	if os.Getuid() != 0 {
+		cmd = exec.Command("sudo", "-n", "sh", "-c", req.Command)
+	} else {
+		cmd = exec.Command("sh", "-c", req.Command)
+	}
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "Error creating stdout pipe: %v\n", err)
+		return
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "Error creating stderr pipe: %v\n", err)
+		return
+	}
+
+	if err := cmd.Start(); err != nil {
+		_, _ = fmt.Fprintf(w, "Error starting command: %v\n", err)
+		return
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Stream stdout
+	go func() {
+		defer wg.Done()
+		buf := make([]byte, 1024)
+		for {
+			n, err := stdoutPipe.Read(buf)
+			if n > 0 {
+				_, _ = w.Write(buf[:n])
+				flusher.Flush()
+			}
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	// Stream stderr
+	go func() {
+		defer wg.Done()
+		buf := make([]byte, 1024)
+		for {
+			n, err := stderrPipe.Read(buf)
+			if n > 0 {
+				_, _ = w.Write(buf[:n])
+				flusher.Flush()
+			}
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	wg.Wait()
+	_ = cmd.Wait()
+}
+
 func handleFileWrite(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
 		return
 	}
 
@@ -608,7 +877,7 @@ func handleFileWrite(w http.ResponseWriter, r *http.Request) {
 		FilePath string `json:"filepath"`
 		Content  string `json:"content"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.FilePath == "" {
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.FilePath == "" {
 		http.Error(w, "Invalid JSON body or missing filepath", http.StatusBadRequest)
 		return
 	}
@@ -640,17 +909,28 @@ func handleFsMkdir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
 	var req struct {
 		Path string `json:"path"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" {
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.Path == "" {
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 		return
 	}
 
 	cleanPath := filepath.Clean(req.Path)
-	err := os.MkdirAll(cleanPath, 0755)
-	if err != nil {
+	if err := os.MkdirAll(cleanPath, 0755); err != nil {
 		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
 		return
 	}
@@ -685,6 +965,13 @@ func handleFsBrowse(w http.ResponseWriter, r *http.Request) {
 			Size:  size,
 		})
 	}
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].IsDir != items[j].IsDir {
+			return items[i].IsDir // folders first (true < false is false, so true comes first)
+		}
+		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
+	})
 
 	parent := filepath.Dir(dirPath)
 	jsonResponse(w, map[string]interface{}{
@@ -760,9 +1047,12 @@ func main() {
 	mux := http.NewServeMux()
 
 	// API Endpoints protected by authMiddleware
+	initRSAKeys()
+
 	mux.HandleFunc("/api/login", handleLogin)
 	mux.HandleFunc("/api/logout", handleLogout)
 	mux.HandleFunc("/api/auth/status", handleAuthStatus)
+	mux.HandleFunc("/api/crypto/pubkey", handleCryptoPubKey)
 	mux.HandleFunc("/api/auth/password", authMiddleware(handlePasswordChange))
 	// Public status execution helper for pre-login status view
 	publicExecMiddleware := func(next http.HandlerFunc) http.HandlerFunc {
@@ -783,9 +1073,10 @@ func main() {
 		if !isAuthorized(r) {
 			// Allow read-only status queries when unauthenticated
 			var req ExecRequest
-			bodyBytes, err := io.ReadAll(r.Body)
-			if err == nil {
-				_ = json.Unmarshal(bodyBytes, &req)
+			bodyBytes, readErr := io.ReadAll(r.Body)
+			if readErr == nil {
+				decBytes, _ := decryptPayload(bodyBytes)
+				_ = json.Unmarshal(decBytes, &req)
 				r.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
 				if req.Plugin == "status" && (req.CmdKey == "sys_info_cmd" || req.CmdKey == "disk_space_cmd" || req.CmdKey == "smart_health_sudo" || req.CmdKey == "service_status_cmd") {
 					handleExecPluginCmd(w, r)
@@ -801,6 +1092,7 @@ func main() {
 	mux.HandleFunc("/api/fs/browse", authMiddleware(handleFsBrowse))
 	mux.HandleFunc("/api/fs/mkdir", authMiddleware(handleFsMkdir))
 	mux.HandleFunc("/api/file/write", authMiddleware(handleFileWrite))
+	mux.HandleFunc("/api/console/stream", authMiddleware(handleConsoleStream))
 	mux.HandleFunc("/api/dns/convert", authMiddleware(handleDNSConvert))
 
 	// Static HTML File server protected by authMiddleware

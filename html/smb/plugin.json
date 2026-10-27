@@ -9,7 +9,7 @@
   "install_sudo": "apt-get update && apt-get install -y samba samba-common-bin",
   "remove_sudo": "apt-get remove -y samba",
   "commands": {
-    "add_smb_user_sudo": "(pdbedit -u \"{username}\" || useradd -M -s /usr/sbin/nologin \"{username}\") && (echo \"{password}\"; echo \"{password}\") | smbpasswd -a -s \"{username}\"",
+    "add_smb_user_sudo": "(id -u \"{username}\" >/dev/null 2>&1 || useradd -M -s /usr/sbin/nologin \"{username}\") && (echo \"{password}\"; echo \"{password}\") | smbpasswd -a -s \"{username}\"",
     "delete_smb_user_sudo": "smbpasswd -x \"{username}\"",
     "restart_smb_sudo": "systemctl restart smbd || service smbd restart"
   }

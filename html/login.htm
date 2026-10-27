@@ -3,63 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Debian Server Manager - Login</title>
+    <title>Login - Debian Server Manager</title>
+    <script src="/js/crypto.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background-color: #1a1e24; color: #e1e6ed; display: flex; align-items: center; justify-content: center; height: 100vh; }
-        .login-card { background: #252b33; padding: 2.5rem; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 100%; max-width: 400px; border: 1px solid #363d48; }
-        .login-card h2 { text-align: center; margin-bottom: 1.5rem; color: #4db8ff; }
-        .form-group { margin-bottom: 1.2rem; }
-        .form-group label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: #9da9bb; }
-        .form-group input { width: 100%; padding: 0.75rem; border-radius: 4px; border: 1px solid #363d48; background: #1a1e24; color: #fff; font-size: 1rem; }
-        .form-group input:focus { outline: none; border-color: #4db8ff; }
-        .btn { width: 100%; padding: 0.75rem; background: #007acc; color: white; border: none; border-radius: 4px; font-size: 1rem; cursor: pointer; font-weight: bold; transition: background 0.2s; }
-        .btn:hover { background: #005999; }
-        .error-msg { color: #ff5555; text-align: center; margin-top: 1rem; font-size: 0.9rem; display: none; }
+        body { background: #0d1117; color: #c9d1d9; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .login-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 100%; max-width: 380px; padding: 2rem; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        h2 { color: #58a6ff; font-size: 1.4rem; margin-bottom: 0.5rem; text-align: center; }
+        p.sub { font-size: 0.85rem; color: #8b949e; text-align: center; margin-bottom: 1.5rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus { border-color: #58a6ff; outline: none; }
+        .btn { width: 100%; padding: 0.7rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: background 0.2s; margin-top: 0.5rem; }
+        .btn:hover { background: #2ea043; }
+        .error-box { background: #381e1d; border: 1px solid #f85149; border-radius: 4px; color: #ff7b72; padding: 0.6rem; font-size: 0.85rem; margin-top: 1rem; display: none; text-align: center; }
+        .encrypted-badge { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 0.75rem; color: #7ee787; margin-top: 1rem; }
     </style>
 </head>
 <body>
     <div class="login-card">
         <h2>Debian Server Manager</h2>
-        <form id="loginForm">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" required autocomplete="username">
-            </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" required autocomplete="current-password">
-            </div>
-            <button type="submit" class="btn">Login</button>
-            <div id="errorMsg" class="error-msg">Invalid credentials</div>
-        </form>
+        <p class="sub">Enter credentials to authenticate session</p>
+
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="username" value="admin" autofocus>
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="password" value="adminpassword">
+        </div>
+
+        <button class="btn" onclick="login()">Login</button>
+        <div id="errorBox" class="error-box"></div>
+
+        <div class="encrypted-badge">
+            <span>🔒 Encrypted HTTP Payload (RSA-OAEP + AES-256-GCM)</span>
+        </div>
     </div>
 
     <script>
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('username').value;
+        document.getElementById('password').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') login();
+        });
+
+        async function login() {
+            const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
-            const errorMsg = document.getElementById('errorMsg');
-            errorMsg.style.display = 'none';
+            const errBox = document.getElementById('errorBox');
+            errBox.style.display = 'none';
+
+            if (!username || !password) {
+                errBox.innerText = 'Please enter both username and password.';
+                errBox.style.display = 'block';
+                return;
+            }
 
             try {
+                // Scramble credentials using RSA-OAEP + AES-GCM
+                const encryptedBody = await encryptPayload({ username, password });
+
                 const res = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
+                    body: encryptedBody
                 });
-                if (res.ok) {
+
+                const data = await res.json();
+                if (data.success) {
                     window.location.href = '/';
                 } else {
-                    errorMsg.innerText = 'Invalid username or password';
-                    errorMsg.style.display = 'block';
+                    errBox.innerText = 'Invalid username or password.';
+                    errBox.style.display = 'block';
                 }
             } catch (err) {
-                errorMsg.innerText = 'Server error occurred';
-                errorMsg.style.display = 'block';
+                errBox.innerText = 'Login error: ' + err.message;
+                errBox.style.display = 'block';
             }
-        });
+        }
     </script>
 </body>
 </html>
