@@ -3,7 +3,7 @@
   "name": "Neofetch System Info",
   "description": "Display Debian system summary, OS version, kernel, uptime, packages, and ASCII art logo",
   "category": "System",
-  "default": true,
+  "default": false,
   "apt_package": "neofetch",
   "check_cmd": "which neofetch || which fastfetch",
   "install_sudo": "apt-get update && (apt-get install -y neofetch || apt-get install -y fastfetch)",

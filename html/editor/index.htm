@@ -67,26 +67,29 @@
     </style>
 </head>
 <body>
-    <h2>System Configuration File Editor</h2>
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.5rem;">
+        <h2>System Configuration File Editor</h2>
+        <span style="background: #381e1d; border: 1px solid #f85149; color: #ff7b72; padding: 0.3rem 0.8rem; border-radius: 6px; font-size: 0.8rem; font-weight: bold;">
+            ⚠️ Admin / Root Privilege Mode: Verify syntax before saving
+        </span>
+    </div>
     <p class="subtitle">Inspect and modify system configuration files on your Debian server.</p>
 
-    <!-- Root / Admin Privileged Mode Warning -->
-    <div id="rootWarning" class="warning-banner">
-        <span style="font-size: 1.4rem;">⚠️</span>
-        <div>
-            <div class="warning-title">WARNING: Admin / Root Mode File Modification</div>
-            <div>Editing configuration files directly can alter server startup behavior or stop essential services. Ensure syntax is correct before saving changes.</div>
-        </div>
-    </div>
-
     <div class="section">
-        <div class="section-title">Quick Preset Configuration Files</div>
-        <div class="quick-links">
-            <button class="quick-btn" onclick="openPreset('/etc/fstab')">📄 /etc/fstab (Mounts)</button>
-            <button class="quick-btn" onclick="openPreset('/etc/samba/smb.conf')">📄 /etc/samba/smb.conf (SMB)</button>
-            <button class="quick-btn" onclick="openPreset('/etc/dnsmasq.conf')">📄 /etc/dnsmasq.conf (DNS/DHCP)</button>
-            <button class="quick-btn" onclick="openPreset('/etc/network/interfaces')">📄 /etc/network/interfaces (LAN)</button>
-            <button class="quick-btn" onclick="openPreset('/etc/hosts')">📄 /etc/hosts (Hostnames)</button>
+        <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <span>File Editor & Presets</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <label style="font-size: 0.85rem; color: #8b949e;">Quick presets:</label>
+                <select id="presetSelect" style="padding: 0.4rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #58a6ff; font-size: 0.85rem;" onchange="onPresetChange(this.value)">
+                    <option value="">-- Select File Preset --</option>
+                    <option value="/etc/fstab">/etc/fstab (FileSystem Mounts)</option>
+                    <option value="/etc/samba/smb.conf">/etc/samba/smb.conf (SMB Shares)</option>
+                    <option value="/etc/dnsmasq.conf">/etc/dnsmasq.conf (DNS / DHCP Server)</option>
+                    <option value="/etc/network/interfaces">/etc/network/interfaces (LAN Network)</option>
+                    <option value="/etc/hosts">/etc/hosts (System Hostnames)</option>
+                    <option value="/etc/chrony/chrony.conf">/etc/chrony/chrony.conf (NTP Time Server)</option>
+                </select>
+            </div>
         </div>
 
         <div class="path-input-group">
@@ -126,7 +129,8 @@
     <script>
         const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB safety limit
 
-        function openPreset(path) {
+        function onPresetChange(path) {
+            if (!path) return;
             document.getElementById('filePath').value = path;
             loadFile();
         }
@@ -157,11 +161,13 @@
                 if (!checkData.success) {
                     editor.value = '';
                     info.innerText = 'Failed to load file';
-                    showOutput('Failed to inspect file size: ' + checkData.error + '\n' + checkData.output);
+                    showOutput('Failed to inspect file size: ' + (checkData.error || 'Check authorization or file existence.') + (checkData.output ? '\n' + checkData.output : ''));
                     return;
                 }
 
-                const size = parseInt(checkData.output.trim(), 10) || 0;
+                const outputStr = checkData.output ? checkData.output.trim() : '0';
+                const size = parseInt(outputStr, 10) || 0;
+
                 if (size > MAX_FILE_SIZE) {
                     editor.value = '';
                     info.innerText = 'File too large (> 2 MB)';
@@ -179,13 +185,13 @@
 
                 const readData = await readRes.json();
                 if (readData.success) {
-                    editor.value = readData.output;
+                    editor.value = readData.output !== undefined ? readData.output : '';
                     info.innerText = `Loaded ${filepath} (${formatBytes(size)})`;
                     showOutput(`Loaded ${filepath} successfully.`);
                 } else {
                     editor.value = '';
                     info.innerText = 'Failed to read file';
-                    showOutput('Failed to read file: ' + readData.error + '\n' + readData.output);
+                    showOutput('Failed to read file: ' + (readData.error || 'Unauthorized or read failure.') + (readData.output ? '\n' + readData.output : ''));
                 }
             } catch (err) {
                 editor.value = '';

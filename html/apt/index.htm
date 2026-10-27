@@ -65,6 +65,26 @@
     <h2>APT Package Manager & Plugin Module Installer</h2>
     <p class="subtitle">Install or remove software packages and plugin modules on this Debian server.</p>
 
+    <!-- Optional Features & Toggles -->
+    <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.2rem; margin-bottom: 1.5rem;">
+        <h3 style="font-size: 1rem; color: #58a6ff; margin-bottom: 0.5rem;">Feature Toggles & Optional System Tools</h3>
+        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Enable or disable optional system tools like Web Terminal Console or System File Editor (saves toggle settings to <code>linnas.data</code>).</p>
+        <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
+                <input type="checkbox" id="toggleConsole" onchange="toggleFeature('console', this.checked)">
+                <span>💻 Enable Interactive Shell Terminal Console</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
+                <input type="checkbox" id="toggleEditor" onchange="toggleFeature('editor', this.checked)">
+                <span>📝 Enable System Configuration File Editor</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
+                <input type="checkbox" id="toggleNeofetch" onchange="toggleFeature('neofetch', this.checked)">
+                <span>📊 Enable Neofetch System Information</span>
+            </label>
+        </div>
+    </div>
+
     <div id="pluginGrid" class="plugin-grid">
         <p style="color: #8b949e;">Scanning installed plugin packages...</p>
     </div>
@@ -79,8 +99,45 @@
     </div>
 
     <script>
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings/get');
+                const data = await res.json();
+                if (data.feature_toggles) {
+                    document.getElementById('toggleConsole').checked = data.feature_toggles['console'] !== false;
+                    document.getElementById('toggleEditor').checked = data.feature_toggles['editor'] !== false;
+                    document.getElementById('toggleNeofetch').checked = data.feature_toggles['neofetch'] === true;
+                }
+            } catch (err) {
+                console.error('Failed to load feature settings:', err);
+            }
+        }
+
+        async function toggleFeature(feature, enabled) {
+            try {
+                const res = await fetch('/api/settings/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ feature, enabled })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    await loadAptPlugins();
+                    if (window.parent) {
+                        window.parent.postMessage('reload_plugins', '*');
+                        if (typeof window.parent.loadPlugins === 'function') {
+                            window.parent.loadPlugins();
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to toggle feature:', err);
+            }
+        }
+
         async function loadAptPlugins() {
             try {
+                await loadSettings();
                 const res = await fetch('/api/plugins');
                 const plugins = await res.json();
                 renderPlugins(plugins);

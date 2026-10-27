@@ -101,8 +101,14 @@
             </div>
         </div>
         <div class="checkbox-group">
-            <input type="checkbox" id="autoSmb">
+            <input type="checkbox" id="autoSmb" onchange="toggleSmbUserSelect()">
             <label for="autoSmb">Automatically share mounted volume via SMB network share</label>
+        </div>
+        <div id="smbUserGroup" class="form-group" style="margin-top: 0.8rem; display: none; max-width: 320px;">
+            <label>Restrict SMB Access To Registered SMB User</label>
+            <select id="smbUserSelect" style="padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem;">
+                <option value="">-- Select Required SMB User --</option>
+            </select>
         </div>
         <br>
         <button class="btn" onclick="mountVolume()">Mount Volume (tcplay)</button>
@@ -153,6 +159,30 @@
 
     <script>
         let mounts = [];
+        let smbUsers = [];
+
+        async function loadSmbUsers() {
+            try {
+                const res = await fetch('/api/plugin/data?plugin=smb');
+                const data = await res.json();
+                smbUsers = data.users || [];
+                const select = document.getElementById('smbUserSelect');
+                select.innerHTML = '<option value="">-- Select Required SMB User --</option>';
+                smbUsers.forEach(u => {
+                    const opt = document.createElement('option');
+                    opt.value = u;
+                    opt.innerText = `👤 Restricted User: ${u}`;
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                console.error('Failed to load SMB users:', err);
+            }
+        }
+
+        function toggleSmbUserSelect() {
+            const isChecked = document.getElementById('autoSmb').checked;
+            document.getElementById('smbUserGroup').style.display = isChecked ? 'block' : 'none';
+        }
 
         async function loadMounts() {
             try {
@@ -208,9 +238,15 @@
             const map_name = document.getElementById('mapName').value.trim() || 'tc_volume';
             const password = document.getElementById('volumePass').value;
             const autoSmb = document.getElementById('autoSmb').checked;
+            const selectedUser = document.getElementById('smbUserSelect').value;
 
             if (!volume_path || !mount_point || !password) {
                 showOutput('Please specify Volume Path, Mount Point, Mapped Name, and Password.');
+                return;
+            }
+
+            if (autoSmb && !selectedUser) {
+                showOutput('ERROR: Encrypted VeraCrypt volumes cannot be shared publicly. Please select a registered SMB user account to restrict access.');
                 return;
             }
 
@@ -232,8 +268,8 @@
                     mounts.push({ volume_path, mount_point, map_name, smb_shared: autoSmb });
                     await saveMounts();
 
-                    if (autoSmb) {
-                        await addSmbShare(mount_point, map_name);
+                    if (autoSmb && selectedUser) {
+                        await addSmbShare(mount_point, map_name, selectedUser);
                     }
 
                     document.getElementById('volumePass').value = '';
@@ -274,20 +310,30 @@
             }
         }
 
-        async function addSmbShare(path, name) {
+        async function addSmbShare(path, name, allowedUser) {
             try {
                 const res = await fetch('/api/plugin/data?plugin=smb');
                 const data = await res.json();
                 const shares = data.shares || [];
-                shares.push({ name: name || 'VeraCryptShare', path: path, comment: 'Mounted encrypted volume', read_only: false, enabled: true });
+                const users = data.users || [];
+
+                shares.push({
+                    name: name || 'VeraCryptShare',
+                    path: path,
+                    comment: 'Mounted encrypted VeraCrypt volume',
+                    valid_users: [allowedUser],
+                    read_only: false,
+                    enabled: true
+                });
 
                 await fetch('/api/plugin/data?plugin=smb', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ shares: shares })
+                    body: JSON.stringify({ shares: shares, users: users, hide_homes: data.hide_homes || false })
                 });
+                showOutput(`Created SMB share '${name}' restricted strictly to user '${allowedUser}'.`);
             } catch (err) {
-                console.error('Failed to auto-add SMB share:', err);
+                console.error('Failed to auto-add restricted SMB share:', err);
             }
         }
 
@@ -391,7 +437,10 @@
             document.getElementById('stickyConsole').style.display = 'none';
         }
 
-        window.onload = loadMounts;
+        window.onload = () => {
+            loadSmbUsers();
+            loadMounts();
+        };
     </script>
 </body>
 </html>

@@ -103,8 +103,8 @@
                 <input type="text" id="ipAddr" placeholder="192.168.1.50">
             </div>
             <div class="form-group">
-                <label>Subnet CIDR Mask (e.g. 24 for 255.255.255.0)</label>
-                <input type="text" id="cidrMask" placeholder="24">
+                <label>Subnet Mask / CIDR (e.g. 24 or 255.255.255.0)</label>
+                <input type="text" id="cidrMask" placeholder="24 or 255.255.255.0">
             </div>
         </div>
 
@@ -221,9 +221,30 @@
             onIfaceSelect();
         }
 
+        function parseNetmaskToCidr(mask) {
+            mask = mask.trim();
+            if (/^\d+$/.test(mask)) return parseInt(mask, 10);
+            const parts = mask.split('.');
+            if (parts.length === 4) {
+                let bits = 0;
+                for (let p of parts) {
+                    const num = parseInt(p, 10);
+                    bits += (num >>> 0).toString(2).replace(/0/g, '').length;
+                }
+                return bits;
+            }
+            return 24;
+        }
+
         async function onIfaceSelect() {
             const iface = document.getElementById('ifaceSelect').value;
             if (!iface) return;
+
+            // Clear previous fields to default/blank hints
+            document.getElementById('ipAddr').value = '';
+            document.getElementById('cidrMask').value = '';
+            document.getElementById('dns1').value = '';
+            document.getElementById('dns2').value = '';
 
             // Query IP Details
             try {
@@ -233,13 +254,13 @@
                     body: JSON.stringify({ plugin: 'lan', cmd_key: 'get_ip_cmd', args: { iface: iface } })
                 });
                 const data = await res.json();
-                if (data.success) {
+                if (data.success && data.output) {
                     const addrInfo = JSON.parse(data.output);
                     if (addrInfo[0] && addrInfo[0].addr_info) {
                         const ipv4 = addrInfo[0].addr_info.find(a => a.family === 'inet');
                         if (ipv4) {
-                            document.getElementById('ipAddr').value = ipv4.local;
-                            document.getElementById('cidrMask').value = ipv4.prefixlen;
+                            document.getElementById('ipAddr').value = ipv4.local || '';
+                            document.getElementById('cidrMask').value = ipv4.prefixlen || '24';
                         }
                     }
                 }
@@ -271,7 +292,8 @@
             const dnsMode = document.getElementById('dnsModeSelect').value;
 
             const ip = document.getElementById('ipAddr').value.trim();
-            const cidr = document.getElementById('cidrMask').value.trim();
+            const maskInput = document.getElementById('cidrMask').value.trim();
+            const cidr = parseNetmaskToCidr(maskInput || '24');
             const dns1 = document.getElementById('dns1').value.trim();
             const dns2 = document.getElementById('dns2').value.trim();
 

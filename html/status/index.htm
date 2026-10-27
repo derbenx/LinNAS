@@ -49,7 +49,29 @@
 
         .auth-only { display: none; }
 
-        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; white-space: pre-wrap; }
+        /* Floating Bottom Console Drawer */
+        .sticky-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 2px solid #58a6ff;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+        }
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #58a6ff;
+            font-size: 0.95rem;
+        }
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
     </style>
 </head>
 <body>
@@ -197,7 +219,14 @@
         </div>
     </div>
 
-    <div id="outputBox" class="output-box"></div>
+    <!-- Floating Output Console Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-danger" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
 
     <script>
         let isLoggedIn = false;
@@ -306,7 +335,18 @@
                     const lines = content.split('\n');
                     lines.forEach(l => {
                         if (l.includes('Model name:')) cpuModel = l.split(':')[1].trim();
-                        if (l.includes('CPU(s):')) cpuCores = l.split(':')[1].trim() + ' Cores';
+                        if (l.includes('CPU(s):')) {
+                            let rawCores = l.split(':')[1].trim();
+                            if (rawCores.includes('-')) {
+                                const rangeParts = rawCores.split('-');
+                                const start = parseInt(rangeParts[0], 10);
+                                const end = parseInt(rangeParts[1], 10);
+                                if (!isNaN(start) && !isNaN(end)) {
+                                    rawCores = (end - start + 1).toString();
+                                }
+                            }
+                            cpuCores = rawCores + (rawCores === '1' ? ' Core' : ' Cores');
+                        }
                     });
                 } else if (tag === 'LOAD') {
                     if (content) {
@@ -382,13 +422,32 @@
             for (let i = 1; i < lines.length; i++) {
                 const parts = lines[i].split(/\s+/);
                 if (parts.length >= 6) {
+                    const pctStr = parts[4].replace('%', '');
+                    const pctNum = parseInt(pctStr, 10) || 0;
+
+                    let barColor = '#238636'; // Green
+                    if (pctNum >= 90) {
+                        barColor = '#da3633'; // Red
+                    } else if (pctNum >= 80) {
+                        barColor = '#d29922'; // Yellow
+                    }
+
+                    const progressBarHtml = `
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="flex: 1; background: #21262d; border-radius: 4px; height: 10px; overflow: hidden; min-width: 60px;">
+                                <div style="width: ${pctNum}%; background: ${barColor}; height: 100%; border-radius: 4px; transition: width 0.3s;"></div>
+                            </div>
+                            <span style="font-size: 0.85rem; font-weight: bold; width: 40px; text-align: right;">${parts[4]}</span>
+                        </div>
+                    `;
+
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td><strong>${parts[0]}</strong></td>
                         <td>${parts[1]}</td>
                         <td>${parts[2]}</td>
                         <td><span style="color:#7ee787;">${parts[3]}</span></td>
-                        <td>${parts[4]}</td>
+                        <td style="min-width: 140px;">${progressBarHtml}</td>
                         <td>${parts[5]}</td>
                     `;
                     tbody.appendChild(tr);
@@ -433,9 +492,32 @@
 
             setTimeout(() => {
                 if (!foundDrive && tbody.children.length === 1 && tbody.innerText.includes('checking...')) {
-                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #8b949e;">N/A (No SMART storage drives detected or smartmontools not configured).</td></tr>';
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: #8b949e; padding: 1.2rem;">
+                                <div>N/A (No SMART storage drives detected or <code>smartmontools</code> package is missing)</div>
+                                ${isLoggedIn ? `<button class="btn btn-secondary" style="margin-top: 0.8rem; font-size: 0.85rem;" onclick="installSmartTools()">📦 Install smartmontools Package</button>` : ''}
+                            </td>
+                        </tr>`;
                 }
             }, 3000);
+        }
+
+        async function installSmartTools() {
+            if (!isLoggedIn) return;
+            showOutput('Installing smartmontools via APT package manager...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'status', cmd_key: 'install_sudo', args: {} })
+                });
+                const data = await res.json();
+                showOutput(data.success ? 'smartmontools package installed successfully!\n' + (data.output || '') : 'Installation failed: ' + data.error);
+                loadSmartHealthLazy();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
         }
 
         async function viewSmartDetails(drive) {
@@ -577,9 +659,14 @@
         }
 
         function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
             const box = document.getElementById('outputBox');
-            box.style.display = 'block';
             box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
         }
 
         window.onload = async () => {

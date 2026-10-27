@@ -141,7 +141,13 @@
     <!-- Active Shares List -->
     <div class="section">
         <div class="section-title">Configured SMB Shares</div>
-        <button class="btn btn-secondary" style="margin-bottom: 1rem;" onclick="restartSMBService()">Restart Samba Service</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+            <button class="btn btn-secondary" onclick="restartSMBService()">Restart Samba Service</button>
+            <div class="checkbox-group" style="margin-top: 0;">
+                <input type="checkbox" id="hideHomesCheckbox" onchange="toggleHideHomes()">
+                <label for="hideHomesCheckbox" style="font-weight: bold; color: #f0f6fc;">Hide / do not share user home directories ([homes])</label>
+            </div>
+        </div>
         <table>
             <thead>
                 <tr>
@@ -186,6 +192,7 @@
     <script>
         let shares = [];
         let users = [];
+        let hideHomes = false;
 
         async function loadSMBData() {
             try {
@@ -193,11 +200,19 @@
                 const data = await res.json();
                 shares = data.shares || [];
                 users = data.users || [];
+                hideHomes = data.hide_homes || false;
+                document.getElementById('hideHomesCheckbox').checked = hideHomes;
                 renderUsers();
                 renderShares();
             } catch (err) {
                 showOutput('Failed to load SMB data: ' + err.message);
             }
+        }
+
+        async function toggleHideHomes() {
+            hideHomes = document.getElementById('hideHomesCheckbox').checked;
+            await saveSMBData();
+            showOutput(`Updated user home directories policy: ${hideHomes ? 'Hidden / Disabled' : 'Standard Default'}. Click "Restart Samba Service" to apply.`);
         }
 
         function renderUsers() {
@@ -270,7 +285,7 @@
                 await fetch('/api/plugin/data?plugin=smb', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ shares: shares, users: users })
+                    body: JSON.stringify({ shares: shares, users: users, hide_homes: hideHomes })
                 });
                 renderUsers();
                 renderShares();

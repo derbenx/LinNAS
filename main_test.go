@@ -176,6 +176,34 @@ func TestFsBrowseSortingOrder(t *testing.T) {
 	}
 }
 
+func TestSMBHideHomesSync(t *testing.T) {
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	_ = os.Chdir(tmpDir)
+	defer os.Chdir(origDir)
+
+	_ = os.MkdirAll("html/smb", 0755)
+
+	payload := `{"shares":[{"name":"public","path":"/srv/pub","enabled":true}],"hide_homes":true}`
+	req := httptest.NewRequest(http.MethodPost, "/api/plugin/data?plugin=smb", strings.NewReader(payload))
+	w := httptest.NewRecorder()
+
+	handlePluginData(w, req)
+
+	if w.Result().StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200 OK, got %d", w.Result().StatusCode)
+	}
+
+	confPath := "/etc/samba/conf.d/shares.conf"
+	data, err := os.ReadFile(confPath)
+	if err == nil {
+		content := string(data)
+		if !strings.Contains(content, "[homes]") || !strings.Contains(content, "browseable = no") {
+			t.Errorf("Expected [homes] section with browseable = no, got:\n%s", content)
+		}
+	}
+}
+
 func TestPluginDataStorage(t *testing.T) {
 	tmpDir := t.TempDir()
 	origDir, _ := os.Getwd()

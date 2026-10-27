@@ -211,10 +211,10 @@
             if (isParentDisk) {
                 tr.className = 'disk-parent-row';
                 fstype = '-';
-                mount = '-';
+                mount = '';
             } else if (isExtendedContainer) {
                 fstype = 'Extended Container';
-                mount = '-';
+                mount = '';
             } else if (isSwap) {
                 mount = '[SWAP]';
             }
@@ -223,8 +223,11 @@
             const uuid = dev.uuid || '';
             const size = dev.size || '-';
 
-            let actionBtn = '-';
-            if (!isParentDisk && !isExtendedContainer && !isSwap) {
+            // Check for 1K size (extended partition container)
+            const isTinyContainer = (size === '1K' || size === '0B' || size === '1024');
+
+            let actionBtn = '';
+            if (!isParentDisk && !isExtendedContainer && !isSwap && !isTinyContainer) {
                 if (dev.type === 'part' || (dev.type === 'disk' && !hasChildren)) {
                     if (dev.mountpoint) {
                         actionBtn = `<button class="btn btn-danger" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="unmountPartition('${dev.mountpoint}', '${uuid}')">Unmount</button>`;
@@ -235,6 +238,8 @@
                 }
             }
 
+            const mountDisplay = (mount && mount !== '-') ? `<span style="color:#7ee787;">${mount}</span>` : (isParentDisk || isExtendedContainer ? '' : 'Unmounted');
+
             tr.innerHTML = `
                 <td><strong>${indent}${devName}</strong></td>
                 <td>${type}</td>
@@ -242,7 +247,7 @@
                 <td><strong style="color: #58a6ff;">${label}</strong></td>
                 <td>${size}</td>
                 <td><small style="color: #8b949e; font-family: monospace;">${uuid || 'N/A'}</small></td>
-                <td>${mount !== '-' ? `<span style="color:#7ee787;">${mount}</span>` : 'Unmounted'}</td>
+                <td>${mountDisplay}</td>
                 <td>${actionBtn}</td>
             `;
             tbody.appendChild(tr);
