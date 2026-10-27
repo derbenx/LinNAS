@@ -52,12 +52,12 @@
         async function loadNeofetch() {
             const term = document.getElementById('terminalOutput');
             const promptCard = document.getElementById('installPromptCard');
-            term.innerText = 'Loading Neofetch system summary...';
+            term.innerText = 'Loading live Neofetch system summary...';
 
             try {
-                const res = await fetch('/api/plugin/exec', {
+                const res = await fetch(`/api/plugin/exec?_=${Date.now()}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
                     body: JSON.stringify({
                         plugin: 'neofetch',
                         cmd_key: 'neofetch_cmd',
@@ -66,16 +66,17 @@
                 });
 
                 const data = await res.json();
-                const output = data.output || '';
+                const output = (data.output || '').trim();
 
-                if (data.success && output.trim().length > 0) {
+                if (data.success && output.length > 0 && !output.includes('not found') && !output.includes('No such file')) {
                     promptCard.style.display = 'none';
                     term.innerText = output;
                 } else {
                     promptCard.style.display = 'block';
-                    term.innerText = 'Neofetch/Fastfetch is not installed or returned an error.\n' + (data.error || output);
+                    term.innerText = 'Neofetch/Fastfetch package is not installed on this system.';
                 }
             } catch (err) {
+                promptCard.style.display = 'block';
                 term.innerText = 'Failed to execute neofetch: ' + err.message;
             }
         }

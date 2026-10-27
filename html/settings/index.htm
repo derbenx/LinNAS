@@ -89,6 +89,12 @@
             <button class="btn" onclick="toggleBootService(true)">Enable Start on Boot</button>
             <button class="btn btn-danger" onclick="toggleBootService(false)">Disable Start on Boot</button>
         </div>
+        <div style="margin-top: 1rem; border-top: 1px solid #30363d; padding-top: 0.8rem;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: #c9d1d9; cursor: pointer;">
+                <input type="checkbox" id="debugStartupCheckbox" onchange="toggleDebugStartup(this.checked)">
+                <span><strong>Enable Startup Debug Logging & Diagnostic Reports</strong> (records autostart boot diagnostics to <code>autostart_debug.log</code> and alerts after login if issues occur)</span>
+            </label>
+        </div>
     </div>
 
     <!-- Power Control & Schedule -->
@@ -156,6 +162,28 @@
             }
 
             checkBootServiceStatus();
+            loadDebugStartupSetting();
+        }
+
+        async function loadDebugStartupSetting() {
+            try {
+                const res = await fetch('/api/startup/issues');
+                const data = await res.json();
+                document.getElementById('debugStartupCheckbox').checked = data.debug_enabled;
+            } catch (err) {}
+        }
+
+        async function toggleDebugStartup(enabled) {
+            try {
+                const res = await fetch('/api/settings/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ feature: 'debug_startup', enabled: enabled })
+                });
+                showOutput(`Startup debug logging ${enabled ? 'enabled' : 'disabled'}.`);
+            } catch (err) {
+                showOutput('Failed to toggle debug startup setting: ' + err.message);
+            }
         }
 
         async function saveSystemHostname() {

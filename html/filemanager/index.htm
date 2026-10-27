@@ -53,11 +53,12 @@
     </style>
 </head>
 <body>
-    <div id="adminWarning" class="admin-warning" style="display: none;">
-        <span>⚠️ <strong>Admin / Root Privileged Mode:</strong> You are browsing the file system with root permissions. Exercise caution when modifying or deleting system files.</span>
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.3rem;">
+        <h2>LinNAS File Manager</h2>
+        <span id="adminWarningBadge" style="background: #381e1d; border: 1px solid #f85149; color: #ff7b72; padding: 0.3rem 0.8rem; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: none;">
+            ⚠️ Admin / Root Privilege Mode
+        </span>
     </div>
-
-    <h2>LinNAS File Manager</h2>
     <p class="subtitle">Navigate directories, upload, download, move, edit, and organize files across your storage devices.</p>
 
     <div class="top-bar">
@@ -141,7 +142,8 @@
                 const res = await fetch('/api/auth/status');
                 const data = await res.json();
                 if (data.is_root) {
-                    document.getElementById('adminWarning').style.display = 'flex';
+                    const badge = document.getElementById('adminWarningBadge');
+                    if (badge) badge.style.display = 'inline-block';
                 }
             } catch (e) {}
         }
@@ -453,17 +455,19 @@
         }
 
         function openTextEditor(filepath) {
-            if (window.parent) {
+            if (window.parent && window.parent !== window) {
                 window.parent.postMessage(`open_plugin:editor?file=${encodeURIComponent(filepath)}`, '*');
+            } else {
+                window.location.href = `/editor/index.htm?file=${encodeURIComponent(filepath)}`;
             }
-            window.location.href = `/editor/index.htm?file=${encodeURIComponent(filepath)}`;
         }
 
         function openImageViewer(filepath) {
-            if (window.parent) {
+            if (window.parent && window.parent !== window) {
                 window.parent.postMessage(`open_plugin:imageviewer?file=${encodeURIComponent(filepath)}&dir=${encodeURIComponent(currentPath)}`, '*');
+            } else {
+                window.location.href = `/imageviewer/index.htm?file=${encodeURIComponent(filepath)}&dir=${encodeURIComponent(currentPath)}`;
             }
-            window.location.href = `/imageviewer/index.htm?file=${encodeURIComponent(filepath)}&dir=${encodeURIComponent(currentPath)}`;
         }
 
         /* Upload Handlers */

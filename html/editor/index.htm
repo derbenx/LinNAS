@@ -67,13 +67,13 @@
     </style>
 </head>
 <body>
-    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.5rem;">
-        <h2>System Configuration File Editor</h2>
-        <span id="adminWarningBadge" style="background: #381e1d; border: 1px solid #f85149; color: #ff7b72; padding: 0.3rem 0.8rem; border-radius: 6px; font-size: 0.8rem; font-weight: bold;">
-            ⚠️ Admin / Root Privilege Mode: Verify syntax before saving
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.3rem;">
+        <h2>File Editor</h2>
+        <span id="adminWarningBadge" style="background: #381e1d; border: 1px solid #f85149; color: #ff7b72; padding: 0.3rem 0.8rem; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: none;">
+            ⚠️ Admin / Root Privilege Mode
         </span>
     </div>
-    <p class="subtitle">Inspect and modify system configuration files on your Debian server.</p>
+    <p class="subtitle">Inspect and modify files on your LinNAS server.</p>
 
     <div class="section">
         <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
@@ -309,16 +309,22 @@
             try {
                 const res = await fetch('/api/auth/status');
                 const data = await res.json();
-                if (!data.is_root) {
+                if (data.is_root) {
                     const badge = document.getElementById('adminWarningBadge');
-                    if (badge) badge.style.display = 'none';
+                    if (badge) badge.style.display = 'inline-block';
                 }
             } catch (e) {}
         }
 
         window.onload = async () => {
             await checkAuthStatus();
-            document.getElementById('filePath').value = '/etc/fstab';
+            const urlParams = new URLSearchParams(window.location.search);
+            const targetFile = urlParams.get('file');
+            if (targetFile) {
+                document.getElementById('filePath').value = targetFile;
+            } else {
+                document.getElementById('filePath').value = '/etc/fstab';
+            }
             loadFile();
         };
     </script>

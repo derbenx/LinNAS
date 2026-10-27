@@ -101,8 +101,9 @@ type DHCPData struct {
 }
 
 var (
-	appConfig     Config
-	sessions      = make(map[string]time.Time)
+	appConfig        Config
+	sessions         = make(map[string]time.Time)
+	isAutostartMode  = false
 	sessionsMu    sync.RWMutex
 	consoleDirs   = make(map[string]string)
 	consoleDirsMu sync.Mutex
@@ -1444,12 +1445,76 @@ func jsonResponse(w http.ResponseWriter, data interface{}) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 
+func logStartupEvent(msg string) {
+	entry := fmt.Sprintf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), msg)
+	log.Print(entry)
+	if isAutostartMode || appConfig.FeatureToggles["debug_startup"] != false {
+		f, err := os.OpenFile("autostart_debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err == nil {
+			_, _ = f.WriteString(entry)
+			_ = f.Close()
+		}
+	}
+}
+
+func ensureWorkingDirectory() {
+	cwd, _ := os.Getwd()
+	// 1. Check if html directory exists in current working directory
+	if _, err := os.Stat("html"); err == nil {
+		logStartupEvent(fmt.Sprintf("Working directory verified: %s", cwd))
+		return
+	}
+
+	// 2. Check directory of the running executable
+	if execPath, err := os.Executable(); err == nil {
+		execDir := filepath.Dir(execPath)
+		if _, err := os.Stat(filepath.Join(execDir, "html")); err == nil {
+			_ = os.Chdir(execDir)
+			logStartupEvent(fmt.Sprintf("Switched working directory from %s to executable directory: %s", cwd, execDir))
+			return
+		}
+	}
+	logStartupEvent(fmt.Sprintf("WARNING: Could not find 'html/' directory in %s", cwd))
+}
+
+func handleStartupIssues(w http.ResponseWriter, r *http.Request) {
+	logBytes, err := os.ReadFile("autostart_debug.log")
+	logStr := ""
+	hasIssues := false
+	if err == nil && len(logBytes) > 0 {
+		logStr = string(logBytes)
+		hasIssues = true
+	}
+	jsonResponse(w, map[string]interface{}{
+		"has_issues":     hasIssues,
+		"log":            logStr,
+		"autostart_mode": isAutostartMode,
+		"debug_enabled":  appConfig.FeatureToggles["debug_startup"] != false,
+	})
+}
+
+func handleStartupClear(w http.ResponseWriter, r *http.Request) {
+	_ = os.Remove("autostart_debug.log")
+	jsonResponse(w, map[string]interface{}{"success": true})
+}
+
 func main() {
-	var flagHelp, flagQuit, flagBg bool
+	var flagHelp, flagQuit, flagBg, flagAutostart bool
 	flag.BoolVar(&flagHelp, "h", false, "Show help and usage information")
 	flag.BoolVar(&flagQuit, "q", false, "Terminate running LinNAS background processes")
 	flag.BoolVar(&flagBg, "b", false, "Run LinNAS in background mode")
+	flag.BoolVar(&flagAutostart, "a", false, "Identify systemd autostart boot execution and log startup debug diagnostics")
 	flag.Parse()
+
+	if flagAutostart {
+		isAutostartMode = true
+	}
+
+	ensureWorkingDirectory()
+
+	if flagAutostart {
+		logStartupEvent("=== LinNAS Systemd Autostart Boot Execution Started (-a) ===")
+	}
 
 	if flagHelp {
 		fmt.Println("LinNAS - Lightweight Server Control Panel")
@@ -1555,6 +1620,8 @@ func main() {
 	mux.HandleFunc("/api/fs/move", authMiddleware(handleFsMove))
 	mux.HandleFunc("/api/fs/upload", authMiddleware(handleFsUpload))
 	mux.HandleFunc("/api/file/write", authMiddleware(handleFileWrite))
+	mux.HandleFunc("/api/startup/issues", authMiddleware(handleStartupIssues))
+	mux.HandleFunc("/api/startup/clear", authMiddleware(handleStartupClear))
 	mux.HandleFunc("/api/console/stream", authMiddleware(handleConsoleStream))
 	mux.HandleFunc("/api/dns/convert", authMiddleware(handleDNSConvert))
 	mux.HandleFunc("/api/settings/get", authMiddleware(func(w http.ResponseWriter, r *http.Request) {

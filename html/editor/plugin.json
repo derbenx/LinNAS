@@ -1,8 +1,8 @@
 {
   "id": "editor",
-  "name": "System File Editor",
-  "description": "View and edit system configuration files with size safety limits and root warnings",
-  "category": "System",
+  "name": "File Editor",
+  "description": "View and edit files with size safety limits and root warnings",
+  "category": "Tools",
   "default": true,
   "commands": {
     "check_file_cmd": "wc -c < \"{filepath}\"",

@@ -5,9 +5,9 @@
   "category": "System",
   "default": false,
   "apt_package": "neofetch",
-  "check_cmd": "which neofetch >/dev/null 2>&1 || which fastfetch >/dev/null 2>&1 || test -f /usr/bin/neofetch || test -f /usr/bin/fastfetch",
+  "check_cmd": "which neofetch || which fastfetch",
   "install_sudo": "apt-get update && (apt-get install -y neofetch || apt-get install -y fastfetch)",
-  "remove_sudo": "apt-get remove -y neofetch fastfetch",
+  "remove_sudo": "apt-get purge -y neofetch fastfetch 2>/dev/null || apt-get remove -y neofetch fastfetch",
   "commands": {
     "neofetch_cmd": "(neofetch --off 2>/dev/null || fastfetch 2>/dev/null || neofetch 2>/dev/null || fastfetch 2>/dev/null) | sed 's/\\x1B\\[[0-9;]*[a-zA-Z]//g'"
   }
