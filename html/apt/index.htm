@@ -65,26 +65,6 @@
     <h2>APT Package Manager & Plugin Module Installer</h2>
     <p class="subtitle">Install or remove software packages and plugin modules on this Debian server.</p>
 
-    <!-- Optional Features & Toggles -->
-    <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.2rem; margin-bottom: 1.5rem;">
-        <h3 style="font-size: 1rem; color: #58a6ff; margin-bottom: 0.5rem;">Feature Toggles & Optional System Tools</h3>
-        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Enable or disable optional system tools like Web Terminal Console or System File Editor (saves toggle settings to <code>linnas.data</code>).</p>
-        <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
-                <input type="checkbox" id="toggleConsole" onchange="toggleFeature('console', this.checked)">
-                <span>💻 Enable Interactive Shell Terminal Console</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
-                <input type="checkbox" id="toggleEditor" onchange="toggleFeature('editor', this.checked)">
-                <span>📝 Enable System Configuration File Editor</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
-                <input type="checkbox" id="toggleNeofetch" onchange="toggleFeature('neofetch', this.checked)">
-                <span>📊 Enable Neofetch System Information</span>
-            </label>
-        </div>
-    </div>
-
     <div id="pluginGrid" class="plugin-grid">
         <p style="color: #8b949e;">Scanning installed plugin packages...</p>
     </div>
@@ -99,15 +79,13 @@
     </div>
 
     <script>
+        let featureToggles = {};
+
         async function loadSettings() {
             try {
                 const res = await fetch('/api/settings/get');
                 const data = await res.json();
-                if (data.feature_toggles) {
-                    document.getElementById('toggleConsole').checked = data.feature_toggles['console'] !== false;
-                    document.getElementById('toggleEditor').checked = data.feature_toggles['editor'] !== false;
-                    document.getElementById('toggleNeofetch').checked = data.feature_toggles['neofetch'] === true;
-                }
+                featureToggles = data.feature_toggles || {};
             } catch (err) {
                 console.error('Failed to load feature settings:', err);
             }
@@ -122,6 +100,7 @@
                 });
                 const data = await res.json();
                 if (data.success) {
+                    featureToggles = data.feature_toggles || {};
                     await loadAptPlugins();
                     if (window.parent) {
                         window.parent.postMessage('reload_plugins', '*');
@@ -151,11 +130,13 @@
             grid.innerHTML = '';
 
             plugins.forEach(p => {
+                if (p.id === 'apt') return; // Hide APT card inside APT manager
+
                 const card = document.createElement('div');
                 card.className = 'plugin-card';
 
                 const isDefault = p.default;
-                const isInstalled = p.installed || isDefault;
+                const isInstalled = p.installed;
 
                 let actionBtn = '';
                 if (isDefault) {
@@ -165,6 +146,16 @@
                 } else {
                     actionBtn = `<button class="btn btn-install" onclick="executeAptCmd('${p.id}', 'install_cmd', '${p.name}')">Install Package</button>`;
                 }
+
+                // Check if hidden in sidebar
+                const isHidden = featureToggles[p.id] === false;
+
+                const toggleCheckbox = `
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #8b949e; cursor: pointer; margin-top: 0.8rem;">
+                        <input type="checkbox" ${isHidden ? 'checked' : ''} onchange="toggleFeature('${p.id}', !this.checked)">
+                        <span>Hide / disable in navigation menu</span>
+                    </label>
+                `;
 
                 card.innerHTML = `
                     <div>
@@ -176,7 +167,10 @@
                         </div>
                         <div class="plugin-desc">${p.description}</div>
                     </div>
-                    <div>${actionBtn}</div>
+                    <div>
+                        ${actionBtn}
+                        ${toggleCheckbox}
+                    </div>
                 `;
                 grid.appendChild(card);
             });

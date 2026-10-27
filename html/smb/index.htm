@@ -273,6 +273,7 @@
                     <td>${accessText}</td>
                     <td>${s.read_only ? 'Yes' : 'No'}</td>
                     <td>
+                        <button class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; margin-right: 4px;" onclick="editSharePrompt(${idx})">Edit</button>
                         <button class="btn btn-danger" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="deleteShare(${idx})">Delete</button>
                     </td>
                 `;
@@ -363,6 +364,24 @@
             shares[index].enabled = (shares[index].enabled === false) ? true : false;
             await saveSMBData();
             showOutput(`Share '${shares[index].name}' status set to ${shares[index].enabled ? 'Active' : 'Disabled'}. Restart service to apply.`);
+        }
+
+        async function editSharePrompt(index) {
+            const s = shares[index];
+            const newName = prompt(`Edit share name:`, s.name);
+            if (!newName) return;
+
+            const newPath = prompt(`Edit directory path:`, s.path);
+            if (!newPath) return;
+
+            const newReadOnly = confirm(`Set share as Read-Only? (OK = Read-Only, Cancel = Read/Write)`);
+
+            s.name = newName.trim();
+            s.path = newPath.trim();
+            s.read_only = newReadOnly;
+
+            await saveSMBData();
+            showOutput(`Updated share '${s.name}'. Click "Restart Samba Service" to apply changes.`);
         }
 
         async function addShare() {

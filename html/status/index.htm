@@ -183,41 +183,6 @@
         </table>
     </div>
 
-    <!-- Power Control (Authenticated Only) - Second to last section -->
-    <div class="section auth-only" id="powerSection">
-        <div class="section-title">Power Control & Scheduled Shutdown / Reboot</div>
-        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Execute instant or scheduled power operations on this Debian server.</p>
-
-        <div class="btn-row">
-            <button class="btn btn-danger" onclick="poweroffNow()">Instant Power Off</button>
-            <button class="btn btn-secondary" style="background:#d29922; color:#000;" onclick="rebootNow()">Instant Reboot</button>
-            <button class="btn btn-secondary" onclick="cancelScheduledPower()">Cancel Scheduled Power Tasks</button>
-        </div>
-
-        <div class="form-inline">
-            <label style="font-size: 0.85rem; color: #8b949e;">Schedule Action:</label>
-            <select id="schedAction">
-                <option value="poweroff">Scheduled Power Off</option>
-                <option value="reboot">Scheduled Reboot</option>
-            </select>
-            <label style="font-size: 0.85rem; color: #8b949e;">In Minutes:</label>
-            <input type="number" id="schedMinutes" value="30" min="1" max="1440" style="width: 90px;">
-            <button class="btn btn-secondary" onclick="schedulePowerAction()">Set Schedule Timer</button>
-        </div>
-    </div>
-
-    <!-- Application Boot Service Control (Authenticated Only) - Last section -->
-    <div class="section auth-only" id="bootServiceSection">
-        <div class="section-title">
-            <span>Automatic Application Boot Service</span>
-            <span id="bootServiceBadge" class="badge-inactive">checking...</span>
-        </div>
-        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Configure Debian Server Manager to automatically start in background upon system bootup via systemd service.</p>
-        <div class="btn-row">
-            <button id="enableBootBtn" class="btn" onclick="toggleBootService(true)">Enable Start on Boot</button>
-            <button id="disableBootBtn" class="btn btn-danger" onclick="toggleBootService(false)">Disable Start on Boot</button>
-        </div>
-    </div>
 
     <!-- Floating Output Console Drawer -->
     <div id="stickyConsole" class="sticky-console">

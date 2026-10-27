@@ -66,17 +66,6 @@
            3. Install driver firmware via Debian APT (e.g., <code>apt install firmware-realtek</code> or <code>firmware-linux-nonfree</code>).</p>
     </div>
 
-    <!-- Server System Hostname Section -->
-    <div class="section">
-        <div class="section-title">Server System Hostname</div>
-        <div class="form-row">
-            <div class="form-group" style="max-width: 320px;">
-                <label>System Hostname</label>
-                <input type="text" id="sysHostname" placeholder="debian-server">
-            </div>
-            <button class="btn" style="height: 38px; align-self: flex-end;" onclick="saveSystemHostname()">Set Hostname</button>
-        </div>
-    </div>
 
     <div class="section" id="configSection">
         <div class="section-title">Ethernet Interface Configuration</div>
@@ -261,6 +250,13 @@
                         if (ipv4) {
                             document.getElementById('ipAddr').value = ipv4.local || '';
                             document.getElementById('cidrMask').value = ipv4.prefixlen || '24';
+
+                            // Check dynamic flag to accurately set IP Mode dropdown
+                            if (ipv4.dynamic) {
+                                document.getElementById('ipModeSelect').value = 'dhcp';
+                            } else {
+                                document.getElementById('ipModeSelect').value = 'manual';
+                            }
                         }
                     }
                 }

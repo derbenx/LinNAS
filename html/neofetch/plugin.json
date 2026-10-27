@@ -5,7 +5,7 @@
   "category": "System",
   "default": false,
   "apt_package": "neofetch",
-  "check_cmd": "which neofetch || which fastfetch",
+  "check_cmd": "which neofetch 2>/dev/null || which fastfetch 2>/dev/null",
   "install_sudo": "apt-get update && (apt-get install -y neofetch || apt-get install -y fastfetch)",
   "remove_sudo": "apt-get remove -y neofetch fastfetch",
   "commands": {
