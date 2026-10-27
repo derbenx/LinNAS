@@ -2,5 +2,5 @@
   "port": 8080,
   "auth_enabled": true,
   "username": "admin",
-  "password": "adminpassword"
+  "password_hash": "c7ad44cbad762a5da0a452f9e854fdc1e0e7a52a38015f23f3eab1d80b931dd4"
 }
