@@ -15,216 +15,232 @@
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
         .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
         .form-group label { font-size: 0.85rem; color: #8b949e; }
-        .input-row { display: flex; gap: 8px; }
-        .input-row input { flex: 1; padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
-        .input-row input:focus { border-color: #58a6ff; outline: none; }
+        .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus { border-color: #58a6ff; outline: none; }
 
         .checkbox-group { display: flex; align-items: center; gap: 8px; margin-top: 0.5rem; font-size: 0.9rem; color: #c9d1d9; }
-        .checkbox-group input:disabled + label { color: #484f58; cursor: not-allowed; }
 
-        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
         .btn:hover { background: #2ea043; }
         .btn-secondary { background: #30363d; color: white; }
         .btn-secondary:hover { background: #484f58; }
         .btn-danger { background: #da3633; color: white; }
         .btn-danger:hover { background: #b62324; }
 
-        .switch-btn { padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius: 4px; border: none; cursor: pointer; font-weight: bold; }
-        .switch-enabled { background: #238636; color: white; }
-        .switch-disabled { background: #6e7681; color: white; }
-
         table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
         th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
         th { color: #8b949e; font-weight: 600; background: #1f242d; }
 
-        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+        .path-input-group { display: flex; gap: 0.5rem; }
+        .path-input-group input { flex: 1; }
 
-        /* Modal */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; z-index: 100; }
-        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 550px; max-width: 90%; max-height: 80vh; display: flex; flex-direction: column; padding: 1.2rem; }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-        .file-list { flex: 1; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; height: 300px; }
-        .file-item { padding: 0.4rem 0.6rem; cursor: pointer; font-size: 0.85rem; border-bottom: 1px solid #161b22; display: flex; align-items: center; justify-content: space-between; }
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 10% auto; padding: 1.5rem; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
+        .file-list { max-height: 300px; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; }
+        .file-item { padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #21262d; font-family: monospace; }
         .file-item:hover { background: #1f242d; color: #58a6ff; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
     </style>
 </head>
 <body>
-    <h2>Drives, ISO & VHD Config</h2>
-    <p class="subtitle">Mount system disk partitions, ISO files, or VHD loop files and optionally share them via Samba.</p>
+    <h2>Local Drives, ISO & VHD Image Mount Manager</h2>
+    <p class="subtitle">Mount physical disk partitions, ISO optical disc images, or VHD virtual disk containers into your server filesystem.</p>
 
-    <!-- Section 1: Mount ISO / VHD File -->
+    <!-- Physical Disk Partitions -->
     <div class="section">
-        <div class="section-title">Mount File Image (ISO / VHD)</div>
-        <div class="form-grid">
-            <div class="form-group">
-                <label>File Path on Server (.iso, .vhd, .img)</label>
-                <div class="input-row">
-                    <input type="text" id="filePath" placeholder="/mnt/storage/disk.iso">
-                    <button class="btn btn-secondary" onclick="openBrowser('filePath')">Browse...</button>
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Mount Point Target</label>
-                <div class="input-row">
-                    <input type="text" id="mountPoint" placeholder="/media/iso_mount">
-                    <button class="btn btn-secondary" onclick="openBrowser('mountPoint')">Browse...</button>
-                </div>
-            </div>
-        </div>
-        <div class="checkbox-group">
-            <input type="checkbox" id="addToSmb">
-            <label for="addToSmb" id="smbLabel">Automatically share this mount point via SMB</label>
-        </div>
-        <div class="form-group" id="smbNameGroup" style="margin-top: 0.8rem; max-width: 300px; display: none;">
-            <label>SMB Share Name</label>
-            <input type="text" id="smbShareName" placeholder="IsoShare">
-        </div>
-        <br>
-        <button class="btn" onclick="mountFileImage()">Mount Image</button>
-    </div>
-
-    <!-- Section 2: Local Storage Disks -->
-    <div class="section">
-        <div class="section-title">Detected System Disks & Partitions</div>
-        <button class="btn btn-secondary" style="margin-bottom: 1rem;" onclick="refreshDrives()">Refresh Disks</button>
+        <div class="section-title">Physical Disk Devices & Partitions</div>
+        <button class="btn btn-secondary" onclick="loadDriveList()">Refresh Drives List</button>
         <table>
             <thead>
                 <tr>
                     <th>Device</th>
                     <th>Type</th>
-                    <th>Filesystem</th>
+                    <th>FileSystem</th>
+                    <th>Label / Volume ID</th>
                     <th>Size</th>
+                    <th>UUID</th>
                     <th>Mount Point</th>
-                    <th>Status / Toggle</th>
                     <th>Action</th>
                 </tr>
             </thead>
-            <tbody id="driveTableBody">
-                <tr><td colspan="7" style="text-align: center; color: #8b949e;">Click Refresh Disks to scan system partitions.</td></tr>
+            <tbody id="drivesTableBody">
+                <tr><td colspan="8" style="text-align: center; color: #8b949e;">Detecting storage devices...</td></tr>
             </tbody>
         </table>
     </div>
 
-    <!-- Modal Browser -->
-    <div id="browseModal" class="modal">
+    <!-- ISO & VHD Mount Form -->
+    <div class="section">
+        <div class="section-title">Mount Virtual Disk Image (ISO / VHD)</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Image File Path</label>
+                <div class="path-input-group">
+                    <input type="text" id="imgPath" placeholder="/var/downloads/debian.iso">
+                    <button class="btn btn-secondary" onclick="openFileBrowser()">Browse...</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Target Mount Point</label>
+                <input type="text" id="imgMount" placeholder="/mnt/iso_image">
+            </div>
+            <div class="form-group">
+                <label>Format Type</label>
+                <select id="imgType">
+                    <option value="iso">ISO Image (.iso)</option>
+                    <option value="vhd">VHD / Virtual Disk (.vhd, .vhdx, .img, .raw)</option>
+                </select>
+            </div>
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="autoSmb">
+            <label for="autoSmb">Automatically share mount folder via SMB Network Share</label>
+        </div>
+        <br>
+        <button class="btn" onclick="mountImage()">Mount Image File</button>
+    </div>
+
+    <!-- File Browser Modal -->
+    <div id="fileModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 id="modalPath">/</h3>
-                <button class="btn btn-secondary" onclick="closeBrowser()">X</button>
+                <span id="modalPath">/</span>
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeModal()">✕</button>
             </div>
-            <div class="file-list" id="fileListContainer"></div>
-            <div style="margin-top: 1rem; display: flex; justify-content: space-between;">
-                <button class="btn btn-secondary" onclick="selectCurrentFolder()">Select Current Folder</button>
-                <button class="btn btn-secondary" onclick="closeBrowser()">Cancel</button>
-            </div>
+            <div id="fileList" class="file-list"></div>
         </div>
     </div>
 
     <div id="outputBox" class="output-box"></div>
 
     <script>
-        let isSmbInstalled = false;
-        let activeInputId = '';
-        let currentBrowsePath = '/';
+        async function loadDriveList() {
+            const tbody = document.getElementById('drivesTableBody');
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #8b949e;">Scanning disks...</td></tr>';
 
-        async function checkSmbStatus() {
             try {
-                const res = await fetch('/api/plugins');
-                const plugins = await res.json();
-                const smbPlugin = plugins.find(p => p.id === 'smb');
-                isSmbInstalled = smbPlugin && smbPlugin.installed;
-
-                const checkbox = document.getElementById('addToSmb');
-                const label = document.getElementById('smbLabel');
-
-                if (!isSmbInstalled) {
-                    checkbox.disabled = true;
-                    checkbox.checked = false;
-                    label.innerText = 'Automatically share this mount point via SMB (Requires SMB package installed)';
-                } else {
-                    checkbox.disabled = false;
-                    label.innerText = 'Automatically share this mount point via SMB';
-                }
-            } catch (err) {
-                console.error('Error checking SMB status:', err);
-            }
-        }
-
-        document.getElementById('addToSmb').addEventListener('change', (e) => {
-            document.getElementById('smbNameGroup').style.display = e.target.checked ? 'block' : 'none';
-        });
-
-        /* File Browser */
-        function openBrowser(inputId) {
-            activeInputId = inputId;
-            document.getElementById('browseModal').style.display = 'flex';
-            loadDir('/');
-        }
-
-        function closeBrowser() {
-            document.getElementById('browseModal').style.display = 'none';
-        }
-
-        async function loadDir(path) {
-            currentBrowsePath = path;
-            document.getElementById('modalPath').innerText = path;
-            try {
-                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(path)}`);
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'drive_mount', cmd_key: 'list_drives_cmd', args: {} })
+                });
                 const data = await res.json();
-                renderFileList(data.parent, data.items || []);
+                if (!data.success) {
+                    tbody.innerHTML = `<tr><td colspan="8" style="color:#f85149;">Failed to scan disks: ${data.error}</td></tr>`;
+                    return;
+                }
+
+                const parsed = JSON.parse(data.output);
+                tbody.innerHTML = '';
+
+                if (!parsed.blockdevices || parsed.blockdevices.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #8b949e;">No block devices found.</td></tr>';
+                    return;
+                }
+
+                parsed.blockdevices.forEach(dev => {
+                    renderDeviceRow(dev, tbody, '');
+                });
             } catch (err) {
-                console.error('Failed to browse dir:', err);
+                tbody.innerHTML = `<tr><td colspan="8" style="color:#f85149;">Error scanning drives: ${err.message}</td></tr>`;
             }
         }
 
-        function renderFileList(parent, items) {
-            const container = document.getElementById('fileListContainer');
-            container.innerHTML = '';
+        function renderDeviceRow(dev, tbody, indent) {
+            const tr = document.createElement('tr');
+            const devName = dev.name ? '/dev/' + dev.name : '-';
+            const fstype = dev.fstype || '-';
+            const label = dev.label || '-';
+            const uuid = dev.uuid || '-';
+            const mount = dev.mountpoint || dev.mountpoints?.join(', ') || '-';
+            const size = dev.size || '-';
+            const type = dev.type || '-';
 
-            if (currentBrowsePath !== '/') {
-                const parentDiv = document.createElement('div');
-                parentDiv.className = 'file-item';
-                parentDiv.innerHTML = `<strong>📁 .. (Parent Directory)</strong>`;
-                parentDiv.onclick = () => loadDir(parent);
-                container.appendChild(parentDiv);
+            let actionBtn = '-';
+            if (dev.type === 'part' || dev.type === 'disk') {
+                if (dev.mountpoint) {
+                    actionBtn = `<button class="btn btn-danger" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="unmountPartition('${dev.mountpoint}')">Unmount</button>`;
+                } else {
+                    actionBtn = `<button class="btn" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="mountPartition('${devName}')">Mount</button>`;
+                }
             }
 
-            items.forEach(item => {
-                const div = document.createElement('div');
-                div.className = 'file-item';
-                div.innerHTML = `<span>${item.is_dir ? '📁' : '📄'} ${item.name}</span>`;
-                div.onclick = () => {
-                    if (item.is_dir) {
-                        loadDir(item.path);
-                    } else {
-                        document.getElementById(activeInputId).value = item.path;
-                        closeBrowser();
-                    }
-                };
-                container.appendChild(div);
-            });
+            tr.innerHTML = `
+                <td><strong>${indent}${devName}</strong></td>
+                <td>${type}</td>
+                <td>${fstype}</td>
+                <td><strong style="color: #58a6ff;">${label}</strong></td>
+                <td>${size}</td>
+                <td><small style="color: #8b949e; font-family: monospace;">${uuid}</small></td>
+                <td>${mount !== '-' ? `<span style="color:#7ee787;">${mount}</span>` : 'Unmounted'}</td>
+                <td>${actionBtn}</td>
+            `;
+            tbody.appendChild(tr);
+
+            if (dev.children && dev.children.length > 0) {
+                dev.children.forEach(child => renderDeviceRow(child, tbody, '└─ '));
+            }
         }
 
-        function selectCurrentFolder() {
-            document.getElementById(activeInputId).value = currentBrowsePath;
-            closeBrowser();
+        async function mountPartition(device) {
+            const target = prompt(`Enter target mount point folder for ${device}:`, `/mnt/${device.replace('/dev/', '')}`);
+            if (!target) return;
+
+            showOutput(`Mounting ${device} to ${target}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drive_mount',
+                        cmd_key: 'mount_disk_sudo',
+                        args: { device, mountpoint: target }
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Successfully mounted ${device} to ${target}` : `Mount error: ${data.error}\n${data.output}`);
+                loadDriveList();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
         }
 
-        async function mountFileImage() {
-            const filePath = document.getElementById('filePath').value.trim();
-            const mountPoint = document.getElementById('mountPoint').value.trim();
-            const addToSmb = document.getElementById('addToSmb').checked && isSmbInstalled;
-            let shareName = document.getElementById('smbShareName').value.trim();
+        async function unmountPartition(mountpoint) {
+            showOutput(`Unmounting ${mountpoint}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drive_mount',
+                        cmd_key: 'unmount_disk_sudo',
+                        args: { mountpoint }
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Unmounted ${mountpoint}` : `Unmount error: ${data.error}\n${data.output}`);
+                loadDriveList();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
 
-            if (!filePath || !mountPoint) {
-                showOutput('Please provide both file path and mount point.');
+        async function mountImage() {
+            const filepath = document.getElementById('imgPath').value.trim();
+            const mountpoint = document.getElementById('imgMount').value.trim();
+            const type = document.getElementById('imgType').value;
+            const autoSmb = document.getElementById('autoSmb').checked;
+
+            if (!filepath || !mountpoint) {
+                showOutput('Please enter image file path and target mount point.');
                 return;
             }
 
-            const ext = filePath.split('.').pop().toLowerCase();
-            const cmdKey = (ext === 'iso') ? 'mount_iso_sudo' : 'mount_vhd_sudo';
-
-            showOutput(`Auto-detected type [${ext.toUpperCase()}]. Mounting ${filePath} to ${mountPoint}...`);
+            const cmdKey = (type === 'vhd') ? 'mount_vhd_sudo' : 'mount_iso_sudo';
+            showOutput(`Mounting ${type.toUpperCase()} image ${filepath}...`);
 
             try {
                 const res = await fetch('/api/plugin/exec', {
@@ -233,168 +249,98 @@
                     body: JSON.stringify({
                         plugin: 'drive_mount',
                         cmd_key: cmdKey,
-                        args: { filepath: filePath, mountpoint: mountPoint }
+                        args: { filepath, mountpoint }
                     })
                 });
                 const data = await res.json();
                 if (data.success) {
-                    let msg = `Successfully mounted image at ${mountPoint}.\n` + data.output;
-                    if (addToSmb) {
-                        if (!shareName) {
-                            shareName = mountPoint.split('/').pop() || 'MountedShare';
-                        }
-                        const smbRes = await addSMBShare(shareName, mountPoint);
-                        msg += '\n' + smbRes;
+                    showOutput(`Image mounted successfully to ${mountpoint}`);
+                    if (autoSmb) {
+                        const shareName = filepath.split('/').pop().replace(/[^a-zA-Z0-9_]/g, '_');
+                        await addSmbShare(mountpoint, shareName);
                     }
-                    showOutput(msg);
+                    loadDriveList();
                 } else {
-                    showOutput(`Failed to mount image: ${data.error}\n${data.output}`);
+                    showOutput(`Mount failed: ${data.error}\n${data.output}`);
                 }
             } catch (err) {
-                showOutput('Error: ' + err.message);
+                showOutput('Execution error: ' + err.message);
             }
         }
 
-        async function addSMBShare(name, path) {
+        async function addSmbShare(path, name) {
             try {
-                const dataRes = await fetch('/api/plugin/data?plugin=smb');
-                let smbData = await dataRes.json();
-                if (!Array.isArray(smbData.shares)) smbData.shares = [];
-
-                let finalName = name;
-                let count = 2;
-                while (smbData.shares.some(s => s.name.toLowerCase() === finalName.toLowerCase())) {
-                    finalName = `${name}${count}`;
-                    count++;
-                }
-
-                smbData.shares.push({ name: finalName, path: path, comment: 'Auto-added drive share', read_only: false, enabled: true });
+                const res = await fetch('/api/plugin/data?plugin=smb');
+                const data = await res.json();
+                const shares = data.shares || [];
+                shares.push({ name: name, path: path, comment: 'Mounted image share', read_only: false, enabled: true });
 
                 await fetch('/api/plugin/data?plugin=smb', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(smbData)
+                    body: JSON.stringify({ shares: shares })
                 });
-
-                return `SMB Share '${finalName}' added successfully for path ${path}.`;
+                showOutput(`Auto-added SMB network share '${name}' for path ${path}`);
             } catch (err) {
-                return `Mounted, but failed to create SMB share: ${err.message}`;
+                console.error('Failed to add SMB share:', err);
             }
         }
 
-        async function refreshDrives() {
-            showOutput('Scanning system disks...');
+        /* File Browser Modal */
+        let currentBrowserPath = '/';
+
+        async function openFileBrowser(path) {
+            currentBrowserPath = path || currentBrowserPath;
+            document.getElementById('modalPath').innerText = currentBrowserPath;
+            document.getElementById('fileModal').style.display = 'block';
+
             try {
-                const res = await fetch('/api/plugin/exec', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        plugin: 'drive_mount',
-                        cmd_key: 'list_drives_cmd',
-                        args: {}
-                    })
-                });
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentBrowserPath)}`);
                 const data = await res.json();
-                if (data.success) {
-                    let parsed = JSON.parse(data.output);
-                    renderDriveTable(parsed.blockdevices || []);
-                    showOutput('Disk scan complete.');
-                } else {
-                    showOutput('Failed to list disks: ' + data.error);
+                const container = document.getElementById('fileList');
+                container.innerHTML = '';
+
+                if (data.parent && data.parent !== currentBrowserPath) {
+                    const upDiv = document.createElement('div');
+                    upDiv.className = 'file-item';
+                    upDiv.innerText = '📁 .. (Parent Directory)';
+                    upDiv.onclick = () => openFileBrowser(data.parent);
+                    container.appendChild(upDiv);
+                }
+
+                if (data.items) {
+                    data.items.forEach(item => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'file-item';
+                        itemDiv.innerText = (item.is_dir ? '📁 ' : '📄 ') + item.name;
+                        itemDiv.onclick = () => {
+                            if (item.is_dir) {
+                                openFileBrowser(item.path);
+                            } else {
+                                selectFile(item.path);
+                            }
+                        };
+                        container.appendChild(itemDiv);
+                    });
                 }
             } catch (err) {
-                showOutput('Disk scan error: ' + err.message);
+                showOutput('Directory listing error: ' + err.message);
             }
         }
 
-        function renderDriveTable(devices) {
-            const tbody = document.getElementById('driveTableBody');
-            tbody.innerHTML = '';
-
-            function processDev(dev) {
-                const tr = document.createElement('tr');
-                const devPath = `/dev/${dev.name}`;
-                const mnt = dev.mountpoint || '-';
-
-                let actionBtn = '';
-                let statusToggle = '';
-
-                if (dev.mountpoint) {
-                    statusToggle = `<button class="switch-btn switch-enabled" onclick="toggleDriveMount('${devPath}', '${dev.mountpoint}', false)">Mounted (Click to Pause)</button>`;
-                    actionBtn = `<button class="btn btn-danger" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="unmountDev('${dev.mountpoint}')">Unmount</button>`;
-                } else if (dev.fstype) {
-                    statusToggle = `<button class="switch-btn switch-disabled" onclick="promptMountDev('${devPath}')">Unmounted (Click to Mount)</button>`;
-                    actionBtn = `<button class="btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="promptMountDev('${devPath}')">Mount</button>`;
-                } else {
-                    statusToggle = '<span style="color: #6e7681;">Unformatted</span>';
-                }
-
-                tr.innerHTML = `
-                    <td><strong>${devPath}</strong></td>
-                    <td>${dev.type || ''}</td>
-                    <td>${dev.fstype || 'N/A'}</td>
-                    <td>${dev.size || ''}</td>
-                    <td>${mnt}</td>
-                    <td>${statusToggle}</td>
-                    <td>${actionBtn}</td>
-                `;
-                tbody.appendChild(tr);
-
-                if (dev.children) {
-                    dev.children.forEach(processDev);
-                }
-            }
-
-            devices.forEach(processDev);
-        }
-
-        async function toggleDriveMount(devPath, mnt, shouldMount) {
-            if (!shouldMount) {
-                await unmountDev(mnt);
+        function selectFile(path) {
+            document.getElementById('imgPath').value = path;
+            const ext = path.split('.').pop().toLowerCase();
+            if (['vhd', 'vhdx', 'img', 'raw'].includes(ext)) {
+                document.getElementById('imgType').value = 'vhd';
             } else {
-                await promptMountDev(devPath);
+                document.getElementById('imgType').value = 'iso';
             }
+            closeModal();
         }
 
-        async function promptMountDev(devPath) {
-            const mnt = prompt(`Enter mount path for ${devPath}:`, `/mnt/${devPath.split('/').pop()}`);
-            if (!mnt) return;
-
-            try {
-                const res = await fetch('/api/plugin/exec', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        plugin: 'drive_mount',
-                        cmd_key: 'mount_disk_sudo',
-                        args: { device: devPath, mountpoint: mnt }
-                    })
-                });
-                const data = await res.json();
-                showOutput(data.success ? `Mounted ${devPath} to ${mnt}` : `Mount failed: ${data.error}`);
-                refreshDrives();
-            } catch (err) {
-                showOutput('Mount error: ' + err.message);
-            }
-        }
-
-        async function unmountDev(mnt) {
-            try {
-                const res = await fetch('/api/plugin/exec', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        plugin: 'drive_mount',
-                        cmd_key: 'unmount_disk_sudo',
-                        args: { mountpoint: mnt }
-                    })
-                });
-                const data = await res.json();
-                showOutput(data.success ? `Unmounted ${mnt}` : `Unmount failed: ${data.error}`);
-                refreshDrives();
-            } catch (err) {
-                showOutput('Unmount error: ' + err.message);
-            }
+        function closeModal() {
+            document.getElementById('fileModal').style.display = 'none';
         }
 
         function showOutput(text) {
@@ -403,9 +349,7 @@
             box.innerText = text;
         }
 
-        window.onload = () => {
-            checkSmbStatus();
-        };
+        window.onload = loadDriveList;
     </script>
 </body>
 </html>

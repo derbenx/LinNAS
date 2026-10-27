@@ -3,186 +3,130 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Debian Server Control Panel</title>
+    <title>Debian Server Manager</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background-color: #1a1e24; color: #e1e6ed; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        body { display: flex; height: 100vh; background: #0d1117; color: #c9d1d9; overflow: hidden; }
 
-        /* Top Header */
-        header { background: #21262d; border-bottom: 1px solid #30363d; height: 50px; display: flex; align-items: center; justify-content: space-between; padding: 0 1.5rem; flex-shrink: 0; }
-        .brand { font-size: 1.1rem; font-weight: bold; color: #58a6ff; display: flex; align-items: center; gap: 8px; }
-        .user-controls { display: flex; align-items: center; gap: 15px; }
-        .privilege-badge { font-size: 0.75rem; padding: 3px 8px; border-radius: 12px; font-weight: bold; }
-        .badge-root { background: rgba(218, 54, 51, 0.2); color: #ff7b72; border: 1px solid rgba(218, 54, 51, 0.4); }
-        .badge-user { background: rgba(210, 153, 34, 0.2); color: #d29922; border: 1px solid rgba(210, 153, 34, 0.4); }
-        .logout-btn { background: #23272e; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
-        .logout-btn:hover { background: #30363d; color: #f0f6fc; }
+        /* Sidebar Styling */
+        #sidebar { width: 260px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 1.2rem; font-size: 1.1rem; font-weight: bold; color: #58a6ff; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
+        .plugin-category { padding: 0.6rem 1rem 0.3rem 1rem; font-size: 0.75rem; text-transform: uppercase; color: #8b949e; letter-spacing: 0.05rem; }
+        .nav-list { list-style: none; overflow-y: auto; flex: 1; }
+        .nav-item { padding: 0.75rem 1.2rem; cursor: pointer; color: #c9d1d9; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; transition: all 0.2s; }
+        .nav-item:hover { background: #1f242d; color: #fff; }
+        .nav-item.active { background: #1f242d; color: #58a6ff; border-left-color: #58a6ff; font-weight: 600; }
 
-        /* Main Container */
-        .layout { display: flex; flex: 1; height: calc(100vh - 50px); }
+        .user-status { padding: 0.8rem; border-top: 1px solid #30363d; font-size: 0.8rem; color: #8b949e; display: flex; justify-content: space-between; align-items: center; background: #0d1117; }
+        .logout-btn { color: #f85149; cursor: pointer; border: none; background: none; font-size: 0.8rem; font-weight: bold; }
 
-        /* Sidebar Navigation */
-        aside { width: 240px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
-        .nav-section { padding: 0.8rem 0; border-bottom: 1px solid #21262d; }
-        .nav-section-title { padding: 0 1rem 0.4rem; font-size: 0.75rem; text-transform: uppercase; color: #8b949e; letter-spacing: 0.05em; font-weight: 600; }
-        .nav-item { display: flex; align-items: center; gap: 10px; padding: 0.6rem 1rem; color: #c9d1d9; text-decoration: none; font-size: 0.9rem; cursor: pointer; transition: background 0.15s; }
-        .nav-item:hover { background: #21262d; color: #58a6ff; }
-        .nav-item.active { background: #1f2937; color: #58a6ff; border-left: 3px solid #58a6ff; font-weight: 600; }
+        /* Main Content Frame */
+        #content-area { flex: 1; display: flex; flex-direction: column; background: #0d1117; }
+        #plugin-frame { width: 100%; height: 100%; border: none; }
 
-        /* Content Area */
-        main { flex: 1; background: #0d1117; display: flex; flex-direction: column; position: relative; overflow-y: auto; }
-        iframe { width: 100%; height: 100%; border: none; background: #0d1117; }
-
-        .welcome-screen { padding: 2.5rem; color: #c9d1d9; }
-        .welcome-screen h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: #58a6ff; }
-        .welcome-screen p { margin-bottom: 1.5rem; color: #8b949e; }
-
-        .sudo-info-box { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.2rem; margin-bottom: 2rem; }
-        .sudo-info-box h3 { font-size: 1rem; color: #d29922; margin-bottom: 0.5rem; }
-        .sudo-info-box pre { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 0.5rem; white-space: pre-wrap; }
-
-        .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.2rem; }
-        .card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1.2rem; cursor: pointer; transition: border-color 0.2s, transform 0.1s; }
-        .card:hover { border-color: #58a6ff; transform: translateY(-2px); }
-        .card h3 { font-size: 1.1rem; color: #f0f6fc; margin-bottom: 0.4rem; }
-        .card p { font-size: 0.85rem; color: #8b949e; }
+        .badge-root { background: #238636; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
+        .badge-user { background: #d29922; color: black; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
     </style>
 </head>
 <body>
-    <header>
-        <div class="brand">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-            Debian Server Manager
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <span>Debian Server</span>
+            <span id="rootBadge" class="badge-user">User</span>
         </div>
-        <div class="user-controls">
-            <span id="privilegeBadge" class="privilege-badge">Checking...</span>
+        <div id="navList" class="nav-list"></div>
+        <div class="user-status">
+            <span id="userInfo">Logged In</span>
             <button class="logout-btn" onclick="logout()">Logout</button>
         </div>
-    </header>
+    </div>
 
-    <div class="layout">
-        <aside>
-            <div class="nav-section">
-                <div class="nav-section-title">General</div>
-                <a class="nav-item active" onclick="showDashboard()">
-                    <span>🏠 Dashboard</span>
-                </a>
-            </div>
-
-            <div class="nav-section">
-                <div class="nav-section-title">Installed Plugins</div>
-                <div id="installedPluginsNav">
-                    <!-- Dynamically populated -->
-                </div>
-            </div>
-
-            <div class="nav-section">
-                <div class="nav-section-title">Management</div>
-                <div id="systemPluginsNav">
-                    <!-- APT Installer & standard tools -->
-                </div>
-            </div>
-        </aside>
-
-        <main id="mainContent">
-            <iframe id="pluginIframe" style="display: none;"></iframe>
-            <div id="dashboardView" class="welcome-screen">
-                <h1>Server Control Overview</h1>
-                <p>Select a plugin from the sidebar to manage system services, storage, and network settings.</p>
-
-                <div id="sudoGuideBox" class="sudo-info-box" style="display: none;">
-                    <h3>⚡ Privilege Separation (Running as Non-Root User)</h3>
-                    <p style="font-size: 0.85rem; color: #c9d1d9;">To execute system commands tagged with <code>_root</code> or <code>_root_cmd</code> without prompt errors, add this rule to <code>/etc/sudoers.d/debian-server-manager</code>:</p>
-                    <pre id="sudoersSnippet"># Allow server user to execute root commands passwordless
-debian-user ALL=(ALL) NOPASSWD: ALL</pre>
-                </div>
-
-                <div class="card-grid" id="dashboardCards">
-                    <!-- Plugin quick cards -->
-                </div>
-            </div>
-        </main>
+    <div id="content-area">
+        <iframe id="plugin-frame" src="about:blank"></iframe>
     </div>
 
     <script>
-        let allPlugins = [];
+        let installedPlugins = [];
 
-        async function init() {
+        async function checkAuth() {
             try {
-                const authRes = await fetch('/api/auth/status');
-                const authData = await authRes.json();
-
-                const badge = document.getElementById('privilegeBadge');
-                if (authData.is_root) {
-                    badge.className = 'privilege-badge badge-root';
-                    badge.innerText = 'Root Mode';
-                    document.getElementById('sudoGuideBox').style.display = 'none';
-                } else {
-                    badge.className = 'privilege-badge badge-user';
-                    badge.innerText = 'Sudo / User Mode';
-                    document.getElementById('sudoGuideBox').style.display = 'block';
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+                if (data.auth_enabled && !data.logged_in) {
+                    window.location.href = '/login.htm';
+                    return;
                 }
-
-                await loadPlugins();
+                const badge = document.getElementById('rootBadge');
+                if (data.is_root) {
+                    badge.innerText = 'Root Mode';
+                    badge.className = 'badge-root';
+                } else {
+                    badge.innerText = 'Sudo / User';
+                    badge.className = 'badge-user';
+                }
             } catch (err) {
-                console.error('Failed to initialize:', err);
+                console.error('Auth check error:', err);
             }
         }
 
         async function loadPlugins() {
             try {
                 const res = await fetch('/api/plugins');
-                allPlugins = await res.json();
-                renderNav();
-                renderDashboardCards();
+                installedPlugins = await res.json();
+                renderNavigation();
             } catch (err) {
                 console.error('Failed to load plugins:', err);
             }
         }
 
-        function renderNav() {
-            const installedNav = document.getElementById('installedPluginsNav');
-            const systemNav = document.getElementById('systemPluginsNav');
-            installedNav.innerHTML = '';
-            systemNav.innerHTML = '';
+        window.loadPlugins = loadPlugins;
 
-            allPlugins.forEach(p => {
-                if (p.id === 'apt') {
-                    systemNav.appendChild(createNavItem(p));
-                    return;
-                }
+        window.addEventListener('message', function(event) {
+            if (event.data === 'reload_plugins') {
+                loadPlugins();
+            }
+        });
 
-                if (p.installed) {
-                    installedNav.appendChild(createNavItem(p));
-                }
-            });
-        }
+        function renderNavigation() {
+            const nav = document.getElementById('navList');
+            nav.innerHTML = '';
 
-        function createNavItem(plugin) {
-            const a = document.createElement('a');
-            a.className = 'nav-item';
-            a.id = `nav-${plugin.id}`;
-            a.innerHTML = `<span>${getPluginIcon(plugin.id)} ${plugin.name}</span>`;
-            a.onclick = () => openPlugin(plugin.id);
-            return a;
-        }
+            const activeItem = document.querySelector('.nav-item.active')?.dataset?.id || 'overview';
 
-        function renderDashboardCards() {
-            const cardsContainer = document.getElementById('dashboardCards');
-            cardsContainer.innerHTML = '';
+            // Add Default System Overview
+            const overviewItem = document.createElement('div');
+            overviewItem.className = `nav-item ${activeItem === 'overview' ? 'active' : ''}`;
+            overviewItem.dataset.id = 'overview';
+            overviewItem.innerHTML = '📊 Overview & Dashboard';
+            overviewItem.onclick = () => loadDashboard();
+            nav.appendChild(overviewItem);
 
-            allPlugins.forEach(p => {
-                if (p.installed) {
-                    const card = document.createElement('div');
-                    card.className = 'card';
-                    card.onclick = () => openPlugin(p.id);
-                    card.innerHTML = `
-                        <h3>${getPluginIcon(p.id)} ${p.name}</h3>
-                        <p>${p.description || 'Manage service configuration and settings.'}</p>
-                    `;
-                    cardsContainer.appendChild(card);
+            // Group Plugins by Category
+            const categories = {};
+            installedPlugins.forEach(p => {
+                // Show plugin if default OR if installed
+                if (p.default || p.installed) {
+                    const cat = p.category || 'Tools';
+                    if (!categories[cat]) categories[cat] = [];
+                    categories[cat].push(p);
                 }
             });
+
+            for (const [catName, plugins] of Object.entries(categories)) {
+                const catHeader = document.createElement('div');
+                catHeader.className = 'plugin-category';
+                catHeader.innerText = catName;
+                nav.appendChild(catHeader);
+
+                plugins.forEach(p => {
+                    const item = document.createElement('div');
+                    item.className = `nav-item ${activeItem === p.id ? 'active' : ''}`;
+                    item.dataset.id = p.id;
+                    item.innerHTML = getPluginIcon(p.id) + ' ' + p.name;
+                    item.onclick = () => openPlugin(p.id, item);
+                    nav.appendChild(item);
+                });
+            }
         }
 
         function getPluginIcon(id) {
@@ -191,37 +135,61 @@ debian-user ALL=(ALL) NOPASSWD: ALL</pre>
                 'smb': '📁',
                 'veracrypt': '🔒',
                 'drive_mount': '💾',
-                'dns': '🌐',
-                'dhcp': '📡',
+                'dns': '🛡️',
+                'dhcp': '🌐',
                 'lan': '🔌',
-                'wifi': '📶'
+                'wifi': '📶',
+                'apache': '🌐',
+                'mysql': '🗄️',
+                'php': '🐘'
             };
             return icons[id] || '⚙️';
         }
 
-        function openPlugin(id) {
-            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-            const activeNav = document.getElementById(`nav-${id}`);
-            if (activeNav) activeNav.classList.add('active');
-
-            const iframe = document.getElementById('pluginIframe');
-            const dashboard = document.getElementById('dashboardView');
-
-            iframe.src = `/${id}/index.htm`;
-            iframe.style.display = 'block';
-            dashboard.style.display = 'none';
+        function openPlugin(pluginId, el) {
+            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            if (el) el.classList.add('active');
+            document.getElementById('plugin-frame').src = `/${pluginId}/index.htm`;
         }
 
-        function showDashboard() {
-            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-            document.querySelector('.nav-item').classList.add('active');
+        function loadDashboard() {
+            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            const overviewNav = document.querySelector('[data-id="overview"]');
+            if (overviewNav) overviewNav.classList.add('active');
 
-            const iframe = document.getElementById('pluginIframe');
-            const dashboard = document.getElementById('dashboardView');
-
-            iframe.style.display = 'none';
-            dashboard.style.display = 'block';
-            loadPlugins();
+            const frame = document.getElementById('plugin-frame');
+            frame.srcdoc = `
+                <html>
+                <head>
+                    <style>
+                        body { background: #0d1117; color: #c9d1d9; font-family: 'Segoe UI', sans-serif; padding: 2rem; }
+                        h1 { color: #58a6ff; margin-bottom: 0.5rem; }
+                        p { color: #8b949e; margin-bottom: 2rem; }
+                        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.2rem; }
+                        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; transition: transform 0.2s; }
+                        .card:hover { border-color: #58a6ff; transform: translateY(-2px); }
+                        .card h3 { color: #f0f6fc; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 8px; }
+                        .card p { font-size: 0.85rem; color: #8b949e; margin: 0; }
+                    </style>
+                </head>
+                <body>
+                    <h1>Debian Server Control Center</h1>
+                    <p>Select a plugin module from the sidebar to configure server options, services, and hardware devices.</p>
+                    <div class="grid">
+                        ${installedPlugins.map(p => `
+                            <div class="card">
+                                <h3>${getPluginIcon(p.id)} ${p.name}</h3>
+                                <p>${p.description}</p>
+                                <br>
+                                <small style="color: ${p.installed || p.default ? '#7ee787' : '#f85149'};">
+                                    ${p.default ? 'System Core' : (p.installed ? '✓ Active / Installed' : '✗ Not Installed')}
+                                </small>
+                            </div>
+                        `).join('')}
+                    </div>
+                </body>
+                </html>
+            `;
         }
 
         async function logout() {
@@ -229,7 +197,11 @@ debian-user ALL=(ALL) NOPASSWD: ALL</pre>
             window.location.href = '/login.htm';
         }
 
-        window.onload = init;
+        window.onload = async () => {
+            await checkAuth();
+            await loadPlugins();
+            loadDashboard();
+        };
     </script>
 </body>
 </html>

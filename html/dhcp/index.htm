@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>DHCP Config</title>
+    <title>DHCP Server Config</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
@@ -10,110 +10,176 @@
         p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
 
         .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
-        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+
+        .status-badge { padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+        .status-running { background: #238636; color: #fff; }
+        .status-stopped { background: #da3633; color: #fff; }
+        .status-unknown { background: #6e7681; color: #fff; }
 
         .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
         .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
         .form-group label { font-size: 0.85rem; color: #8b949e; }
-        .form-group input { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
         .form-group input:focus { border-color: #58a6ff; outline: none; }
 
-        .checkbox-group { display: flex; align-items: center; gap: 8px; margin-bottom: 1rem; font-size: 0.9rem; color: #c9d1d9; }
+        .checkbox-group { display: flex; align-items: center; gap: 8px; margin-top: 0.5rem; font-size: 0.9rem; color: #c9d1d9; font-weight: 600; }
 
-        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn-row { display: flex; gap: 0.8rem; margin-top: 1rem; }
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
         .btn:hover { background: #2ea043; }
         .btn-secondary { background: #30363d; color: white; }
         .btn-secondary:hover { background: #484f58; }
 
-        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; white-space: pre-wrap; }
     </style>
 </head>
 <body>
-    <h2>DHCP Server Configuration</h2>
-    <p class="subtitle">Configure automatic local IP address allocation, subnet masks, default gateway, and lease durations.</p>
+    <h2>DHCP Server Config (dnsmasq)</h2>
+    <p class="subtitle">Configure automatic local IP address assignment pools, subnet ranges, and default gateway options.</p>
 
+    <!-- Status Overview -->
     <div class="section">
-        <div class="section-title">DHCP Pool Settings</div>
+        <div class="section-title">
+            <span>Service Status</span>
+            <span id="serviceBadge" class="status-badge status-unknown">Checking Status...</span>
+        </div>
+        <p id="statusDesc" style="font-size: 0.9rem; color: #8b949e;">Querying system service state...</p>
+    </div>
 
-        <div class="checkbox-group">
-            <input type="checkbox" id="dhcpEnabled" checked>
-            <label for="dhcpEnabled">Enable DHCP Server</label>
+    <!-- Form Section -->
+    <div class="section">
+        <div class="section-title">DHCP Server Settings</div>
+
+        <div class="checkbox-group" style="margin-bottom: 1.5rem;">
+            <input type="checkbox" id="dhcpEnabled">
+            <label for="dhcpEnabled">Enable DHCP Service (Automatic IP Allocation)</label>
         </div>
 
         <div class="form-grid">
             <div class="form-group">
                 <label>Network Interface</label>
-                <input type="text" id="interface" placeholder="eth0 / enp3s0">
+                <input type="text" id="iface" placeholder="eth0">
             </div>
             <div class="form-group">
-                <label>Start IP Address</label>
+                <label>Subnet Netmask</label>
+                <input type="text" id="netmask" value="255.255.255.0">
+            </div>
+            <div class="form-group">
+                <label>DHCP IP Start Range</label>
                 <input type="text" id="startIp" placeholder="192.168.1.100">
             </div>
             <div class="form-group">
-                <label>End IP Address</label>
+                <label>DHCP IP End Range</label>
                 <input type="text" id="endIp" placeholder="192.168.1.200">
             </div>
             <div class="form-group">
-                <label>Subnet Mask</label>
-                <input type="text" id="netmask" placeholder="255.255.255.0">
-            </div>
-            <div class="form-group">
-                <label>Default Gateway Router</label>
+                <label>Default Gateway (Router)</label>
                 <input type="text" id="gateway" placeholder="192.168.1.1">
             </div>
             <div class="form-group">
                 <label>Lease Duration</label>
-                <input type="text" id="leaseTime" placeholder="12h">
+                <input type="text" id="leaseTime" value="12h">
             </div>
         </div>
 
-        <button class="btn" onclick="saveDhcpConfig()">Save Settings</button>
-        <button class="btn btn-secondary" style="margin-left: 0.5rem;" onclick="restartDhcpService()">Restart DHCP Service</button>
+        <div class="btn-row">
+            <button class="btn" onclick="saveDHCPConfig()">Save Configuration</button>
+            <button class="btn btn-secondary" onclick="restartService()">Apply & Restart DHCP Service</button>
+            <button class="btn btn-secondary" onclick="checkServiceStatus()">Refresh Status</button>
+        </div>
     </div>
 
     <div id="outputBox" class="output-box"></div>
 
     <script>
-        async function loadDhcpConfig() {
+        async function loadDHCPConfig() {
             try {
                 const res = await fetch('/api/plugin/data?plugin=dhcp');
                 const data = await res.json();
-                document.getElementById('dhcpEnabled').checked = data.enabled !== false;
-                document.getElementById('interface').value = data.interface || 'eth0';
+
+                // Default to disabled (false) unless explicitly saved as true
+                document.getElementById('dhcpEnabled').checked = (data.enabled === true);
+                document.getElementById('iface').value = data.interface || 'eth0';
+                document.getElementById('netmask').value = data.netmask || '255.255.255.0';
                 document.getElementById('startIp').value = data.start_ip || '192.168.1.100';
                 document.getElementById('endIp').value = data.end_ip || '192.168.1.200';
-                document.getElementById('netmask').value = data.netmask || '255.255.255.0';
                 document.getElementById('gateway').value = data.gateway || '192.168.1.1';
                 document.getElementById('leaseTime').value = data.lease_time || '12h';
+
+                await checkServiceStatus();
             } catch (err) {
                 showOutput('Failed to load DHCP settings: ' + err.message);
             }
         }
 
-        async function saveDhcpConfig() {
+        async function checkServiceStatus() {
+            const badge = document.getElementById('serviceBadge');
+            const statusDesc = document.getElementById('statusDesc');
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'dhcp',
+                        cmd_key: 'status_dhcp_cmd',
+                        args: {}
+                    })
+                });
+
+                const data = await res.json();
+                const output = data.output || '';
+
+                if (data.success || output.includes('active (running)')) {
+                    badge.innerText = 'Service Running';
+                    badge.className = 'status-badge status-running';
+                    statusDesc.innerText = 'DHCP server (dnsmasq) is currently active and listening for client lease requests.';
+                } else {
+                    badge.innerText = 'Service Stopped';
+                    badge.className = 'status-badge status-stopped';
+                    statusDesc.innerText = 'DHCP server (dnsmasq) is currently stopped or inactive.';
+                    if (output) {
+                        showOutput('DHCP Service Logs / Error output:\n' + output);
+                    }
+                }
+            } catch (err) {
+                badge.innerText = 'Status Error';
+                badge.className = 'status-badge status-stopped';
+                statusDesc.innerText = 'Error querying DHCP status: ' + err.message;
+            }
+        }
+
+        async function saveDHCPConfig() {
             const config = {
                 enabled: document.getElementById('dhcpEnabled').checked,
-                interface: document.getElementById('interface').value.trim(),
+                interface: document.getElementById('iface').value.trim(),
+                netmask: document.getElementById('netmask').value.trim(),
                 start_ip: document.getElementById('startIp').value.trim(),
                 end_ip: document.getElementById('endIp').value.trim(),
-                netmask: document.getElementById('netmask').value.trim(),
                 gateway: document.getElementById('gateway').value.trim(),
                 lease_time: document.getElementById('leaseTime').value.trim()
             };
 
             try {
-                await fetch('/api/plugin/data?plugin=dhcp', {
+                const res = await fetch('/api/plugin/data?plugin=dhcp', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
                 });
-                showOutput('DHCP configuration saved. Restart service to apply settings.');
+                const data = await res.json();
+
+                if (data.success) {
+                    showOutput(`DHCP configuration saved (Enabled: ${config.enabled}). Click 'Apply & Restart DHCP Service' to activate changes.`);
+                } else {
+                    showOutput('Failed to save DHCP config.');
+                }
             } catch (err) {
-                showOutput('Failed to save settings: ' + err.message);
+                showOutput('Save error: ' + err.message);
             }
         }
 
-        async function restartDhcpService() {
+        async function restartService() {
             showOutput('Restarting DHCP service...');
             try {
                 const res = await fetch('/api/plugin/exec', {
@@ -125,10 +191,16 @@
                         args: {}
                     })
                 });
+
                 const data = await res.json();
-                showOutput(data.success ? 'DHCP service restarted successfully.\n' + data.output : 'Restart failed: ' + data.error);
+                if (data.success) {
+                    showOutput('DHCP service restarted successfully.\n' + data.output);
+                } else {
+                    showOutput('Restart error: ' + data.error + '\n' + data.output);
+                }
+                await checkServiceStatus();
             } catch (err) {
-                showOutput('Failed to execute restart: ' + err.message);
+                showOutput('Execution error: ' + err.message);
             }
         }
 
@@ -138,7 +210,7 @@
             box.innerText = text;
         }
 
-        window.onload = loadDhcpConfig;
+        window.onload = loadDHCPConfig;
     </script>
 </body>
 </html>

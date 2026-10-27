@@ -5,7 +5,7 @@
   "category": "Storage",
   "default": true,
   "commands": {
-    "list_drives_cmd": "lsblk -J -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT",
+    "list_drives_cmd": "lsblk -J -o NAME,SIZE,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINT",
     "mount_disk_sudo": "mkdir -p \"{mountpoint}\" && mount \"{device}\" \"{mountpoint}\"",
     "unmount_disk_sudo": "umount \"{mountpoint}\"",
     "mount_iso_sudo": "mkdir -p \"{mountpoint}\" && mount -o loop \"{filepath}\" \"{mountpoint}\"",

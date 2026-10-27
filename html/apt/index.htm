@@ -2,48 +2,80 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>APT Installer</title>
+    <title>APT Plugin Package Manager</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
         h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
-        p.subtitle { color: #8b949e; margin-bottom: 2rem; font-size: 0.9rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
 
-        .plugin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; }
-        .plugin-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.2rem; display: flex; flex-direction: column; justify-content: space-between; }
-        .plugin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
-        .plugin-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; }
-        .status-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: 600; }
-        .status-installed { background: rgba(46, 160, 67, 0.15); color: #3fb950; border: 1px solid rgba(46, 160, 67, 0.4); }
-        .status-not-installed { background: rgba(218, 54, 51, 0.15); color: #f85149; border: 1px solid rgba(218, 54, 51, 0.4); }
-        .status-default { background: rgba(56, 139, 253, 0.15); color: #58a6ff; border: 1px solid rgba(56, 139, 253, 0.4); }
+        .plugin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.2rem; }
+        .plugin-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; display: flex; flex-direction: column; justify-content: space-between; }
+        .plugin-title { font-size: 1.1rem; font-weight: bold; color: #f0f6fc; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+        .plugin-desc { font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem; flex: 1; }
+        .plugin-status { font-size: 0.8rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 4px; }
+        .status-installed { background: #238636; color: white; }
+        .status-uninstalled { background: #30363d; color: #8b949e; }
 
-        .plugin-desc { font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem; flex-grow: 1; }
-        .plugin-pkg { font-size: 0.8rem; font-family: monospace; color: #7d8590; margin-bottom: 1rem; }
-
-        .btn { padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; border: none; transition: background 0.2s; text-align: center; }
+        .btn { padding: 0.5rem 1rem; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; font-size: 0.85rem; width: fit-content; }
         .btn-install { background: #238636; color: white; }
         .btn-install:hover { background: #2ea043; }
         .btn-remove { background: #da3633; color: white; }
         .btn-remove:hover { background: #b62324; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-disabled { background: #30363d; color: #6e7681; cursor: not-allowed; }
 
-        .console-modal { margin-top: 2rem; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1rem; }
-        .console-title { font-size: 0.9rem; font-weight: 600; color: #8b949e; margin-bottom: 0.5rem; }
-        .console-output { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; height: 160px; overflow-y: auto; white-space: pre-wrap; }
+        /* Sticky Bottom Progress & Console Banner */
+        .sticky-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 2px solid #58a6ff;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+        }
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #58a6ff;
+            font-size: 0.95rem;
+        }
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #58a6ff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 130px; overflow-y: auto; white-space: pre-wrap; }
     </style>
 </head>
 <body>
-    <h2>APT Package & Plugin Manager</h2>
-    <p class="subtitle">Install or remove underlying Debian packages required for system management plugins.</p>
+    <h2>APT Package Manager & Plugin Module Installer</h2>
+    <p class="subtitle">Install or remove software packages and plugin modules on this Debian server.</p>
 
-    <div class="plugin-grid" id="pluginContainer">
-        <!-- Dynamically rendered -->
+    <div id="pluginGrid" class="plugin-grid">
+        <p style="color: #8b949e;">Scanning installed plugin packages...</p>
     </div>
 
-    <div class="console-modal">
-        <div class="console-title">Execution Terminal Output</div>
-        <div id="consoleOutput" class="console-output">Ready. Select an action above to manage packages...</div>
+    <!-- Floating Output & Progress Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span><span id="spinIcon" class="spinner"></span><span id="consoleTitle">Executing Operation...</span></span>
+            <button class="btn btn-remove" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
     </div>
 
     <script>
@@ -53,75 +85,106 @@
                 const plugins = await res.json();
                 renderPlugins(plugins);
             } catch (err) {
-                logConsole('Error fetching plugin list: ' + err.message);
+                document.getElementById('pluginGrid').innerHTML = `<p style="color:#f85149;">Failed to load plugins: ${err.message}</p>`;
             }
         }
 
         function renderPlugins(plugins) {
-            const container = document.getElementById('pluginContainer');
-            container.innerHTML = '';
+            const grid = document.getElementById('pluginGrid');
+            grid.innerHTML = '';
 
             plugins.forEach(p => {
-                if (p.id === 'apt') return; // Skip APT installer itself
-
                 const card = document.createElement('div');
                 card.className = 'plugin-card';
 
-                let badgeHtml = '';
-                let buttonHtml = '';
+                const isDefault = p.default;
+                const isInstalled = p.installed || isDefault;
 
-                if (p.default) {
-                    badgeHtml = '<span class="status-badge status-default">Built-in</span>';
-                    buttonHtml = '<button class="btn" disabled>Core Module</button>';
-                } else if (p.installed) {
-                    badgeHtml = '<span class="status-badge status-installed">Installed</span>';
-                    buttonHtml = `<button class="btn btn-remove" onclick="executeAptCmd('${p.id}', 'remove_cmd')">Remove Package</button>`;
+                let actionBtn = '';
+                if (isDefault) {
+                    actionBtn = `<button class="btn btn-disabled">Core System Module</button>`;
+                } else if (isInstalled) {
+                    actionBtn = `<button class="btn btn-remove" onclick="executeAptCmd('${p.id}', 'remove_cmd', '${p.name}')">Uninstall Package</button>`;
                 } else {
-                    badgeHtml = '<span class="status-badge status-not-installed">Not Installed</span>';
-                    buttonHtml = `<button class="btn btn-install" onclick="executeAptCmd('${p.id}', 'install_cmd')">Install Package</button>`;
+                    actionBtn = `<button class="btn btn-install" onclick="executeAptCmd('${p.id}', 'install_cmd', '${p.name}')">Install Package</button>`;
                 }
 
                 card.innerHTML = `
                     <div>
-                        <div class="plugin-header">
-                            <span class="plugin-title">${p.name}</span>
-                            ${badgeHtml}
+                        <div class="plugin-title">
+                            <span>${p.name}</span>
+                            <span class="plugin-status ${isInstalled ? 'status-installed' : 'status-uninstalled'}">
+                                ${isInstalled ? 'Installed' : 'Not Installed'}
+                            </span>
                         </div>
-                        <div class="plugin-desc">${p.description || 'No description provided.'}</div>
-                        <div class="plugin-pkg">Package: ${p.apt_package || 'None'}</div>
+                        <div class="plugin-desc">${p.description}</div>
                     </div>
-                    <div>${buttonHtml}</div>
+                    <div>${actionBtn}</div>
                 `;
-
-                container.appendChild(card);
+                grid.appendChild(card);
             });
         }
 
-        async function executeAptCmd(pluginId, cmdKey) {
-            logConsole(`Executing ${cmdKey} for ${pluginId}... Please wait.`);
+        async function executeAptCmd(pluginId, cmdKey, pluginName) {
+            const isInstall = cmdKey.includes('install');
+            const opName = isInstall ? 'Installing' : 'Uninstalling';
+
+            showConsole(`${opName} ${pluginName}... Please wait while APT downloads and configures dependencies.`, true);
+
             try {
                 const res = await fetch('/api/plugin/exec', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ plugin: pluginId, cmd_key: cmdKey, args: {} })
                 });
+
                 const data = await res.json();
                 if (data.success) {
-                    logConsole(`SUCCESS [${pluginId}]:\n` + data.output);
+                    updateConsole(`${opName} ${pluginName} completed successfully!\n\n${data.output}`, false);
+                    await loadAptPlugins();
+
+                    // Post message to parent sidebar to reload installed plugin menu dynamically!
+                    if (window.parent) {
+                        window.parent.postMessage('reload_plugins', '*');
+                        if (typeof window.parent.loadPlugins === 'function') {
+                            window.parent.loadPlugins();
+                        }
+                    }
                 } else {
-                    logConsole(`FAILED [${pluginId}]:\n` + (data.output || '') + '\nError: ' + data.error);
+                    updateConsole(`Operation failed: ${data.error}\n\n${data.output}`, false);
                 }
-                // Reload list to update status badges
-                setTimeout(loadAptPlugins, 1000);
             } catch (err) {
-                logConsole(`Execution error: ${err.message}`);
+                updateConsole('Execution error: ' + err.message, false);
             }
         }
 
-        function logConsole(text) {
-            const consoleEl = document.getElementById('consoleOutput');
-            consoleEl.innerText = text;
-            consoleEl.scrollTop = consoleEl.scrollHeight;
+        function showConsole(initialText, isRunning) {
+            const consoleDrawer = document.getElementById('stickyConsole');
+            const titleEl = document.getElementById('consoleTitle');
+            const spinner = document.getElementById('spinIcon');
+            const box = document.getElementById('outputBox');
+
+            consoleDrawer.style.display = 'block';
+            titleEl.innerText = isRunning ? 'APT Execution in Progress...' : 'Operation Finished';
+            spinner.style.display = isRunning ? 'inline-block' : 'none';
+            box.innerText = initialText;
+
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function updateConsole(text, isRunning) {
+            const titleEl = document.getElementById('consoleTitle');
+            const spinner = document.getElementById('spinIcon');
+            const box = document.getElementById('outputBox');
+
+            titleEl.innerText = isRunning ? 'APT Execution in Progress...' : 'Operation Finished';
+            spinner.style.display = isRunning ? 'inline-block' : 'none';
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
         }
 
         window.onload = loadAptPlugins;
