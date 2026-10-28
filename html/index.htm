@@ -12,9 +12,9 @@
         /* Sidebar Styling */
         #sidebar { width: 260px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; }
         .sidebar-header { padding: 1rem 1.2rem; font-size: 1.1rem; font-weight: bold; color: #58a6ff; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
-        .plugin-category { padding: 0.6rem 1rem 0.3rem 1rem; font-size: 0.75rem; text-transform: uppercase; color: #8b949e; letter-spacing: 0.05rem; }
+        .plugin-category { padding: 0.5rem 1rem 0.15rem 1rem; font-size: 0.72rem; font-weight: bold; text-transform: uppercase; color: #8b949e; letter-spacing: 0.05rem; }
         .nav-list { list-style: none; overflow-y: auto; flex: 1; }
-        .nav-item { padding: 0.75rem 1.2rem; cursor: pointer; color: #c9d1d9; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; transition: all 0.2s; }
+        .nav-item { padding: 0.45rem 1.2rem; cursor: pointer; color: #c9d1d9; font-size: 0.88rem; display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; transition: all 0.2s; }
         .nav-item:hover { background: #1f242d; color: #fff; }
         .nav-item.active { background: #1f242d; color: #58a6ff; border-left-color: #58a6ff; font-weight: 600; }
 
@@ -161,7 +161,17 @@
                 }
             });
 
-            for (const [catName, plugins] of Object.entries(categories)) {
+            const categoryOrder = ['System', 'Tools', 'Network', 'Storage'];
+            const sortedCategories = Object.keys(categories).sort((a, b) => {
+                let idxA = categoryOrder.indexOf(a);
+                let idxB = categoryOrder.indexOf(b);
+                if (idxA === -1) idxA = 99;
+                if (idxB === -1) idxB = 99;
+                return idxA - idxB;
+            });
+
+            for (const catName of sortedCategories) {
+                const plugins = categories[catName];
                 const catHeader = document.createElement('div');
                 catHeader.className = 'plugin-category';
                 catHeader.innerText = catName;

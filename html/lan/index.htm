@@ -180,9 +180,14 @@
                     body: JSON.stringify({ plugin: 'lan', cmd_key: 'list_interfaces_cmd', args: {} })
                 });
                 const data = await res.json();
-                if (data.success) {
-                    const links = JSON.parse(data.output);
-                    lanInterfaces = links.filter(l => l.ifname !== 'lo' && !l.ifname.startsWith('wl'));
+                if (data.success && data.output) {
+                    let links = [];
+                    try {
+                        links = JSON.parse(data.output);
+                    } catch (e) {
+                        console.error('Failed to parse list_interfaces_cmd output:', e);
+                    }
+                    lanInterfaces = links.filter(l => l.ifname && l.ifname !== 'lo' && !l.ifname.startsWith('wl'));
 
                     if (lanInterfaces.length === 0) {
                         document.getElementById('hardwareWarning').style.display = 'block';
@@ -244,7 +249,12 @@
                 });
                 const data = await res.json();
                 if (data.success && data.output) {
-                    const addrInfo = JSON.parse(data.output);
+                    let addrInfo = [];
+                    try {
+                        addrInfo = JSON.parse(data.output);
+                    } catch (e) {
+                        console.error('Failed to parse get_ip_cmd output:', e);
+                    }
                     if (addrInfo[0] && addrInfo[0].addr_info) {
                         const ipv4 = addrInfo[0].addr_info.find(a => a.family === 'inet');
                         if (ipv4) {

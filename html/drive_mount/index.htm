@@ -345,7 +345,10 @@
                     })
                 });
                 const data = await res.json();
-                if (data.success) {
+                const outStr = (data.output || '') + ' ' + (data.error || '');
+                const isNotMounted = outStr.toLowerCase().includes('not mounted') || outStr.toLowerCase().includes('no such file') || outStr.toLowerCase().includes('not found') || outStr.toLowerCase().includes('not target');
+
+                if (data.success || isNotMounted) {
                     if (uuid) {
                         await fetch('/api/plugin/exec', {
                             method: 'POST',
@@ -357,7 +360,7 @@
                             })
                         });
                     }
-                    showOutput(`Unmounted ${mountpoint} and cleaned /etc/fstab.`);
+                    showOutput(`Unmounted / removed ${mountpoint} and cleaned /etc/fstab.`);
                 } else {
                     showOutput(`Unmount error: ${data.error}\n${data.output}`);
                 }

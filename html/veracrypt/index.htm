@@ -326,10 +326,13 @@
                 });
 
                 const data = await res.json();
-                if (data.success) {
+                const outStr = (data.output || '') + ' ' + (data.error || '');
+                const isNotMounted = outStr.toLowerCase().includes('not mounted') || outStr.toLowerCase().includes('no such file') || outStr.toLowerCase().includes('not found') || outStr.toLowerCase().includes('invalid argument');
+
+                if (data.success || isNotMounted) {
                     mounts.splice(index, 1);
                     await saveMounts();
-                    showOutput(`Dismounted ${item.mount_point}.\n` + data.output);
+                    showOutput(`Dismounted / removed ${item.mount_point} from active list.\n` + data.output);
                 } else {
                     showOutput('Dismount failed: ' + data.error + '\n' + data.output);
                 }
