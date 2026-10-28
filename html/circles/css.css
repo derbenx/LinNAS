@@ -1,0 +1,11 @@
+html,body { overscroll-behavior: none; }
+body { background-color:black; color:grey; overflow-y: hidden }
+h1{ color:green; text-align:center; }
+#debug { position:fixed;top:0px;left:0px; }
+#wrp{  margin:auto; width:100%; overflow:hidden; overscroll-behavior: none; }
+#can, #spr { display: block; margin: auto; }
+#can { border: 1px solid green; }
+#spr {  border: 1px solid green;  transform: translate(0, -100%); }
+#dbug{top:0;position:fixed;left:50;background:#ccc;border:1px solid red;padding:5px;font:50px bold;}
+#circtab td{padding:5px;}
+#btg { position:fixed; top:0px; }

@@ -37,6 +37,10 @@
 
         .item-icon { margin-right: 8px; font-size: 1.05rem; }
 
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 90%; max-width: 520px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+
         /* Context Menu */
         .context-menu { position: fixed; background: #161b22; border: 1px solid #30363d; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); padding: 0.4rem 0; z-index: 500; display: none; min-width: 170px; }
         .context-item { padding: 0.5rem 1rem; font-size: 0.85rem; color: #c9d1d9; cursor: pointer; display: flex; align-items: center; gap: 8px; }
@@ -54,10 +58,7 @@
 </head>
 <body>
     <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.3rem;">
-        <div style="display: flex; align-items: center; gap: 0.8rem;">
-            <h2>LinNAS File Manager</h2>
-            <button class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.8rem;" onclick="showPluginInfo('filemanager')">ℹ️ Info</button>
-        </div>
+        <h2>LinNAS File Manager</h2>
         <span id="adminWarningBadge" style="background: #381e1d; border: 1px solid #f85149; color: #ff7b72; padding: 0.3rem 0.8rem; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: none;">
             ⚠️ Admin / Root Privilege Mode
         </span>
@@ -116,16 +117,6 @@
         </table>
     </div>
 
-    <!-- Plugin Info Modal -->
-    <div id="infoModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <span>ℹ️ Plugin Documentation</span>
-                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeInfoModal()">✕</button>
-            </div>
-            <div id="infoBody" style="font-size: 0.9rem; line-height: 1.5; color: #c9d1d9;">Loading plugin info...</div>
-        </div>
-    </div>
 
     <!-- Chmod & Chown Modal -->
     <div id="chmodModal" class="modal">
@@ -849,25 +840,6 @@
             box.scrollTop = box.scrollHeight;
         }
 
-        async function showPluginInfo(pluginId) {
-            document.getElementById('infoModal').style.display = 'block';
-            const body = document.getElementById('infoBody');
-            body.innerText = 'Loading info...';
-            try {
-                const res = await fetch(`/${pluginId}/plugin.info`);
-                if (res.ok) {
-                    body.innerHTML = await res.text();
-                } else {
-                    body.innerText = 'No plugin.info documentation available.';
-                }
-            } catch (err) {
-                body.innerText = 'Failed to load info: ' + err.message;
-            }
-        }
-
-        function closeInfoModal() {
-            document.getElementById('infoModal').style.display = 'none';
-        }
 
         function closeConsole() {
             document.getElementById('stickyConsole').style.display = 'none';

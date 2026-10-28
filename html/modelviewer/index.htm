@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3D Model Viewer - LinNAS</title>
+    <title>3D Viewer - LinNAS</title>
     <!-- Three.js + OrbitControls + STLLoader + OBJLoader + GLTFLoader -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -49,7 +49,7 @@
         <div class="title-group">
             <button id="backBtn" class="btn btn-secondary" style="display: none;" onclick="goBackToFiles()">⬅ Back to Files</button>
             <div>
-                <h2>🧊 3D Model Viewer</h2>
+                <h2>🧊 3D Viewer</h2>
                 <div id="modelMeta" class="meta-info">No 3D model loaded</div>
             </div>
         </div>
@@ -58,7 +58,6 @@
             <button id="prevBtn" class="btn btn-secondary" onclick="navigateModel(-1)" disabled>◀ Previous</button>
             <button id="nextBtn" class="btn btn-secondary" onclick="navigateModel(1)" disabled>Next ▶</button>
             <button class="btn btn-secondary" onclick="toggleWireframe()">🕸 Wireframe</button>
-            <button class="btn btn-secondary" onclick="resetCamera()">🔄 Reset View</button>
             <button class="btn btn-secondary" onclick="toggleFullscreen()">📺 Fullscreen (F11)</button>
         </div>
     </div>

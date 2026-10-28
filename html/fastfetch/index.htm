@@ -59,6 +59,12 @@
 
     <script>
         function ansiToHtml(str) {
+            // Strip cursor positioning escape sequences e.g. \x1b[?25h, \x1b[2J, \x1b[1;1H, \x1b[s, \x1b[u, \x1b[?25l, \x1b[r
+            let cleanStr = str.replace(/\x1B\[[?0-9;]*[a-zA-Z]/g, function(match) {
+                if (match.endsWith('m')) return match; // Keep SGR color/style sequences
+                return '';
+            });
+
             const ansiMap = {
                 '30': 'ansi-black', '31': 'ansi-red', '32': 'ansi-green', '33': 'ansi-yellow',
                 '34': 'ansi-blue', '35': 'ansi-magenta', '36': 'ansi-cyan', '37': 'ansi-white',
@@ -68,7 +74,7 @@
             };
 
             let openSpans = 0;
-            const html = str.replace(/\x1B\[([0-9;]*)m/g, function(match, p1) {
+            const html = cleanStr.replace(/\x1B\[([0-9;]*)m/g, function(match, p1) {
                 if (!p1 || p1 === '0') {
                     let close = '';
                     while (openSpans > 0) {
@@ -79,12 +85,37 @@
                 }
                 const codes = p1.split(';');
                 let classes = [];
-                codes.forEach(c => {
-                    if (ansiMap[c]) classes.push(ansiMap[c]);
-                });
-                if (classes.length > 0) {
+                let inlineStyle = '';
+
+                for (let i = 0; i < codes.length; i++) {
+                    const c = codes[i];
+                    if (c === '0') {
+                        let close = '';
+                        while (openSpans > 0) {
+                            close += '</span>';
+                            openSpans--;
+                        }
+                        return close;
+                    }
+                    if (ansiMap[c]) {
+                        classes.push(ansiMap[c]);
+                    } else if (c === '38' && codes[i+1] === '5' && codes[i+2]) {
+                        // 256-color palette
+                        const colorIdx = parseInt(codes[i+2], 10);
+                        i += 2;
+                        inlineStyle = `color: hsl(${(colorIdx * 36) % 360}, 70%, 65%);`;
+                    } else if (c === '38' && codes[i+1] === '2' && codes[i+2] && codes[i+3] && codes[i+4]) {
+                        // 24-bit RGB
+                        const r = codes[i+2], g = codes[i+3], b = codes[i+4];
+                        i += 4;
+                        inlineStyle = `color: rgb(${r},${g},${b});`;
+                    }
+                }
+
+                if (classes.length > 0 || inlineStyle) {
                     openSpans++;
-                    return `<span class="${classes.join(' ')}">`;
+                    const styleAttr = inlineStyle ? ` style="${inlineStyle}"` : '';
+                    return `<span class="${classes.join(' ')}"${styleAttr}>`;
                 }
                 return '';
             });

@@ -3,17 +3,19 @@ package main
 import (
 	"bytes"
 	"crypto/aes"
-	"flag"
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -25,6 +27,9 @@ import (
 	"sync"
 	"time"
 )
+
+//go:embed html
+var embeddedHTML embed.FS
 
 type Config struct {
 	Port         int               `json:"port"`
@@ -1825,6 +1830,42 @@ func logStartupEvent(msg string) {
 	}
 }
 
+func extractEmbeddedHTML() {
+	// If html/ exists and contains index.htm, assume disk assets are present
+	if _, err := os.Stat(filepath.Join("html", "index.htm")); err == nil {
+		return
+	}
+
+	logStartupEvent("Extracting default embedded html/ assets and plugin files...")
+	err := fs.WalkDir(embeddedHTML, "html", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return os.MkdirAll(path, 0755)
+		}
+
+		data, err := embeddedHTML.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		// Don't overwrite existing user files
+		if _, err := os.Stat(path); err == nil {
+			return nil
+		}
+
+		_ = os.MkdirAll(filepath.Dir(path), 0755)
+		return os.WriteFile(path, data, 0644)
+	})
+
+	if err != nil {
+		logStartupEvent(fmt.Sprintf("Error extracting embedded HTML: %v", err))
+	} else {
+		logStartupEvent("Successfully extracted default embedded html/ assets.")
+	}
+}
+
 func ensureWorkingDirectory() {
 	cwd, _ := os.Getwd()
 	// 1. Check if html directory exists in current working directory
@@ -1842,7 +1883,7 @@ func ensureWorkingDirectory() {
 			return
 		}
 	}
-	logStartupEvent(fmt.Sprintf("WARNING: Could not find 'html/' directory in %s", cwd))
+	logStartupEvent(fmt.Sprintf("No 'html/' directory found in %s; will extract embedded assets.", cwd))
 }
 
 func handleStartupIssues(w http.ResponseWriter, r *http.Request) {
@@ -1879,6 +1920,7 @@ func main() {
 	}
 
 	ensureWorkingDirectory()
+	extractEmbeddedHTML()
 
 	if flagAutostart {
 		logStartupEvent("=== LinNAS Systemd Autostart Boot Execution Started (-a) ===")

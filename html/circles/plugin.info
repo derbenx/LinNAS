@@ -1,0 +1,6 @@
+<p><strong>Circles Game</strong></p>
+<p>Rotate concentric circular puzzle rings to match alignment patterns and solve color sequence puzzles.</p>
+<ul>
+  <li>Click circular segments to rotate ring layers clockwise or counter-clockwise.</li>
+  <li>Save and resume puzzle progress directly in browser memory.</li>
+</ul>

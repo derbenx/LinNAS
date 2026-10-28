@@ -1,2 +1,35 @@
 <p><strong>Audio Player & Playlist</strong></p>
 <p>Stream audio tracks (.mp3, .wav, .ogg, .flac, .aac) with folder playlist queue scanning and persistent background playback across plugin navigation.</p>
+<div style="margin-top: 0.8rem;">
+    <p><strong>Keyboard Shortcuts:</strong></p>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 0.4rem; font-size: 0.85rem;">
+        <thead>
+            <tr style="border-bottom: 1px solid #30363d; text-align: left; color: #58a6ff;">
+                <th style="padding: 4px;">Key</th>
+                <th style="padding: 4px;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px;">Space</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px;">K</kbd></td>
+                <td style="padding: 4px;">Play / Pause</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px;">Left Arrow</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px;">Right Arrow</kbd></td>
+                <td style="padding: 4px;">Seek Back 5s / Seek Forward 5s</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">Up Arrow</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">Down Arrow</kbd></td>
+                <td style="padding: 4px;">Volume Up 10% / Volume Down 10%</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">M</kbd></td>
+                <td style="padding: 4px;">Toggle Mute</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">Page Up</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">Page Down</kbd></td>
+                <td style="padding: 4px;">Previous Track / Next Track in Playlist</td>
+            </tr>
+        </tbody>
+    </table>
+</div>

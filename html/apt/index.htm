@@ -23,6 +23,16 @@
         .btn-remove { background: #da3633; color: white; }
         .btn-remove:hover { background: #b62324; }
         .btn-disabled { background: #30363d; color: #6e7681; cursor: not-allowed; }
+        .btn-info { background: #21262d; border: 1px solid #30363d; color: #58a6ff; }
+        .btn-info:hover { background: #30363d; color: #79c0ff; }
+
+        /* Info Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 90%; max-width: 600px; margin: 10% auto; padding: 1.5rem; position: relative; max-height: 80vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; padding-bottom: 0.8rem; margin-bottom: 1rem; }
+        .modal-title { font-size: 1.1rem; font-weight: bold; color: #58a6ff; }
+        .close-btn { background: none; border: none; color: #8b949e; font-size: 1.5rem; cursor: pointer; }
+        .close-btn:hover { color: #f0f6fc; }
 
         /* Sticky Bottom Progress & Console Banner */
         .sticky-console {
@@ -67,6 +77,17 @@
 
     <div id="pluginGrid" class="plugin-grid">
         <p style="color: #8b949e;">Scanning installed plugin packages...</p>
+    </div>
+
+    <!-- Plugin Info Modal -->
+    <div id="infoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="infoTitle">Plugin Info</span>
+                <button class="close-btn" onclick="closeInfoModal()">&times;</button>
+            </div>
+            <div id="infoBody" style="font-size: 0.9rem; line-height: 1.5; color: #c9d1d9;">Loading plugin info...</div>
+        </div>
     </div>
 
     <!-- Floating Output & Progress Drawer -->
@@ -160,7 +181,7 @@
                 card.innerHTML = `
                     <div>
                         <div class="plugin-title">
-                            <span>${p.name}</span>
+                            <span>${p.name} <button class="btn btn-info" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; margin-left: 6px;" onclick="showPluginInfo('${p.id}', '${p.name}')">ℹ️ Info</button></span>
                             <span class="plugin-status ${isInstalled ? 'status-installed' : 'status-uninstalled'}">
                                 ${isInstalled ? 'Installed' : 'Not Installed'}
                             </span>
@@ -248,6 +269,29 @@
 
         function closeConsole() {
             document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        async function showPluginInfo(pluginId, pluginName) {
+            document.getElementById('infoTitle').innerText = `${pluginName} Documentation`;
+            const body = document.getElementById('infoBody');
+            body.innerText = 'Loading documentation...';
+            document.getElementById('infoModal').style.display = 'block';
+
+            try {
+                const res = await fetch(`/${pluginId}/plugin.info`);
+                if (res.ok) {
+                    const text = await res.text();
+                    body.innerText = text;
+                } else {
+                    body.innerText = 'No plugin.info documentation available.';
+                }
+            } catch (err) {
+                body.innerText = 'Failed to load plugin documentation.';
+            }
+        }
+
+        function closeInfoModal() {
+            document.getElementById('infoModal').style.display = 'none';
         }
 
         window.onload = loadAptPlugins;

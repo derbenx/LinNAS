@@ -10,18 +10,33 @@
         body { display: flex; height: 100vh; background: #0d1117; color: #c9d1d9; overflow: hidden; }
 
         /* Sidebar Styling */
-        #sidebar { width: 260px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; }
-        .sidebar-header { padding: 1rem 1.2rem; font-size: 1.1rem; font-weight: bold; color: #58a6ff; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
-        .plugin-category { padding: 0.5rem 1rem 0.15rem 1rem; font-size: 0.72rem; font-weight: bold; text-transform: uppercase; color: #8b949e; letter-spacing: 0.05rem; }
+        #sidebar { width: 260px; min-width: 60px; max-width: 500px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; position: relative; transition: width 0.05s ease-out; }
+        #sidebar.collapsed { width: 60px !important; min-width: 60px !important; }
+        #sidebar.collapsed .sidebar-title-text,
+        #sidebar.collapsed .plugin-category,
+        #sidebar.collapsed .user-status span,
+        #sidebar.collapsed .nav-item span.nav-text { display: none !important; }
+        #sidebar.collapsed .nav-item { justify-content: center; padding: 0.6rem 0; }
+        #sidebar.collapsed .sidebar-header { justify-content: center; padding: 0.8rem 0; }
+        #sidebar.collapsed #rootBadge { display: none; }
+
+        .sidebar-header { padding: 1rem 1.2rem; font-size: 1.1rem; font-weight: bold; color: #58a6ff; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; white-space: nowrap; overflow: hidden; }
+        .collapse-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 0.2rem 0.5rem; cursor: pointer; font-size: 0.75rem; }
+        .collapse-btn:hover { background: #30363d; color: #fff; }
+
+        .resizer { width: 6px; background: transparent; position: absolute; right: -3px; top: 0; bottom: 0; cursor: col-resize; z-index: 100; transition: background 0.2s; }
+        .resizer:hover, .resizer.resizing { background: #58a6ff; }
+
+        .plugin-category { padding: 0.5rem 1rem 0.15rem 1rem; font-size: 0.72rem; font-weight: bold; text-transform: uppercase; color: #8b949e; letter-spacing: 0.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .nav-list { list-style: none; overflow-y: auto; flex: 1; }
-        .nav-item { padding: 0.45rem 1.2rem; cursor: pointer; color: #c9d1d9; font-size: 0.88rem; display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; transition: all 0.2s; }
+        .nav-item { padding: 0.45rem 1.2rem; cursor: pointer; color: #c9d1d9; font-size: 0.88rem; display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; transition: all 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .nav-item:hover { background: #1f242d; color: #fff; }
         .nav-item.active { background: #1f242d; color: #58a6ff; border-left-color: #58a6ff; font-weight: 600; }
 
         .bright-green-btn { padding: 0.5rem 1rem; background: #238636; color: white; border: 1px solid #2ea043; border-radius: 6px; font-weight: bold; cursor: pointer; text-decoration: none; font-size: 0.85rem; box-shadow: 0 0 8px rgba(46,160,67,0.4); }
         .bright-green-btn:hover { background: #2ea043; }
 
-        .user-status { padding: 0.8rem; border-top: 1px solid #30363d; font-size: 0.8rem; color: #8b949e; display: flex; justify-content: space-between; align-items: center; background: #0d1117; flex-wrap: wrap; gap: 0.5rem; }
+        .user-status { padding: 0.8rem; border-top: 1px solid #30363d; font-size: 0.8rem; color: #8b949e; display: flex; justify-content: space-between; align-items: center; background: #0d1117; flex-wrap: wrap; gap: 0.5rem; overflow: hidden; }
         .logout-btn { color: #f85149; cursor: pointer; border: none; background: none; font-size: 0.8rem; font-weight: bold; }
         .pass-btn { color: #58a6ff; cursor: pointer; border: none; background: none; font-size: 0.8rem; font-weight: bold; display: none; }
 
@@ -66,8 +81,9 @@
 <body>
     <div id="sidebar">
         <div class="sidebar-header">
-            <span>LinNAS</span>
+            <span class="sidebar-title-text">LinNAS</span>
             <span id="rootBadge" class="badge-user">User</span>
+            <button class="collapse-btn" id="collapseBtn" onclick="toggleSidebarCollapse()" title="Collapse / Expand Sidebar">◀</button>
         </div>
         <div id="navList" class="nav-list"></div>
         <div class="user-status">
@@ -76,6 +92,7 @@
                 <button id="authBtn" class="logout-btn" onclick="toggleAuth()">Logout</button>
             </div>
         </div>
+        <div class="resizer" id="sidebarResizer"></div>
     </div>
 
     <div id="content-area">
@@ -189,7 +206,8 @@
             const statusItem = document.createElement('div');
             statusItem.className = `nav-item ${activeItem === 'status' ? 'active' : ''}`;
             statusItem.dataset.id = 'status';
-            statusItem.innerHTML = '🖥️ Server Status & Health';
+            statusItem.title = 'Server Status & Health';
+            statusItem.innerHTML = '<span class="nav-icon">🖥️</span> <span class="nav-text">Server Status & Health</span>';
             statusItem.onclick = () => openPlugin('status', statusItem);
             nav.appendChild(statusItem);
 
@@ -224,11 +242,67 @@
                     const item = document.createElement('div');
                     item.className = `nav-item ${activeItem === p.id ? 'active' : ''}`;
                     item.dataset.id = p.id;
-                    item.innerHTML = getPluginIcon(p.id) + ' ' + p.name;
+                    item.title = p.name;
+                    item.innerHTML = `<span class="nav-icon">${getPluginIcon(p.id)}</span> <span class="nav-text">${p.name}</span>`;
                     item.onclick = () => openPlugin(p.id, item);
                     nav.appendChild(item);
                 });
             }
+        }
+
+        /* Sidebar Collapse and Resizing Logic */
+        let isSidebarCollapsed = false;
+        let lastSidebarWidth = 260;
+
+        function toggleSidebarCollapse() {
+            const sidebar = document.getElementById('sidebar');
+            const collapseBtn = document.getElementById('collapseBtn');
+            isSidebarCollapsed = !isSidebarCollapsed;
+
+            if (isSidebarCollapsed) {
+                lastSidebarWidth = sidebar.offsetWidth > 100 ? sidebar.offsetWidth : 260;
+                sidebar.classList.add('collapsed');
+                collapseBtn.innerText = '▶';
+            } else {
+                sidebar.classList.remove('collapsed');
+                sidebar.style.width = lastSidebarWidth + 'px';
+                collapseBtn.innerText = '◀';
+            }
+        }
+
+        function initSidebarResizer() {
+            const sidebar = document.getElementById('sidebar');
+            const resizer = document.getElementById('sidebarResizer');
+            let isResizing = false;
+
+            resizer.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                isResizing = true;
+                resizer.classList.add('resizing');
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+                let newWidth = e.clientX;
+                if (newWidth < 120) {
+                    if (!isSidebarCollapsed) toggleSidebarCollapse();
+                } else if (newWidth > 120 && newWidth <= 500) {
+                    if (isSidebarCollapsed) toggleSidebarCollapse();
+                    sidebar.style.width = newWidth + 'px';
+                    lastSidebarWidth = newWidth;
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    isResizing = false;
+                    resizer.classList.remove('resizing');
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                }
+            });
         }
 
         function getPluginIcon(id) {
@@ -493,6 +567,7 @@
         }
 
         window.onload = async () => {
+            initSidebarResizer();
             await checkAuth();
             await loadPlugins();
             if (isLoggedIn) {

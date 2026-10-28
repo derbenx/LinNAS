@@ -1,0 +1,7 @@
+{
+  "id": "solitaire",
+  "name": "Classic Solitaire",
+  "description": "Play classic Klondike Solitaire card game with custom deck back colors",
+  "category": "Games",
+  "default": true
+}
