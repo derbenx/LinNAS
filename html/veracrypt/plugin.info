@@ -1,0 +1,2 @@
+<p><strong>VeraCrypt / TrueCrypt Container Config (tcplay)</strong></p>
+<p>Mount encrypted volume files using <code>tcplay</code> and export mounted containers over SMB shares restricted to registered SMB users.</p>

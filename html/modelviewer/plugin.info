@@ -1,0 +1,2 @@
+<p><strong>3D Model Viewer</strong></p>
+<p>Render and inspect 3D model files (.stl, .obj, .gltf, .glb, .3mf) using Three.js with orbit camera controls, lighting, wireframe toggle, and folder navigation.</p>

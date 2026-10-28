@@ -1,0 +1,2 @@
+<p><strong>Video Player</strong></p>
+<p>Stream HTML5 video files (.mp4, .webm, .mkv, .mov) with HTTP Range request seeking (HTTP 206), F11 fullscreen, volume/mute shortcuts, 5s/15s seeks, and frame-by-frame stepping (<code>,</code> and <code>.</code>).</p>

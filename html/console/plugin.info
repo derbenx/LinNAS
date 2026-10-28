@@ -1,0 +1,3 @@
+<p><strong>Interactive Terminal Console</strong></p>
+<p>Provides a web-based interactive shell console for executing Linux terminal commands directly on the server.</p>
+<p>Maintains working directory state across command executions (e.g. <code>cd /etc</code>) and streams real-time stdout and stderr output.</p>

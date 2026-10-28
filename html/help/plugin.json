@@ -1,0 +1,7 @@
+{
+  "id": "help",
+  "name": "Help",
+  "description": "LinNAS v1.0 documentation, search, collapsible categories, and per-plugin help cards",
+  "category": "System",
+  "default": true
+}

@@ -64,10 +64,15 @@ type ExecResponse struct {
 }
 
 type FileEntry struct {
-	Name  string `json:"name"`
-	Path  string `json:"path"`
-	IsDir bool   `json:"is_dir"`
-	Size  int64  `json:"size"`
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	IsDir       bool   `json:"is_dir"`
+	Size        int64  `json:"size"`
+	Permissions string `json:"permissions,omitempty"`
+	ModeOctal   string `json:"mode_octal,omitempty"`
+	Owner       string `json:"owner,omitempty"`
+	Group       string `json:"group,omitempty"`
+	FsType      string `json:"fs_type,omitempty"`
 }
 
 type SMBShare struct {
@@ -1447,6 +1452,132 @@ func handleFsMove(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, map[string]interface{}{"success": true})
 }
 
+func handleFsChmod(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Paths     []string `json:"paths"`
+		ModeOctal string   `json:"mode_octal"`
+		Recursive bool     `json:"recursive"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || len(req.Paths) == 0 || req.ModeOctal == "" {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if matched, _ := regexp.MatchString(`^[0-7]{3,4}$`, req.ModeOctal); !matched {
+		jsonResponse(w, map[string]interface{}{"success": false, "error": "Invalid octal permission mode"})
+		return
+	}
+
+	var errors []string
+	for _, p := range req.Paths {
+		clean := filepath.Clean(p)
+		args := []string{}
+		if req.Recursive {
+			args = append(args, "-R")
+		}
+		args = append(args, req.ModeOctal, clean)
+
+		var cmd *exec.Cmd
+		if os.Getuid() != 0 {
+			sudoArgs := append([]string{"-n", "chmod"}, args...)
+			cmd = exec.Command("sudo", sudoArgs...)
+		} else {
+			cmd = exec.Command("chmod", args...)
+		}
+
+		if out, err := cmd.CombinedOutput(); err != nil {
+			errors = append(errors, fmt.Sprintf("Failed chmod on %s: %v (%s)", clean, err, string(out)))
+		}
+	}
+
+	if len(errors) > 0 {
+		jsonResponse(w, map[string]interface{}{"success": false, "error": strings.Join(errors, "; ")})
+		return
+	}
+	jsonResponse(w, map[string]interface{}{"success": true})
+}
+
+func handleFsChown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Paths     []string `json:"paths"`
+		Owner     string   `json:"owner"`
+		Group     string   `json:"group"`
+		Recursive bool     `json:"recursive"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || len(req.Paths) == 0 {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	ownerGroup := req.Owner
+	if req.Group != "" {
+		ownerGroup = fmt.Sprintf("%s:%s", req.Owner, req.Group)
+	}
+
+	if matched, _ := regexp.MatchString(`^[a-zA-Z0-9_\-\.:]+$`, ownerGroup); !matched || ownerGroup == "" {
+		jsonResponse(w, map[string]interface{}{"success": false, "error": "Invalid owner or group specification"})
+		return
+	}
+
+	var errors []string
+	for _, p := range req.Paths {
+		clean := filepath.Clean(p)
+		args := []string{}
+		if req.Recursive {
+			args = append(args, "-R")
+		}
+		args = append(args, ownerGroup, clean)
+
+		var cmd *exec.Cmd
+		if os.Getuid() != 0 {
+			sudoArgs := append([]string{"-n", "chown"}, args...)
+			cmd = exec.Command("sudo", sudoArgs...)
+		} else {
+			cmd = exec.Command("chown", args...)
+		}
+
+		if out, err := cmd.CombinedOutput(); err != nil {
+			errors = append(errors, fmt.Sprintf("Failed chown on %s: %v (%s)", clean, err, string(out)))
+		}
+	}
+
+	if len(errors) > 0 {
+		jsonResponse(w, map[string]interface{}{"success": false, "error": strings.Join(errors, "; ")})
+		return
+	}
+	jsonResponse(w, map[string]interface{}{"success": true})
+}
+
 func handleFsUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -1584,14 +1715,20 @@ func handleFsBrowse(w http.ResponseWriter, r *http.Request) {
 	for _, entry := range entries {
 		info, err := entry.Info()
 		size := int64(0)
+		permStr := "rw-r--r--"
+		octalStr := "0644"
 		if err == nil {
 			size = info.Size()
+			permStr = info.Mode().String()
+			octalStr = fmt.Sprintf("%04o", info.Mode().Perm())
 		}
 		items = append(items, FileEntry{
-			Name:  entry.Name(),
-			Path:  filepath.Join(dirPath, entry.Name()),
-			IsDir: entry.IsDir(),
-			Size:  size,
+			Name:        entry.Name(),
+			Path:        filepath.Join(dirPath, entry.Name()),
+			IsDir:       entry.IsDir(),
+			Size:        size,
+			Permissions: permStr,
+			ModeOctal:   octalStr,
 		})
 	}
 
@@ -1603,10 +1740,18 @@ func handleFsBrowse(w http.ResponseWriter, r *http.Request) {
 	})
 
 	parent := filepath.Dir(dirPath)
+
+	// Query filesystem type of the directory
+	fsType := "ext4"
+	if out, err := exec.Command("stat", "-f", "-c", "%T", dirPath).Output(); err == nil {
+		fsType = strings.TrimSpace(string(out))
+	}
+
 	jsonResponse(w, map[string]interface{}{
-		"path":   dirPath,
-		"parent": parent,
-		"items":  items,
+		"path":    dirPath,
+		"parent":  parent,
+		"fs_type": fsType,
+		"items":   items,
 	})
 }
 
@@ -1853,6 +1998,8 @@ func main() {
 	mux.HandleFunc("/api/fs/rename", authMiddleware(handleFsRename))
 	mux.HandleFunc("/api/fs/copy", authMiddleware(handleFsCopy))
 	mux.HandleFunc("/api/fs/move", authMiddleware(handleFsMove))
+	mux.HandleFunc("/api/fs/chmod", authMiddleware(handleFsChmod))
+	mux.HandleFunc("/api/fs/chown", authMiddleware(handleFsChown))
 	mux.HandleFunc("/api/fs/upload", authMiddleware(handleFsUpload))
 	mux.HandleFunc("/api/file/write", authMiddleware(handleFileWrite))
 	mux.HandleFunc("/api/startup/issues", authMiddleware(handleStartupIssues))
