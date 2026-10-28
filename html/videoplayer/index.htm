@@ -317,6 +317,20 @@
             } else if (e.key === 'PageDown') {
                 e.preventDefault();
                 navigateVideo(1);
+            } else if (e.key === ',' || e.key === '<') {
+                e.preventDefault();
+                if (video) {
+                    video.pause();
+                    const frameTime = 1 / 30; // Step back 1 frame (~30fps)
+                    video.currentTime = Math.max(0, video.currentTime - frameTime);
+                }
+            } else if (e.key === '.' || e.key === '>') {
+                e.preventDefault();
+                if (video) {
+                    video.pause();
+                    const frameTime = 1 / 30; // Step forward 1 frame (~30fps)
+                    video.currentTime = Math.min(video.duration || 0, video.currentTime + frameTime);
+                }
             } else if (e.key === 'Escape' && isFullscreen) {
                 toggleFullscreen();
             }

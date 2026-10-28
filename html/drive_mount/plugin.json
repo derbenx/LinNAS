@@ -10,7 +10,7 @@
     "unmount_disk_sudo": "umount \"{mountpoint}\"",
     "fstab_add_sudo": "mkdir -p \"{mountpoint}\" && grep -q \"{uuid}\" /etc/fstab || echo \"UUID={uuid} {mountpoint} {fstype} defaults 0 2\" >> /etc/fstab",
     "fstab_remove_sudo": "sed -i \"/{uuid}/d\" /etc/fstab",
-    "mount_iso_sudo": "mkdir -p \"{mountpoint}\" && mount -o loop \"{filepath}\" \"{mountpoint}\"",
+    "mount_iso_sudo": "mkdir -p \"{mountpoint}\" && mount -o loop,ro \"{filepath}\" \"{mountpoint}\"",
     "mount_vhd_sudo": "mkdir -p \"{mountpoint}\" && mount -o loop \"{filepath}\" \"{mountpoint}\""
   }
 }
