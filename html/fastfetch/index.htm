@@ -15,7 +15,16 @@
         .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
         .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
 
-        .terminal-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1.2rem; font-family: 'Courier New', Courier, monospace; font-size: 0.9rem; color: #58a6ff; line-height: 1.4; white-space: pre-wrap; word-break: break-all; min-height: 300px; max-height: 500px; overflow-y: auto; }
+        .terminal-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1.2rem; font-family: 'Courier New', Courier, monospace; font-size: 0.9rem; color: #c9d1d9; line-height: 1.4; white-space: pre-wrap; word-break: break-all; min-height: 300px; max-height: 500px; overflow-y: auto; }
+        .ansi-black { color: #484f58; }
+        .ansi-red { color: #ff7b72; }
+        .ansi-green { color: #7ee787; }
+        .ansi-yellow { color: #f2cc60; }
+        .ansi-blue { color: #58a6ff; }
+        .ansi-magenta { color: #bc8cff; }
+        .ansi-cyan { color: #39c5cf; }
+        .ansi-white { color: #f0f6fc; }
+        .ansi-bold { font-weight: bold; }
 
         .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
         .btn:hover { background: #2ea043; }
@@ -49,10 +58,49 @@
     <div id="outputBox" class="output-box"></div>
 
     <script>
+        function ansiToHtml(str) {
+            const ansiMap = {
+                '30': 'ansi-black', '31': 'ansi-red', '32': 'ansi-green', '33': 'ansi-yellow',
+                '34': 'ansi-blue', '35': 'ansi-magenta', '36': 'ansi-cyan', '37': 'ansi-white',
+                '90': 'ansi-black', '91': 'ansi-red', '92': 'ansi-green', '93': 'ansi-yellow',
+                '94': 'ansi-blue', '95': 'ansi-magenta', '96': 'ansi-cyan', '97': 'ansi-white',
+                '1': 'ansi-bold'
+            };
+
+            let openSpans = 0;
+            const html = str.replace(/\x1B\[([0-9;]*)m/g, function(match, p1) {
+                if (!p1 || p1 === '0') {
+                    let close = '';
+                    while (openSpans > 0) {
+                        close += '</span>';
+                        openSpans--;
+                    }
+                    return close;
+                }
+                const codes = p1.split(';');
+                let classes = [];
+                codes.forEach(c => {
+                    if (ansiMap[c]) classes.push(ansiMap[c]);
+                });
+                if (classes.length > 0) {
+                    openSpans++;
+                    return `<span class="${classes.join(' ')}">`;
+                }
+                return '';
+            });
+
+            let trailingClose = '';
+            while (openSpans > 0) {
+                trailingClose += '</span>';
+                openSpans--;
+            }
+            return html + trailingClose;
+        }
+
         async function loadFastfetch() {
             const term = document.getElementById('terminalOutput');
             const promptCard = document.getElementById('installPromptCard');
-            term.innerText = 'Loading live Fastfetch system summary...';
+            term.innerHTML = 'Loading live Fastfetch system summary...';
 
             try {
                 const res = await fetch(`/api/plugin/exec?_=${Date.now()}`, {
@@ -70,7 +118,7 @@
 
                 if (data.success && output.length > 0 && !output.includes('not found') && !output.includes('No such file')) {
                     promptCard.style.display = 'none';
-                    term.innerText = output;
+                    term.innerHTML = ansiToHtml(output);
                 } else {
                     promptCard.style.display = 'block';
                     term.innerText = 'Fastfetch package is not installed on this system.';

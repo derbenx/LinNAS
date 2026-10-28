@@ -189,9 +189,37 @@
                 const res = await fetch('/api/plugin/data?plugin=veracrypt');
                 const data = await res.json();
                 mounts = data.mounts || [];
+                await cleanupUnmountedContainers();
                 renderMounts();
             } catch (err) {
                 showOutput('Failed to load mounted volume list: ' + err.message);
+            }
+        }
+
+        async function cleanupUnmountedContainers() {
+            let initialCount = mounts.length;
+            let activeMounts = [];
+
+            for (let i = 0; i < mounts.length; i++) {
+                const m = mounts[i];
+                if (m.mount_point) {
+                    try {
+                        const browseRes = await fetch(`/api/fs/browse?path=${encodeURIComponent(m.mount_point)}`);
+                        const browseData = await browseRes.json();
+                        if (browseData.error || !browseData.items || browseData.items.length === 0) {
+                            showOutput(`Pruned unmounted encrypted container '${m.map_name || 'volume'}' (${m.mount_point}).`);
+                            continue;
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+                activeMounts.push(m);
+            }
+
+            if (activeMounts.length !== initialCount) {
+                mounts = activeMounts;
+                await saveMounts();
             }
         }
 

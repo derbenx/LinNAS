@@ -873,24 +873,45 @@ func syncSystemConfigs(pluginID string, body []byte) {
 				sb.WriteString("   read only = yes\n\n")
 			}
 
+			var activeShares []SMBShare
 			for _, share := range smbData.Shares {
-				if share.Enabled {
-					sb.WriteString(fmt.Sprintf("[%s]\n", share.Name))
-					sb.WriteString(fmt.Sprintf("   path = %s\n", share.Path))
-					if share.Comment != "" {
-						sb.WriteString(fmt.Sprintf("   comment = %s\n", share.Comment))
+				if !share.Enabled {
+					continue
+				}
+
+				// Check if share path is in /mnt/ or /media/ and if it's unmounted/non-existent
+				cleanPath := filepath.Clean(share.Path)
+				if strings.HasPrefix(cleanPath, "/mnt/") || strings.HasPrefix(cleanPath, "/media/") {
+					info, err := os.Stat(cleanPath)
+					if os.IsNotExist(err) || err != nil || !info.IsDir() {
+						log.Printf("[SMB-SYNC] Skipping unmounted or missing share path: %s (%s)", share.Name, share.Path)
+						continue
 					}
-					if share.ReadOnly {
-						sb.WriteString("   read only = yes\n")
-					} else {
-						sb.WriteString("   read only = no\n")
+					// Check if directory is empty (unmounted mount point)
+					entries, readErr := os.ReadDir(cleanPath)
+					if readErr == nil && len(entries) == 0 {
+						log.Printf("[SMB-SYNC] Skipping empty unmounted mount point share: %s (%s)", share.Name, share.Path)
+						continue
 					}
-					if len(share.ValidUsers) > 0 {
-						sb.WriteString(fmt.Sprintf("   valid users = %s\n", strings.Join(share.ValidUsers, " ")))
-						sb.WriteString("   guest ok = no\n\n")
-					} else {
-						sb.WriteString("   guest ok = yes\n\n")
-					}
+				}
+
+				activeShares = append(activeShares, share)
+
+				sb.WriteString(fmt.Sprintf("[%s]\n", share.Name))
+				sb.WriteString(fmt.Sprintf("   path = %s\n", share.Path))
+				if share.Comment != "" {
+					sb.WriteString(fmt.Sprintf("   comment = %s\n", share.Comment))
+				}
+				if share.ReadOnly {
+					sb.WriteString("   read only = yes\n")
+				} else {
+					sb.WriteString("   read only = no\n")
+				}
+				if len(share.ValidUsers) > 0 {
+					sb.WriteString(fmt.Sprintf("   valid users = %s\n", strings.Join(share.ValidUsers, " ")))
+					sb.WriteString("   guest ok = no\n\n")
+				} else {
+					sb.WriteString("   guest ok = yes\n\n")
 				}
 			}
 			_ = os.MkdirAll("/etc/samba/conf.d", 0755)
@@ -1767,6 +1788,11 @@ func main() {
 	loadConfig()
 
 	_ = os.MkdirAll("html", 0755)
+
+	// Sync SMB config at startup if data.json exists
+	if smbDataBytes, err := os.ReadFile("html/smb/data.json"); err == nil && len(smbDataBytes) > 0 {
+		syncSystemConfigs("smb", smbDataBytes)
+	}
 
 	mux := http.NewServeMux()
 

@@ -128,9 +128,11 @@
                 </select>
             </div>
         </div>
-        <div class="checkbox-group">
-            <input type="checkbox" id="autoSmb">
-            <label for="autoSmb">Automatically share mount folder via SMB Network Share</label>
+        <div class="form-group" style="margin-top: 0.8rem;">
+            <label>Restrict Auto-Share to SMB User (Required for Auto-Sharing)</label>
+            <select id="smbUserSelect">
+                <option value="">-- Do Not Share via SMB --</option>
+            </select>
         </div>
         <br>
         <button class="btn" onclick="mountImage()">Mount Image File</button>
@@ -160,6 +162,35 @@
     </div>
 
     <script>
+        let smbUsers = [];
+
+        async function loadSmbUsers() {
+            const select = document.getElementById('smbUserSelect');
+            try {
+                const res = await fetch('/api/plugin/data?plugin=smb');
+                const data = await res.json();
+                smbUsers = data.users || [];
+
+                select.innerHTML = '<option value="">-- Do Not Share via SMB --</option>';
+                if (smbUsers.length === 0) {
+                    const opt = document.createElement('option');
+                    opt.value = "";
+                    opt.innerText = "No SMB Users Found (Create User in SMB Plugin First)";
+                    opt.disabled = true;
+                    select.appendChild(opt);
+                } else {
+                    smbUsers.forEach(u => {
+                        const opt = document.createElement('option');
+                        opt.value = u;
+                        opt.innerText = `Share with User: ${u}`;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to load SMB users:', err);
+            }
+        }
+
         async function loadDriveList() {
             const tbody = document.getElementById('drivesTableBody');
             tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #8b949e;">Scanning disks...</td></tr>';
@@ -340,7 +371,7 @@
             const filepath = document.getElementById('imgPath').value.trim();
             const mountpoint = document.getElementById('imgMount').value.trim();
             const type = document.getElementById('imgType').value;
-            const autoSmb = document.getElementById('autoSmb').checked;
+            const smbUser = document.getElementById('smbUserSelect').value;
 
             if (!filepath || !mountpoint) {
                 showOutput('Please enter image file path and target mount point.');
@@ -363,9 +394,9 @@
                 const data = await res.json();
                 if (data.success) {
                     showOutput(`Image mounted successfully to ${mountpoint}`);
-                    if (autoSmb) {
+                    if (smbUser) {
                         const shareName = filepath.split('/').pop().replace(/[^a-zA-Z0-9_]/g, '_');
-                        await addSmbShare(mountpoint, shareName);
+                        await addSmbShare(mountpoint, shareName, smbUser);
                     }
                     loadDriveList();
                 } else {
@@ -376,19 +407,26 @@
             }
         }
 
-        async function addSmbShare(path, name) {
+        async function addSmbShare(path, name, user) {
             try {
                 const res = await fetch('/api/plugin/data?plugin=smb');
                 const data = await res.json();
                 const shares = data.shares || [];
-                shares.push({ name: name, path: path, comment: 'Mounted image share', read_only: false, enabled: true });
+                shares.push({
+                    name: name,
+                    path: path,
+                    comment: 'Mounted image share',
+                    read_only: false,
+                    enabled: true,
+                    valid_users: [user]
+                });
 
                 await fetch('/api/plugin/data?plugin=smb', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ shares: shares })
+                    body: JSON.stringify({ shares: shares, users: data.users || [] })
                 });
-                showOutput(`Auto-added SMB network share '${name}' for path ${path}`);
+                showOutput(`Auto-added restricted SMB share '${name}' for path ${path} assigned to user '${user}'.`);
             } catch (err) {
                 console.error('Failed to add SMB share:', err);
             }
@@ -491,7 +529,10 @@
             document.getElementById('stickyConsole').style.display = 'none';
         }
 
-        window.onload = loadDriveList;
+        window.onload = async () => {
+            await loadSmbUsers();
+            await loadDriveList();
+        };
     </script>
 </body>
 </html>

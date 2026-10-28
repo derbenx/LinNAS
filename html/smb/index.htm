@@ -247,12 +247,41 @@
 
                 if (shares.length === 0) {
                     await importSystemSmbShares();
+                } else {
+                    await cleanupUnmountedShares();
                 }
 
                 renderUsers();
                 renderShares();
             } catch (err) {
                 showOutput('Failed to load SMB data: ' + err.message);
+            }
+        }
+
+        async function cleanupUnmountedShares() {
+            let initialCount = shares.length;
+            let validShares = [];
+
+            for (let i = 0; i < shares.length; i++) {
+                const s = shares[i];
+                if (s.path && (s.path.startsWith('/mnt/') || s.path.startsWith('/media/'))) {
+                    try {
+                        const browseRes = await fetch(`/api/fs/browse?path=${encodeURIComponent(s.path)}`);
+                        const browseData = await browseRes.json();
+                        if (browseData.error || !browseData.items || browseData.items.length === 0) {
+                            showOutput(`Pruned unmounted/empty container share '${s.name}' (${s.path}).`);
+                            continue;
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+                validShares.push(s);
+            }
+
+            if (validShares.length !== initialCount) {
+                shares = validShares;
+                await saveSMBData();
             }
         }
 

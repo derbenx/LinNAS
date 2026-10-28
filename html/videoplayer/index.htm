@@ -170,13 +170,35 @@
         }
 
         function toggleFullscreen() {
-            isFullscreen = !isFullscreen;
-            if (isFullscreen) {
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                const el = document.documentElement;
+                if (el.requestFullscreen) {
+                    el.requestFullscreen().catch(() => {});
+                } else if (el.webkitRequestFullscreen) {
+                    el.webkitRequestFullscreen();
+                }
                 document.body.classList.add('is-fullscreen');
+                isFullscreen = true;
             } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen().catch(() => {});
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                }
                 document.body.classList.remove('is-fullscreen');
+                isFullscreen = false;
             }
         }
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                document.body.classList.remove('is-fullscreen');
+                isFullscreen = false;
+            } else {
+                document.body.classList.add('is-fullscreen');
+                isFullscreen = true;
+            }
+        });
 
         /* File Picker Modal */
         let currentBrowserPath = '/';
