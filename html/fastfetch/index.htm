@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Neofetch System Summary</title>
+    <title>Fastfetch System Summary</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
@@ -26,41 +26,41 @@
     </style>
 </head>
 <body>
-    <h2>Neofetch System Information Summary</h2>
+    <h2>Fastfetch System Information Summary</h2>
     <p class="subtitle">Display Debian Linux OS version, kernel, architecture, uptime, memory, and package count.</p>
 
     <!-- Missing Software Prompt -->
     <div id="installPromptCard" class="install-card">
-        <div class="install-title">⚠️ Neofetch Package Not Installed</div>
+        <div class="install-title">⚠️ Fastfetch Package Not Installed</div>
         <p style="color: #c9d1d9; font-size: 0.9rem; margin-bottom: 1rem;">
-            The <code>neofetch</code> system information tool is not installed on this server. Click below to install it via APT.
+            The <code>fastfetch</code> system information tool is not installed on this server. Click below to install it via APT.
         </p>
-        <button class="btn" onclick="installNeofetchPackage()">Install Neofetch via APT</button>
+        <button class="btn" onclick="installFastfetchPackage()">Install Fastfetch via APT</button>
     </div>
 
     <div class="section">
         <div class="section-title">
             <span>System Summary Output</span>
-            <button class="btn btn-secondary" style="padding: 0.3rem 0.8rem; font-size: 0.85rem;" onclick="loadNeofetch()">Refresh Info</button>
+            <button class="btn btn-secondary" style="padding: 0.3rem 0.8rem; font-size: 0.85rem;" onclick="loadFastfetch()">Refresh Info</button>
         </div>
-        <div id="terminalOutput" class="terminal-box">Loading Neofetch system summary...</div>
+        <div id="terminalOutput" class="terminal-box">Loading Fastfetch system summary...</div>
     </div>
 
     <div id="outputBox" class="output-box"></div>
 
     <script>
-        async function loadNeofetch() {
+        async function loadFastfetch() {
             const term = document.getElementById('terminalOutput');
             const promptCard = document.getElementById('installPromptCard');
-            term.innerText = 'Loading live Neofetch system summary...';
+            term.innerText = 'Loading live Fastfetch system summary...';
 
             try {
                 const res = await fetch(`/api/plugin/exec?_=${Date.now()}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
                     body: JSON.stringify({
-                        plugin: 'neofetch',
-                        cmd_key: 'neofetch_cmd',
+                        plugin: 'fastfetch',
+                        cmd_key: 'fastfetch_cmd',
                         args: {}
                     })
                 });
@@ -73,31 +73,31 @@
                     term.innerText = output;
                 } else {
                     promptCard.style.display = 'block';
-                    term.innerText = 'Neofetch/Fastfetch package is not installed on this system.';
+                    term.innerText = 'Fastfetch package is not installed on this system.';
                 }
             } catch (err) {
                 promptCard.style.display = 'block';
-                term.innerText = 'Failed to execute neofetch: ' + err.message;
+                term.innerText = 'Failed to execute fastfetch: ' + err.message;
             }
         }
 
-        async function installNeofetchPackage() {
-            showOutput('Installing neofetch package via APT... Please wait...');
+        async function installFastfetchPackage() {
+            showOutput('Installing fastfetch package via APT... Please wait...');
             try {
                 const res = await fetch('/api/plugin/exec', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ plugin: 'neofetch', cmd_key: 'install_sudo', args: {} })
+                    body: JSON.stringify({ plugin: 'fastfetch', cmd_key: 'install_sudo', args: {} })
                 });
 
                 const data = await res.json();
                 if (data.success) {
-                    showOutput('Neofetch installed successfully!\n' + data.output);
+                    showOutput('Fastfetch installed successfully!\n' + data.output);
                     document.getElementById('installPromptCard').style.display = 'none';
                     if (window.parent) {
                         window.parent.postMessage('reload_plugins', '*');
                     }
-                    await loadNeofetch();
+                    await loadFastfetch();
                 } else {
                     showOutput('Installation failed: ' + data.error + '\n' + data.output);
                 }
@@ -112,7 +112,7 @@
             box.innerText = text;
         }
 
-        window.onload = loadNeofetch;
+        window.onload = loadFastfetch;
     </script>
 </body>
 </html>

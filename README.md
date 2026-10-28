@@ -89,7 +89,7 @@ Featuring a modular, decoupled plugin architecture, **LinNAS** enables users to 
 - Quick preset buttons for Cloudflare (`1.1.1.1`) and Google DNS (`8.8.8.8`).
 - One-click APT installer for missing `iputils-ping` and `traceroute` netinstall packages.
 
-### 12. 🐚 Neofetch System Information (`neofetch`)
+### 12. 🐚 Fastfetch System Information (`fastfetch`)
 - Display Debian OS summary, kernel release, uptime, shell, memory usage, and ASCII distribution logo.
 
 ### 13. 🌐 Apache Web Server (`apache`)
