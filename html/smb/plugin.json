@@ -12,6 +12,7 @@
     "add_smb_user_sudo": "(id -u \"{username}\" >/dev/null 2>&1 || useradd -M -s /usr/sbin/nologin \"{username}\") && (echo \"{password}\"; echo \"{password}\") | smbpasswd -a -s \"{username}\"",
     "delete_smb_user_sudo": "smbpasswd -x \"{username}\"",
     "list_smb_users_sudo": "pdbedit -L 2>/dev/null | cut -d: -f1 || (test -f /etc/samba/smbpasswd && cut -d: -f1 /etc/samba/smbpasswd) || true",
+    "read_smb_conf_sudo": "cat /etc/samba/smb.conf /etc/samba/conf.d/shares.conf 2>/dev/null || true",
     "restart_smb_sudo": "systemctl restart smbd || service smbd restart"
   }
 }

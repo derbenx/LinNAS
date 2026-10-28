@@ -180,29 +180,41 @@
             const isInstall = cmdKey.includes('install');
             const opName = isInstall ? 'Installing' : 'Uninstalling';
 
-            showConsole(`${opName} ${pluginName}... Please wait while APT downloads and configures dependencies.`, true);
+            showConsole(`[START] ${opName} ${pluginName}... Please wait...\n`, true);
+            const box = document.getElementById('outputBox');
 
             try {
-                const res = await fetch('/api/plugin/exec', {
+                const response = await fetch('/api/plugin/exec/stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ plugin: pluginId, cmd_key: cmdKey, args: {} })
                 });
 
-                const data = await res.json();
-                if (data.success) {
-                    updateConsole(`${opName} ${pluginName} completed successfully!\n\n${data.output}`, false);
-                    await loadAptPlugins();
+                if (!response.ok) {
+                    const errText = await response.text();
+                    updateConsole(`Operation failed: ${response.statusText}\n${errText}`, false);
+                    return;
+                }
 
-                    // Post message to parent sidebar to reload installed plugin menu dynamically!
-                    if (window.parent) {
-                        window.parent.postMessage('reload_plugins', '*');
-                        if (typeof window.parent.loadPlugins === 'function') {
-                            window.parent.loadPlugins();
-                        }
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    box.innerText += chunk;
+                    box.scrollTop = box.scrollHeight;
+                }
+
+                updateConsole(box.innerText + `\n\n[FINISHED] ${opName} ${pluginName} completed.`, false);
+                await loadAptPlugins();
+
+                if (window.parent) {
+                    window.parent.postMessage('reload_plugins', '*');
+                    if (typeof window.parent.loadPlugins === 'function') {
+                        window.parent.loadPlugins();
                     }
-                } else {
-                    updateConsole(`Operation failed: ${data.error}\n\n${data.output}`, false);
                 }
             } catch (err) {
                 updateConsole('Execution error: ' + err.message, false);

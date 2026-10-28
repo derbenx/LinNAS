@@ -68,7 +68,10 @@
 </head>
 <body>
     <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.3rem;">
-        <h2>File Editor</h2>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <h2>File Editor</h2>
+            <button class="btn btn-secondary" style="padding: 0.3rem 0.8rem; font-size: 0.85rem;" onclick="goBackToFileManager()">⬅️ Back to File Manager</button>
+        </div>
         <span id="adminWarningBadge" style="background: #381e1d; border: 1px solid #f85149; color: #ff7b72; padding: 0.3rem 0.8rem; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: none;">
             ⚠️ Admin / Root Privilege Mode
         </span>
@@ -299,6 +302,22 @@
             const box = document.getElementById('outputBox');
             box.innerText = text;
             box.scrollTop = box.scrollHeight;
+        }
+
+        function goBackToFileManager() {
+            const currentFile = document.getElementById('filePath').value.trim();
+            let parentDir = '/';
+            if (currentFile) {
+                const parts = currentFile.split('/').filter(Boolean);
+                if (parts.length > 1) {
+                    parentDir = '/' + parts.slice(0, -1).join('/');
+                }
+            }
+            if (window.parent && typeof window.parent.loadPluginView === 'function') {
+                window.parent.loadPluginView('filemanager', { dir: parentDir });
+            } else {
+                window.location.href = `/filemanager/index.htm?dir=${encodeURIComponent(parentDir)}`;
+            }
         }
 
         function closeConsole() {

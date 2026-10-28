@@ -191,6 +191,7 @@
                 'wifi': '📶',
                 'filemanager': '📂',
                 'imageviewer': '🖼️',
+                'videoplayer': '🎬',
                 'editor': '📝',
                 'ping': '📡',
                 'apache': '🌐',
@@ -199,6 +200,29 @@
             };
             return icons[id] || '⚙️';
         }
+
+        const lastPluginState = {
+            filemanager: '',
+            editor: '',
+            imageviewer: '',
+            videoplayer: ''
+        };
+
+        function loadPluginView(pluginId, params) {
+            let basePluginId = pluginId;
+            let queryParts = [];
+
+            if (params) {
+                for (const [k, v] of Object.entries(params)) {
+                    if (v) queryParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+                }
+            }
+
+            let queryStr = queryParts.length > 0 ? '?' + queryParts.join('&') : '';
+            openPlugin(basePluginId + queryStr);
+        }
+
+        window.loadPluginView = loadPluginView;
 
         function openPlugin(pluginIdStr, el) {
             let basePluginId = pluginIdStr;
@@ -212,6 +236,15 @@
             if (!isLoggedIn && basePluginId !== 'status') {
                 window.location.href = '/login.htm';
                 return;
+            }
+
+            // Restore/save memory for File Manager, File Editor, Image Viewer, Video Player
+            if (['filemanager', 'editor', 'imageviewer', 'videoplayer'].includes(basePluginId)) {
+                if (queryStr) {
+                    lastPluginState[basePluginId] = queryStr;
+                } else if (lastPluginState[basePluginId]) {
+                    queryStr = lastPluginState[basePluginId];
+                }
             }
 
             document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));

@@ -213,10 +213,12 @@
                 if (selectedPaths.has(item.path)) tr.classList.add('selected');
 
                 const isImage = isImageFile(item.name);
+                const isVideo = isVideoFile(item.name);
                 const isText = isTextFile(item.name);
 
                 let icon = '📄';
                 if (item.is_dir) icon = '📁';
+                else if (isVideo) icon = '🎬';
                 else if (isImage) icon = '🖼️';
                 else if (isText) icon = '📝';
 
@@ -246,6 +248,8 @@
                 tr.ondblclick = () => {
                     if (item.is_dir) {
                         loadDirectory(item.path);
+                    } else if (isVideo) {
+                        openVideoPlayer(item.path);
                     } else if (isImage) {
                         openImageViewer(item.path);
                     } else if (isText) {
@@ -455,18 +459,26 @@
         }
 
         function openTextEditor(filepath) {
-            if (window.parent && window.parent !== window) {
-                window.parent.postMessage(`open_plugin:editor?file=${encodeURIComponent(filepath)}`, '*');
+            if (window.parent && typeof window.parent.loadPluginView === 'function') {
+                window.parent.loadPluginView('editor', { file: filepath });
             } else {
                 window.location.href = `/editor/index.htm?file=${encodeURIComponent(filepath)}`;
             }
         }
 
         function openImageViewer(filepath) {
-            if (window.parent && window.parent !== window) {
-                window.parent.postMessage(`open_plugin:imageviewer?file=${encodeURIComponent(filepath)}&dir=${encodeURIComponent(currentPath)}`, '*');
+            if (window.parent && typeof window.parent.loadPluginView === 'function') {
+                window.parent.loadPluginView('imageviewer', { file: filepath, dir: currentPath });
             } else {
                 window.location.href = `/imageviewer/index.htm?file=${encodeURIComponent(filepath)}&dir=${encodeURIComponent(currentPath)}`;
+            }
+        }
+
+        function openVideoPlayer(filepath) {
+            if (window.parent && typeof window.parent.loadPluginView === 'function') {
+                window.parent.loadPluginView('videoplayer', { file: filepath, dir: currentPath });
+            } else {
+                window.location.href = `/videoplayer/index.htm?file=${encodeURIComponent(filepath)}&dir=${encodeURIComponent(currentPath)}`;
             }
         }
 
@@ -546,6 +558,9 @@
             if (item.is_dir) {
                 ctxOpen.innerText = '📁 Open Directory';
                 ctxEdit.style.display = 'none';
+            } else if (isVideoFile(item.name)) {
+                ctxOpen.innerText = '🎬 Play Video';
+                ctxEdit.style.display = 'none';
             } else if (isImageFile(item.name)) {
                 ctxOpen.innerText = '🖼️ View Image';
                 ctxEdit.style.display = 'none';
@@ -567,6 +582,8 @@
             if (!rightClickedItem) return;
             if (rightClickedItem.is_dir) {
                 loadDirectory(rightClickedItem.path);
+            } else if (isVideoFile(rightClickedItem.name)) {
+                openVideoPlayer(rightClickedItem.path);
             } else if (isImageFile(rightClickedItem.name)) {
                 openImageViewer(rightClickedItem.path);
             } else {
@@ -583,6 +600,11 @@
         }
 
         /* Utility Helpers */
+        function isVideoFile(filename) {
+            const ext = getFileExtension(filename).toLowerCase();
+            return ['mp4', 'webm', 'ogg', 'ogv', 'mkv', 'mov', 'avi'].includes(ext);
+        }
+
         function isImageFile(filename) {
             const ext = getFileExtension(filename).toLowerCase();
             return ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'].includes(ext);

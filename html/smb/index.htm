@@ -245,11 +245,85 @@
 
                 await recallSystemSmbUsers();
 
+                if (shares.length === 0) {
+                    await importSystemSmbShares();
+                }
+
                 renderUsers();
                 renderShares();
             } catch (err) {
                 showOutput('Failed to load SMB data: ' + err.message);
             }
+        }
+
+        async function importSystemSmbShares() {
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'smb', cmd_key: 'read_smb_conf_sudo', args: {} })
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    const parsedShares = parseSmbConf(data.output);
+                    if (parsedShares.length > 0) {
+                        shares = parsedShares;
+                        await saveSMBData();
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to import system SMB shares:', err);
+            }
+        }
+
+        function parseSmbConf(confContent) {
+            const lines = confContent.split('\n');
+            const imported = [];
+            let currentShare = null;
+
+            lines.forEach(line => {
+                line = line.trim();
+                if (!line || line.startsWith('#') || line.startsWith(';')) return;
+
+                if (line.startsWith('[') && line.endsWith(']')) {
+                    const sectionName = line.substring(1, line.length - 1).trim();
+                    if (sectionName.toLowerCase() === 'homes') {
+                        hideHomes = false;
+                        currentShare = null;
+                        return;
+                    }
+                    if (sectionName.toLowerCase() === 'global') {
+                        currentShare = null;
+                        return;
+                    }
+                    currentShare = {
+                        name: sectionName,
+                        path: '',
+                        valid_users: [],
+                        read_only: false,
+                        enabled: true
+                    };
+                    imported.push(currentShare);
+                } else if (currentShare && line.includes('=')) {
+                    const parts = line.split('=');
+                    const key = parts[0].trim().toLowerCase();
+                    const val = parts.slice(1).join('=').trim();
+
+                    if (key === 'path') {
+                        currentShare.path = val;
+                    } else if (key === 'read only') {
+                        currentShare.read_only = (val.toLowerCase() === 'yes' || val.toLowerCase() === 'true' || val === '1');
+                    } else if (key === 'valid users') {
+                        currentShare.valid_users = val.split(/\s+/).filter(Boolean);
+                    } else if (key === 'available' || key === 'browseable') {
+                        if (val.toLowerCase() === 'no' || val.toLowerCase() === 'false' || val === '0') {
+                            currentShare.enabled = false;
+                        }
+                    }
+                }
+            });
+
+            return imported.filter(s => s.path !== '');
         }
 
         async function recallSystemSmbUsers() {

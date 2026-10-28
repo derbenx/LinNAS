@@ -82,25 +82,37 @@
         }
 
         async function installFastfetchPackage() {
-            showOutput('Installing fastfetch package via APT... Please wait...');
+            showOutput('[START] Installing fastfetch package via APT... Please wait...\n');
+            const box = document.getElementById('outputBox');
             try {
-                const res = await fetch('/api/plugin/exec', {
+                const response = await fetch('/api/plugin/exec/stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ plugin: 'fastfetch', cmd_key: 'install_sudo', args: {} })
                 });
 
-                const data = await res.json();
-                if (data.success) {
-                    showOutput('Fastfetch installed successfully!\n' + data.output);
-                    document.getElementById('installPromptCard').style.display = 'none';
-                    if (window.parent) {
-                        window.parent.postMessage('reload_plugins', '*');
-                    }
-                    await loadFastfetch();
-                } else {
-                    showOutput('Installation failed: ' + data.error + '\n' + data.output);
+                if (!response.ok) {
+                    showOutput('Installation request failed: ' + response.statusText);
+                    return;
                 }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    box.innerText += chunk;
+                    box.scrollTop = box.scrollHeight;
+                }
+
+                box.innerText += '\n\n[FINISHED] Installation completed successfully!';
+                document.getElementById('installPromptCard').style.display = 'none';
+                if (window.parent) {
+                    window.parent.postMessage('reload_plugins', '*');
+                }
+                await loadFastfetch();
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
             }

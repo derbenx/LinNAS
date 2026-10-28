@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Video Player - LinNAS</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 1.5rem; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+        body.is-fullscreen { padding: 0; background: #000; }
+        body.is-fullscreen .header-bar { display: none !important; }
+        body.is-fullscreen .player-stage { border-radius: 0; border: none; background: #000; padding: 0; }
+        body.is-fullscreen video { max-width: 100%; max-height: 100%; }
+
+        .header-bar { display: flex; justify-content: space-between; align-items: center; background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 0.8rem 1.2rem; margin-bottom: 1rem; gap: 1rem; }
+        .title-group { display: flex; align-items: center; gap: 10px; max-width: 50%; min-width: 0; }
+        h2 { font-size: 1.3rem; color: #58a6ff; white-space: nowrap; }
+        .meta-info { font-size: 0.82rem; color: #8b949e; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .toolbar { display: flex; gap: 0.5rem; align-items: center; margin-left: auto; flex-shrink: 0; }
+        .btn { padding: 0.45rem 0.9rem; background: #238636; color: white; border: none; border-radius: 5px; font-weight: 600; cursor: pointer; font-size: 0.82rem; transition: background 0.2s; display: flex; align-items: center; gap: 5px; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #30363d; color: white; }
+        .btn:disabled { background: #30363d; color: #6e7681; cursor: not-allowed; border: none; }
+
+        .player-stage { flex: 1; background: #161b22; border: 1px solid #30363d; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; padding: 1rem; }
+        video { max-width: 100%; max-height: 100%; outline: none; border-radius: 4px; background: #000; box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
+
+        .empty-placeholder { text-align: center; color: #8b949e; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+        .empty-icon { font-size: 3.5rem; }
+
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 10% auto; padding: 1.5rem; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
+        .file-list { max-height: 300px; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; }
+        .file-item { padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #21262d; font-family: monospace; font-size: 0.88rem; }
+        .file-item:hover { background: #1f242d; color: #58a6ff; }
+    </style>
+</head>
+<body>
+    <div class="header-bar">
+        <div class="title-group">
+            <button id="backBtn" class="btn btn-secondary" style="display: none;" onclick="goBackToFiles()">⬅ Back to Files</button>
+            <div>
+                <h2>🎬 Video Player</h2>
+                <div id="videoMeta" class="meta-info">No video loaded</div>
+            </div>
+        </div>
+        <div class="toolbar">
+            <button class="btn btn-secondary" onclick="openFilePicker()">📂 Browse Video...</button>
+            <button id="prevBtn" class="btn btn-secondary" onclick="navigateVideo(-1)" disabled>◀ Previous</button>
+            <button id="nextBtn" class="btn btn-secondary" onclick="navigateVideo(1)" disabled>Next ▶</button>
+            <button class="btn btn-secondary" onclick="toggleFullscreen()">📺 Fullscreen (F11)</button>
+        </div>
+    </div>
+
+    <div class="player-stage" id="playerStage">
+        <div id="emptyView" class="empty-placeholder">
+            <div class="empty-icon">🎬</div>
+            <p>No video currently selected.</p>
+            <button class="btn" onclick="openFilePicker()">Select Video File</button>
+        </div>
+        <video id="mainVideo" controls style="display: none;"></video>
+    </div>
+
+    <!-- Video File Picker Modal -->
+    <div id="fileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="modalPath">/</span>
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeModal()">✕</button>
+            </div>
+            <div id="fileList" class="file-list"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentFilePath = null;
+        let currentDir = null;
+        let directoryVideos = [];
+        let currentVideoIndex = -1;
+        let isFullscreen = false;
+
+        async function initPlayer() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const file = urlParams.get('file');
+            const dir = urlParams.get('dir');
+
+            if (dir) {
+                currentDir = dir;
+                document.getElementById('backBtn').style.display = 'flex';
+                await loadDirectoryVideos(dir);
+            }
+
+            if (file) {
+                loadVideo(file);
+            }
+        }
+
+        async function loadDirectoryVideos(dirPath) {
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(dirPath)}`);
+                const data = await res.json();
+                if (data.items) {
+                    directoryVideos = data.items.filter(item => !item.is_dir && isVideoFile(item.name)).map(item => item.path);
+                    updateNavButtons();
+                }
+            } catch (err) {
+                console.error('Failed to load sibling videos:', err);
+            }
+        }
+
+        function loadVideo(filePath) {
+            currentFilePath = filePath;
+
+            const videoEl = document.getElementById('mainVideo');
+            const emptyView = document.getElementById('emptyView');
+            const metaEl = document.getElementById('videoMeta');
+
+            videoEl.src = `/api/fs/raw?path=${encodeURIComponent(filePath)}`;
+            videoEl.style.display = 'block';
+            emptyView.style.display = 'none';
+
+            const filename = filePath.split('/').pop();
+            metaEl.innerText = `${filename} (${filePath})`;
+
+            videoEl.onloadedmetadata = function() {
+                const durStr = formatTime(videoEl.duration);
+                metaEl.innerText = `${filename} | ${videoEl.videoWidth} × ${videoEl.videoHeight} px | ${durStr} | ${filePath}`;
+            };
+
+            videoEl.onerror = function() {
+                metaEl.innerText = `Failed to load video: ${filename}`;
+            };
+
+            if (directoryVideos.length > 0) {
+                currentVideoIndex = directoryVideos.indexOf(filePath);
+                updateNavButtons();
+            }
+
+            videoEl.play().catch(() => {});
+        }
+
+        function navigateVideo(delta) {
+            if (directoryVideos.length === 0 || currentVideoIndex === -1) return;
+
+            let newIndex = currentVideoIndex + delta;
+            if (newIndex < 0) newIndex = directoryVideos.length - 1;
+            if (newIndex >= directoryVideos.length) newIndex = 0;
+
+            loadVideo(directoryVideos[newIndex]);
+        }
+
+        function updateNavButtons() {
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const hasMultiple = directoryVideos.length > 1;
+
+            prevBtn.disabled = !hasMultiple;
+            nextBtn.disabled = !hasMultiple;
+        }
+
+        function goBackToFiles() {
+            if (window.parent) {
+                window.parent.postMessage(`open_plugin:filemanager?dir=${encodeURIComponent(currentDir || '/')}`, '*');
+            }
+            window.location.href = `/filemanager/index.htm?dir=${encodeURIComponent(currentDir || '/')}`;
+        }
+
+        function toggleFullscreen() {
+            isFullscreen = !isFullscreen;
+            if (isFullscreen) {
+                document.body.classList.add('is-fullscreen');
+            } else {
+                document.body.classList.remove('is-fullscreen');
+            }
+        }
+
+        /* File Picker Modal */
+        let currentBrowserPath = '/';
+
+        async function openFilePicker(path) {
+            currentBrowserPath = path || currentDir || '/';
+            document.getElementById('modalPath').innerText = currentBrowserPath;
+            document.getElementById('fileModal').style.display = 'block';
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentBrowserPath)}`);
+                const data = await res.json();
+                const container = document.getElementById('fileList');
+                container.innerHTML = '';
+
+                if (data.parent && data.parent !== currentBrowserPath) {
+                    const upDiv = document.createElement('div');
+                    upDiv.className = 'file-item';
+                    upDiv.innerText = '📁 .. (Parent Directory)';
+                    upDiv.onclick = () => openFilePicker(data.parent);
+                    container.appendChild(upDiv);
+                }
+
+                if (data.items) {
+                    data.items.forEach(item => {
+                        if (item.is_dir || isVideoFile(item.name)) {
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = 'file-item';
+                            itemDiv.innerText = (item.is_dir ? '📁 ' : '🎬 ') + item.name;
+                            itemDiv.onclick = () => {
+                                if (item.is_dir) {
+                                    openFilePicker(item.path);
+                                } else {
+                                    closeModal();
+                                    currentDir = currentBrowserPath;
+                                    loadDirectoryVideos(currentDir).then(() => loadVideo(item.path));
+                                }
+                            };
+                            container.appendChild(itemDiv);
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error('Picker error:', err);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('fileModal').style.display = 'none';
+        }
+
+        function isVideoFile(filename) {
+            if (!filename || !filename.includes('.')) return false;
+            const ext = filename.split('.').pop().toLowerCase();
+            return ['mp4', 'webm', 'ogg', 'ogv', 'mkv', 'mov', 'avi'].includes(ext);
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds < 0) return '00:00';
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        /* Keyboard Shortcuts Handler */
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            const video = document.getElementById('mainVideo');
+
+            if (e.key === 'F11') {
+                e.preventDefault();
+                toggleFullscreen();
+            } else if (e.code === 'Space') {
+                e.preventDefault();
+                if (video) {
+                    if (video.paused) video.play();
+                    else video.pause();
+                }
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                if (video) {
+                    const seek = e.shiftKey ? 15 : 5;
+                    video.currentTime = Math.max(0, video.currentTime - seek);
+                }
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                if (video) {
+                    const seek = e.shiftKey ? 15 : 5;
+                    video.currentTime = Math.min(video.duration || 0, video.currentTime + seek);
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (video) {
+                    video.volume = Math.min(1, video.volume + 0.1);
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (video) {
+                    video.volume = Math.max(0, video.volume - 0.1);
+                }
+            } else if (e.key === 'm' || e.key === 'M') {
+                e.preventDefault();
+                if (video) {
+                    video.muted = !video.muted;
+                }
+            } else if (e.key === 'Home') {
+                e.preventDefault();
+                if (video) video.currentTime = 0;
+            } else if (e.key === 'End') {
+                e.preventDefault();
+                if (video && video.duration) video.currentTime = video.duration;
+            } else if (e.key === 'PageUp') {
+                e.preventDefault();
+                navigateVideo(-1);
+            } else if (e.key === 'PageDown') {
+                e.preventDefault();
+                navigateVideo(1);
+            } else if (e.key === 'Escape' && isFullscreen) {
+                toggleFullscreen();
+            }
+        });
+
+        window.onload = initPlayer;
+    </script>
+</body>
+</html>

@@ -687,6 +687,175 @@ func handleExecPluginCmd(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func handleExecPluginCmdStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req ExecRequest
+	if err := json.Unmarshal(decryptedBody, &req); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if matched, _ := regexp.MatchString(`^[a-zA-Z0-9_\-]+$`, req.Plugin); !matched {
+		http.Error(w, "Invalid plugin ID", http.StatusBadRequest)
+		return
+	}
+
+	if enabled, exists := appConfig.FeatureToggles[req.Plugin]; exists && !enabled {
+		http.Error(w, fmt.Sprintf("Plugin '%s' is currently disabled", req.Plugin), http.StatusForbidden)
+		return
+	}
+
+	isSudoCmd := strings.HasSuffix(req.CmdKey, "_sudo")
+	isStandardCmd := strings.HasSuffix(req.CmdKey, "_cmd")
+
+	if !isSudoCmd && !isStandardCmd {
+		http.Error(w, "Only keys ending with '_cmd' or '_sudo' can be executed", http.StatusBadRequest)
+		return
+	}
+
+	jsonPath := filepath.Join("html", req.Plugin, "plugin.json")
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		http.Error(w, "Plugin manifest not found", http.StatusNotFound)
+		return
+	}
+
+	var rawMap map[string]interface{}
+	if err := json.Unmarshal(data, &rawMap); err != nil {
+		http.Error(w, "Failed to parse plugin manifest", http.StatusInternalServerError)
+		return
+	}
+
+	cmdTemplate := ""
+	if val, ok := rawMap[req.CmdKey].(string); ok {
+		cmdTemplate = val
+	} else if cmds, ok := rawMap["commands"].(map[string]interface{}); ok {
+		if val, ok := cmds[req.CmdKey].(string); ok {
+			cmdTemplate = val
+		}
+	}
+
+	if cmdTemplate == "" {
+		if req.CmdKey == "install_cmd" || req.CmdKey == "install_sudo" {
+			if val, ok := rawMap["install_sudo"].(string); ok {
+				cmdTemplate = val
+			} else if val, ok := rawMap["install_cmd"].(string); ok {
+				cmdTemplate = val
+			}
+		} else if req.CmdKey == "remove_cmd" || req.CmdKey == "remove_sudo" {
+			if val, ok := rawMap["remove_sudo"].(string); ok {
+				cmdTemplate = val
+			} else if val, ok := rawMap["remove_cmd"].(string); ok {
+				cmdTemplate = val
+			}
+		}
+	}
+
+	if cmdTemplate == "" {
+		http.Error(w, fmt.Sprintf("Command key %s not found in plugin", req.CmdKey), http.StatusNotFound)
+		return
+	}
+
+	finalCmd := cmdTemplate
+	for k, v := range req.Args {
+		if len(v) > 0 && !safeVarReg.MatchString(v) {
+			http.Error(w, fmt.Sprintf("Invalid or dangerous character in parameter %s", k), http.StatusBadRequest)
+			return
+		}
+		finalCmd = strings.ReplaceAll(finalCmd, "{"+k+"}", v)
+		finalCmd = strings.ReplaceAll(finalCmd, "%"+k+"%", v)
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+
+	needsSudo := isSudoCmd || req.CmdKey == "install_sudo" || req.CmdKey == "remove_sudo" || (req.CmdKey == "install_cmd" && rawMap["install_sudo"] != nil) || (req.CmdKey == "remove_cmd" && rawMap["remove_sudo"] != nil)
+	var execCmd *exec.Cmd
+	if needsSudo && os.Getuid() != 0 {
+		log.Printf("[EXEC-STREAM-SUDO] Plugin: %s, CmdKey: %s, Cmd: %s", req.Plugin, req.CmdKey, finalCmd)
+		execCmd = exec.Command("sudo", "-n", "sh", "-c", finalCmd)
+	} else {
+		log.Printf("[EXEC-STREAM] Plugin: %s, CmdKey: %s, Cmd: %s", req.Plugin, req.CmdKey, finalCmd)
+		execCmd = exec.Command("sh", "-c", finalCmd)
+	}
+
+	stdoutPipe, err := execCmd.StdoutPipe()
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "Error creating stdout pipe: %v\n", err)
+		return
+	}
+	stderrPipe, err := execCmd.StderrPipe()
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "Error creating stderr pipe: %v\n", err)
+		return
+	}
+
+	if err := execCmd.Start(); err != nil {
+		_, _ = fmt.Fprintf(w, "Error starting command: %v\n", err)
+		return
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		buf := make([]byte, 512)
+		for {
+			n, readErr := stdoutPipe.Read(buf)
+			if n > 0 {
+				_, _ = w.Write(buf[:n])
+				flusher.Flush()
+			}
+			if readErr != nil {
+				break
+			}
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		buf := make([]byte, 512)
+		for {
+			n, readErr := stderrPipe.Read(buf)
+			if n > 0 {
+				_, _ = w.Write(buf[:n])
+				flusher.Flush()
+			}
+			if readErr != nil {
+				break
+			}
+		}
+	}()
+
+	wg.Wait()
+	_ = execCmd.Wait()
+}
+
 // Sync SMB, DNS, and DHCP plugin data directly to Debian service configs
 func syncSystemConfigs(pluginID string, body []byte) {
 	switch pluginID {
@@ -1314,6 +1483,35 @@ func handleFsRaw(w http.ResponseWriter, r *http.Request) {
 	}
 	cleanPath := filepath.Clean(filePath)
 
+	file, err := os.Open(cleanPath)
+	if err == nil {
+		defer file.Close()
+		stat, errStat := file.Stat()
+		if errStat == nil && !stat.IsDir() {
+			w.Header().Set("Cache-Control", "no-cache")
+			ext := strings.ToLower(filepath.Ext(cleanPath))
+			switch ext {
+			case ".mp4":
+				w.Header().Set("Content-Type", "video/mp4")
+			case ".webm":
+				w.Header().Set("Content-Type", "video/webm")
+			case ".ogg", ".ogv":
+				w.Header().Set("Content-Type", "video/ogg")
+			case ".mkv":
+				w.Header().Set("Content-Type", "video/x-matroska")
+			case ".mov":
+				w.Header().Set("Content-Type", "video/quicktime")
+			case ".svg":
+				w.Header().Set("Content-Type", "image/svg+xml")
+			case ".webp":
+				w.Header().Set("Content-Type", "image/webp")
+			}
+			http.ServeContent(w, r, stat.Name(), stat.ModTime(), file)
+			return
+		}
+	}
+
+	// Fallback to cat / reading if os.Open fails
 	data, err := os.ReadFile(cleanPath)
 	if err != nil {
 		if os.Getuid() != 0 {
@@ -1337,6 +1535,10 @@ func handleFsRaw(w http.ResponseWriter, r *http.Request) {
 		contentType = "image/svg+xml"
 	case ".webp":
 		contentType = "image/webp"
+	case ".mp4":
+		contentType = "video/mp4"
+	case ".webm":
+		contentType = "video/webm"
 	}
 
 	w.Header().Set("Content-Type", contentType)
@@ -1591,6 +1793,13 @@ func main() {
 	}
 
 	mux.HandleFunc("/api/plugins", publicExecMiddleware(handleListPlugins))
+	mux.HandleFunc("/api/plugin/exec/stream", func(w http.ResponseWriter, r *http.Request) {
+		if !isAuthorized(r) {
+			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+			return
+		}
+		handleExecPluginCmdStream(w, r)
+	})
 	mux.HandleFunc("/api/plugin/exec", func(w http.ResponseWriter, r *http.Request) {
 		if !isAuthorized(r) {
 			// Allow read-only status queries when unauthenticated
