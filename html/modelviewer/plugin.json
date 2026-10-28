@@ -1,0 +1,7 @@
+{
+  "id": "modelviewer",
+  "name": "3D Model Viewer",
+  "description": "Render and inspect 3D STL, OBJ, and GLTF models with orbit camera controls",
+  "category": "Tools",
+  "default": true
+}

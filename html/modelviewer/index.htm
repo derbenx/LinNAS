@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>3D Model Viewer - LinNAS</title>
+    <!-- Three.js + OrbitControls + STLLoader + OBJLoader + GLTFLoader -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 1.5rem; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+        body.is-fullscreen { padding: 0; background: #000; }
+        body.is-fullscreen .header-bar { display: none !important; }
+        body.is-fullscreen .viewer-stage { border-radius: 0; border: none; background: #000; padding: 0; }
+
+        .header-bar { display: flex; justify-content: space-between; align-items: center; background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 0.8rem 1.2rem; margin-bottom: 1rem; gap: 1rem; }
+        .title-group { display: flex; align-items: center; gap: 10px; max-width: 50%; min-width: 0; }
+        h2 { font-size: 1.3rem; color: #58a6ff; white-space: nowrap; }
+        .meta-info { font-size: 0.82rem; color: #8b949e; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .toolbar { display: flex; gap: 0.5rem; align-items: center; margin-left: auto; flex-shrink: 0; }
+        .btn { padding: 0.45rem 0.9rem; background: #238636; color: white; border: none; border-radius: 5px; font-weight: 600; cursor: pointer; font-size: 0.82rem; transition: background 0.2s; display: flex; align-items: center; gap: 5px; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #30363d; color: white; }
+        .btn:disabled { background: #30363d; color: #6e7681; cursor: not-allowed; border: none; }
+
+        .viewer-stage { flex: 1; background: #161b22; border: 1px solid #30363d; border-radius: 8px; position: relative; overflow: hidden; }
+        #canvasContainer { width: 100%; height: 100%; }
+
+        .empty-placeholder { text-align: center; color: #8b949e; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 1rem; }
+        .empty-icon { font-size: 3.5rem; }
+
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 10% auto; padding: 1.5rem; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
+        .file-list { max-height: 300px; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; }
+        .file-item { padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #21262d; font-family: monospace; font-size: 0.88rem; }
+        .file-item:hover { background: #1f242d; color: #58a6ff; }
+    </style>
+</head>
+<body>
+    <div class="header-bar">
+        <div class="title-group">
+            <button id="backBtn" class="btn btn-secondary" style="display: none;" onclick="goBackToFiles()">⬅ Back to Files</button>
+            <div>
+                <h2>🧊 3D Model Viewer</h2>
+                <div id="modelMeta" class="meta-info">No 3D model loaded</div>
+            </div>
+        </div>
+        <div class="toolbar">
+            <button class="btn btn-secondary" onclick="openFilePicker()">📂 Browse 3D Model...</button>
+            <button id="prevBtn" class="btn btn-secondary" onclick="navigateModel(-1)" disabled>◀ Previous</button>
+            <button id="nextBtn" class="btn btn-secondary" onclick="navigateModel(1)" disabled>Next ▶</button>
+            <button class="btn btn-secondary" onclick="toggleWireframe()">🕸 Wireframe</button>
+            <button class="btn btn-secondary" onclick="resetCamera()">🔄 Reset View</button>
+            <button class="btn btn-secondary" onclick="toggleFullscreen()">📺 Fullscreen (F11)</button>
+        </div>
+    </div>
+
+    <div class="viewer-stage" id="viewerStage">
+        <div id="emptyView" class="empty-placeholder">
+            <div class="empty-icon">🧊</div>
+            <p>No 3D model currently selected (.stl, .obj, .gltf, .glb).</p>
+            <button class="btn" onclick="openFilePicker()">Select 3D Model File</button>
+        </div>
+        <div id="canvasContainer" style="display: none;"></div>
+    </div>
+
+    <!-- File Picker Modal -->
+    <div id="fileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="modalPath">/</span>
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeModal()">✕</button>
+            </div>
+            <div id="fileList" class="file-list"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentFilePath = null;
+        let currentDir = null;
+        let directoryModels = [];
+        let currentModelIndex = -1;
+        let isFullscreen = false;
+        let isWireframe = false;
+
+        // Three.js Variables
+        let scene, camera, renderer, controls, currentMesh;
+
+        function initThreeJS() {
+            const container = document.getElementById('canvasContainer');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0d1117);
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 50, 100);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight1.position.set(1, 1, 1).normalize();
+            scene.add(dirLight1);
+
+            const dirLight2 = new THREE.DirectionalLight(0x58a6ff, 0.5);
+            dirLight2.position.set(-1, -1, -1).normalize();
+            scene.add(dirLight2);
+
+            // Grid Floor
+            const gridHelper = new THREE.GridHelper(200, 50, 0x30363d, 0x21262d);
+            scene.add(gridHelper);
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (controls) controls.update();
+            if (renderer && scene && camera) renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvasContainer');
+            if (container && renderer && camera) {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            }
+        }
+
+        async function initViewer() {
+            initThreeJS();
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const file = urlParams.get('file');
+            const dir = urlParams.get('dir');
+
+            if (dir) {
+                currentDir = dir;
+                document.getElementById('backBtn').style.display = 'flex';
+                await loadDirectoryModels(dir);
+            }
+
+            if (file) {
+                loadModel(file);
+            }
+        }
+
+        async function loadDirectoryModels(dirPath) {
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(dirPath)}`);
+                const data = await res.json();
+                if (data.items) {
+                    directoryModels = data.items.filter(item => !item.is_dir && isModelFile(item.name)).map(item => item.path);
+                    updateNavButtons();
+                }
+            } catch (err) {
+                console.error('Failed to load sibling 3D models:', err);
+            }
+        }
+
+        function loadModel(filePath) {
+            currentFilePath = filePath;
+            const container = document.getElementById('canvasContainer');
+            const emptyView = document.getElementById('emptyView');
+            const metaEl = document.getElementById('modelMeta');
+
+            emptyView.style.display = 'none';
+            container.style.display = 'block';
+            onWindowResize();
+
+            const filename = filePath.split('/').pop();
+            const ext = getFileExtension(filename).toLowerCase();
+            metaEl.innerText = `Loading ${filename}...`;
+
+            if (currentMesh) {
+                scene.remove(currentMesh);
+                currentMesh = null;
+            }
+
+            const rawUrl = `/api/fs/raw?path=${encodeURIComponent(filePath)}`;
+
+            if (ext === 'stl') {
+                const loader = new THREE.STLLoader();
+                loader.load(rawUrl, function(geometry) {
+                    const material = new THREE.MeshStandardMaterial({ color: 0x58a6ff, roughness: 0.3, metalness: 0.2, wireframe: isWireframe });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    centerAndFitObject(mesh);
+                    scene.add(mesh);
+                    currentMesh = mesh;
+                    metaEl.innerText = `${filename} (STL Model) | ${filePath}`;
+                }, null, function(err) {
+                    metaEl.innerText = `Error loading STL: ${err.message || filename}`;
+                });
+            } else if (ext === 'obj') {
+                const loader = new THREE.OBJLoader();
+                loader.load(rawUrl, function(obj) {
+                    obj.traverse(child => {
+                        if (child.isMesh) {
+                            child.material = new THREE.MeshStandardMaterial({ color: 0x7ee787, roughness: 0.4, wireframe: isWireframe });
+                        }
+                    });
+                    centerAndFitObject(obj);
+                    scene.add(obj);
+                    currentMesh = obj;
+                    metaEl.innerText = `${filename} (OBJ Model) | ${filePath}`;
+                }, null, function(err) {
+                    metaEl.innerText = `Error loading OBJ: ${err.message || filename}`;
+                });
+            } else if (ext === 'gltf' || ext === 'glb') {
+                const loader = new THREE.GLTFLoader();
+                loader.load(rawUrl, function(gltf) {
+                    const obj = gltf.scene;
+                    centerAndFitObject(obj);
+                    scene.add(obj);
+                    currentMesh = obj;
+                    metaEl.innerText = `${filename} (GLTF/GLB Model) | ${filePath}`;
+                }, null, function(err) {
+                    metaEl.innerText = `Error loading GLTF: ${err.message || filename}`;
+                });
+            }
+
+            if (directoryModels.length > 0) {
+                currentModelIndex = directoryModels.indexOf(filePath);
+                updateNavButtons();
+            }
+        }
+
+        function centerAndFitObject(object) {
+            const box = new THREE.Box3().setFromObject(object);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+
+            object.position.x += (object.position.x - center.x);
+            object.position.y += (object.position.y - center.y);
+            object.position.z += (object.position.z - center.z);
+
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const fov = camera.fov * (Math.PI / 180);
+            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.8;
+
+            camera.position.set(0, maxDim * 0.5, cameraZ || 50);
+            camera.lookAt(0, 0, 0);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        function toggleWireframe() {
+            isWireframe = !isWireframe;
+            if (currentMesh) {
+                currentMesh.traverse(child => {
+                    if (child.isMesh && child.material) {
+                        child.material.wireframe = isWireframe;
+                    }
+                });
+            }
+        }
+
+        function resetCamera() {
+            if (currentMesh) centerAndFitObject(currentMesh);
+        }
+
+        function navigateModel(delta) {
+            if (directoryModels.length === 0 || currentModelIndex === -1) return;
+
+            let newIndex = currentModelIndex + delta;
+            if (newIndex < 0) newIndex = directoryModels.length - 1;
+            if (newIndex >= directoryModels.length) newIndex = 0;
+
+            loadModel(directoryModels[newIndex]);
+        }
+
+        function updateNavButtons() {
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const hasMultiple = directoryModels.length > 1;
+
+            prevBtn.disabled = !hasMultiple;
+            nextBtn.disabled = !hasMultiple;
+        }
+
+        function goBackToFiles() {
+            if (window.parent) {
+                window.parent.postMessage(`open_plugin:filemanager?dir=${encodeURIComponent(currentDir || '/')}`, '*');
+            }
+            window.location.href = `/filemanager/index.htm?dir=${encodeURIComponent(currentDir || '/')}`;
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                const el = document.documentElement;
+                if (el.requestFullscreen) {
+                    el.requestFullscreen().catch(() => {});
+                } else if (el.webkitRequestFullscreen) {
+                    el.webkitRequestFullscreen();
+                }
+                document.body.classList.add('is-fullscreen');
+                isFullscreen = true;
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen().catch(() => {});
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                }
+                document.body.classList.remove('is-fullscreen');
+                isFullscreen = false;
+            }
+            setTimeout(onWindowResize, 100);
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                document.body.classList.remove('is-fullscreen');
+                isFullscreen = false;
+            } else {
+                document.body.classList.add('is-fullscreen');
+                isFullscreen = true;
+            }
+            setTimeout(onWindowResize, 100);
+        });
+
+        /* File Picker Modal */
+        let currentBrowserPath = '/';
+
+        async function openFilePicker(path) {
+            currentBrowserPath = path || currentDir || '/';
+            document.getElementById('modalPath').innerText = currentBrowserPath;
+            document.getElementById('fileModal').style.display = 'block';
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentBrowserPath)}`);
+                const data = await res.json();
+                const container = document.getElementById('fileList');
+                container.innerHTML = '';
+
+                if (data.parent && data.parent !== currentBrowserPath) {
+                    const upDiv = document.createElement('div');
+                    upDiv.className = 'file-item';
+                    upDiv.innerText = '📁 .. (Parent Directory)';
+                    upDiv.onclick = () => openFilePicker(data.parent);
+                    container.appendChild(upDiv);
+                }
+
+                if (data.items) {
+                    data.items.forEach(item => {
+                        if (item.is_dir || isModelFile(item.name)) {
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = 'file-item';
+                            itemDiv.innerText = (item.is_dir ? '📁 ' : '🧊 ') + item.name;
+                            itemDiv.onclick = () => {
+                                if (item.is_dir) {
+                                    openFilePicker(item.path);
+                                } else {
+                                    closeModal();
+                                    currentDir = currentBrowserPath;
+                                    loadDirectoryModels(currentDir).then(() => loadModel(item.path));
+                                }
+                            };
+                            container.appendChild(itemDiv);
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error('Picker error:', err);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('fileModal').style.display = 'none';
+        }
+
+        function isModelFile(filename) {
+            if (!filename || !filename.includes('.')) return false;
+            const ext = filename.split('.').pop().toLowerCase();
+            return ['stl', 'obj', 'gltf', 'glb', '3mf'].includes(ext);
+        }
+
+        function getFileExtension(filename) {
+            if (!filename || !filename.includes('.')) return '';
+            return filename.split('.').pop();
+        }
+
+        /* Keyboard Shortcuts Handler */
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            if (e.key === 'F11') {
+                e.preventDefault();
+                toggleFullscreen();
+            } else if (e.key === 'PageUp') {
+                e.preventDefault();
+                navigateModel(-1);
+            } else if (e.key === 'PageDown') {
+                e.preventDefault();
+                navigateModel(1);
+            } else if (e.key === 'Home') {
+                e.preventDefault();
+                if (directoryModels.length > 0) loadModel(directoryModels[0]);
+            } else if (e.key === 'End') {
+                e.preventDefault();
+                if (directoryModels.length > 0) loadModel(directoryModels[directoryModels.length - 1]);
+            } else if (e.key === 'Escape' && isFullscreen) {
+                toggleFullscreen();
+            }
+        });
+
+        window.onload = initViewer;
+    </script>
+</body>
+</html>

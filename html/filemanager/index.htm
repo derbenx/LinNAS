@@ -212,13 +212,19 @@
                 tr.className = 'file-row';
                 if (selectedPaths.has(item.path)) tr.classList.add('selected');
 
+                const isModel = isModelFile(item.name);
+                const isPdf = isPdfFile(item.name);
                 const isImage = isImageFile(item.name);
                 const isVideo = isVideoFile(item.name);
+                const isAudio = isAudioFile(item.name);
                 const isText = isTextFile(item.name);
 
                 let icon = '📄';
                 if (item.is_dir) icon = '📁';
+                else if (isModel) icon = '🧊';
+                else if (isPdf) icon = '📕';
                 else if (isVideo) icon = '🎬';
+                else if (isAudio) icon = '🎵';
                 else if (isImage) icon = '🖼️';
                 else if (isText) icon = '📝';
 
@@ -248,6 +254,12 @@
                 tr.ondblclick = () => {
                     if (item.is_dir) {
                         loadDirectory(item.path);
+                    } else if (isPdf) {
+                        openPdfInNewTab(item.path);
+                    } else if (isModel) {
+                        openModelViewer(item.path);
+                    } else if (isAudio) {
+                        openAudioPlayer(item.path);
                     } else if (isVideo) {
                         openVideoPlayer(item.path);
                     } else if (isImage) {
@@ -482,6 +494,26 @@
             }
         }
 
+        function openAudioPlayer(filepath) {
+            if (window.parent && typeof window.parent.loadPluginView === 'function') {
+                window.parent.loadPluginView('audioplayer', { file: filepath, dir: currentPath });
+            } else {
+                window.location.href = `/audioplayer/index.htm?file=${encodeURIComponent(filepath)}&dir=${encodeURIComponent(currentPath)}`;
+            }
+        }
+
+        function openModelViewer(filepath) {
+            if (window.parent && typeof window.parent.loadPluginView === 'function') {
+                window.parent.loadPluginView('modelviewer', { file: filepath, dir: currentPath });
+            } else {
+                window.location.href = `/modelviewer/index.htm?file=${encodeURIComponent(filepath)}&dir=${encodeURIComponent(currentPath)}`;
+            }
+        }
+
+        function openPdfInNewTab(filepath) {
+            window.open(`/api/fs/raw?path=${encodeURIComponent(filepath)}`, '_blank');
+        }
+
         /* Upload Handlers */
         function triggerUpload() {
             document.getElementById('fileUploadInput').click();
@@ -558,6 +590,15 @@
             if (item.is_dir) {
                 ctxOpen.innerText = '📁 Open Directory';
                 ctxEdit.style.display = 'none';
+            } else if (isPdfFile(item.name)) {
+                ctxOpen.innerText = '📕 Open PDF in New Tab';
+                ctxEdit.style.display = 'none';
+            } else if (isModelFile(item.name)) {
+                ctxOpen.innerText = '🧊 View 3D Model';
+                ctxEdit.style.display = 'none';
+            } else if (isAudioFile(item.name)) {
+                ctxOpen.innerText = '🎵 Play Audio';
+                ctxEdit.style.display = 'none';
             } else if (isVideoFile(item.name)) {
                 ctxOpen.innerText = '🎬 Play Video';
                 ctxEdit.style.display = 'none';
@@ -582,6 +623,12 @@
             if (!rightClickedItem) return;
             if (rightClickedItem.is_dir) {
                 loadDirectory(rightClickedItem.path);
+            } else if (isPdfFile(rightClickedItem.name)) {
+                openPdfInNewTab(rightClickedItem.path);
+            } else if (isModelFile(rightClickedItem.name)) {
+                openModelViewer(rightClickedItem.path);
+            } else if (isAudioFile(rightClickedItem.name)) {
+                openAudioPlayer(rightClickedItem.path);
             } else if (isVideoFile(rightClickedItem.name)) {
                 openVideoPlayer(rightClickedItem.path);
             } else if (isImageFile(rightClickedItem.name)) {
@@ -600,6 +647,21 @@
         }
 
         /* Utility Helpers */
+        function isModelFile(filename) {
+            const ext = getFileExtension(filename).toLowerCase();
+            return ['stl', 'obj', 'gltf', 'glb', '3mf'].includes(ext);
+        }
+
+        function isPdfFile(filename) {
+            const ext = getFileExtension(filename).toLowerCase();
+            return ext === 'pdf';
+        }
+
+        function isAudioFile(filename) {
+            const ext = getFileExtension(filename).toLowerCase();
+            return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext);
+        }
+
         function isVideoFile(filename) {
             const ext = getFileExtension(filename).toLowerCase();
             return ['mp4', 'webm', 'ogg', 'ogv', 'mkv', 'mov', 'avi'].includes(ext);

@@ -36,8 +36,28 @@
         .btn:hover { background: #2ea043; }
 
         /* Main Content Frame */
-        #content-area { flex: 1; display: flex; flex-direction: column; background: #0d1117; }
+        #content-area { flex: 1; display: flex; flex-direction: column; background: #0d1117; position: relative; }
         #plugin-frame { width: 100%; height: 100%; border: none; }
+
+        /* Global Persistent Audio Player Bar */
+        #globalAudioBar {
+            display: none;
+            background: #161b22;
+            border-top: 1px solid #30363d;
+            padding: 0.6rem 1.2rem;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            z-index: 150;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.5);
+        }
+        .global-audio-info { display: flex; align-items: center; gap: 10px; max-width: 35%; min-width: 0; }
+        .global-audio-title { font-size: 0.85rem; font-weight: bold; color: #58a6ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .global-audio-controls { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: center; }
+        .global-audio-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 0.3rem 0.6rem; cursor: pointer; font-size: 0.8rem; }
+        .global-audio-btn:hover { background: #30363d; color: #fff; }
+        .global-audio-scrubber { flex: 1; max-width: 250px; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #8b949e; font-family: monospace; }
+        .global-audio-scrubber input[type=range] { flex: 1; accent-color: #238636; cursor: pointer; }
 
         .badge-root { background: #238636; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
         .badge-user { background: #d29922; color: black; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
@@ -60,6 +80,29 @@
 
     <div id="content-area">
         <iframe id="plugin-frame" src="/status/index.htm" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true"></iframe>
+
+        <!-- Persistent Global Audio Bar -->
+        <div id="globalAudioBar">
+            <div class="global-audio-info">
+                <span>🎵</span>
+                <span id="globalAudioTitle" class="global-audio-title">No Audio Playing</span>
+            </div>
+            <div class="global-audio-controls">
+                <button class="global-audio-btn" onclick="globalAudioPrev()">◀◀</button>
+                <button id="globalAudioPlayBtn" class="global-audio-btn" onclick="toggleGlobalAudioPlay()">▶</button>
+                <button class="global-audio-btn" onclick="globalAudioNext()">▶▶</button>
+                <div class="global-audio-scrubber">
+                    <span id="globalAudioCurrentTime">00:00</span>
+                    <input type="range" id="globalAudioSeeker" value="0" min="0" max="100" oninput="seekGlobalAudio(this.value)">
+                    <span id="globalAudioDuration">00:00</span>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button class="global-audio-btn" onclick="openGlobalAudioPlayerPlugin()">🔊 Open Player</button>
+                <button class="global-audio-btn" style="color: #f85149;" onclick="closeGlobalAudioBar()">✕</button>
+            </div>
+        </div>
+        <audio id="globalAudioPlayer" style="display: none;"></audio>
     </div>
 
     <!-- Startup Debug Log Popover Modal -->
@@ -200,8 +243,10 @@
                 'lan': '🔌',
                 'wifi': '📶',
                 'filemanager': '📂',
+                'audioplayer': '🎵',
                 'imageviewer': '🖼️',
                 'videoplayer': '🎬',
+                'modelviewer': '🧊',
                 'editor': '📝',
                 'ping': '📡',
                 'apache': '🌐',
@@ -211,11 +256,108 @@
             return icons[id] || '⚙️';
         }
 
+        /* Global Persistent Audio Engine */
+        let globalPlaylist = [];
+        let globalPlaylistIndex = -1;
+        let globalAudioCurrentDir = '';
+
+        function playGlobalAudioQueue(playlist, startIndex, dirPath) {
+            if (!playlist || playlist.length === 0) return;
+            globalPlaylist = playlist;
+            globalPlaylistIndex = startIndex || 0;
+            if (dirPath) globalAudioCurrentDir = dirPath;
+            loadAndPlayGlobalTrack();
+        }
+
+        window.playGlobalAudioQueue = playGlobalAudioQueue;
+
+        function loadAndPlayGlobalTrack() {
+            if (globalPlaylistIndex < 0 || globalPlaylistIndex >= globalPlaylist.length) return;
+            const track = globalPlaylist[globalPlaylistIndex];
+            const player = document.getElementById('globalAudioPlayer');
+            const bar = document.getElementById('globalAudioBar');
+            const titleEl = document.getElementById('globalAudioTitle');
+
+            player.src = `/api/fs/raw?path=${encodeURIComponent(track.path)}`;
+            titleEl.innerText = track.name || track.path.split('/').pop();
+            bar.style.display = 'flex';
+
+            player.play().then(() => {
+                document.getElementById('globalAudioPlayBtn').innerText = '⏸';
+            }).catch(() => {
+                document.getElementById('globalAudioPlayBtn').innerText = '▶';
+            });
+        }
+
+        function toggleGlobalAudioPlay() {
+            const player = document.getElementById('globalAudioPlayer');
+            const btn = document.getElementById('globalAudioPlayBtn');
+            if (player.paused) {
+                player.play();
+                btn.innerText = '⏸';
+            } else {
+                player.pause();
+                btn.innerText = '▶';
+            }
+        }
+
+        function globalAudioPrev() {
+            if (globalPlaylist.length === 0) return;
+            globalPlaylistIndex = (globalPlaylistIndex - 1 + globalPlaylist.length) % globalPlaylist.length;
+            loadAndPlayGlobalTrack();
+        }
+
+        function globalAudioNext() {
+            if (globalPlaylist.length === 0) return;
+            globalPlaylistIndex = (globalPlaylistIndex + 1) % globalPlaylist.length;
+            loadAndPlayGlobalTrack();
+        }
+
+        function seekGlobalAudio(val) {
+            const player = document.getElementById('globalAudioPlayer');
+            if (player.duration) {
+                player.currentTime = (val / 100) * player.duration;
+            }
+        }
+
+        function openGlobalAudioPlayerPlugin() {
+            loadPluginView('audioplayer', { dir: globalAudioCurrentDir });
+        }
+
+        function closeGlobalAudioBar() {
+            const player = document.getElementById('globalAudioPlayer');
+            player.pause();
+            document.getElementById('globalAudioBar').style.display = 'none';
+        }
+
+        document.getElementById('globalAudioPlayer').addEventListener('timeupdate', function() {
+            const player = document.getElementById('globalAudioPlayer');
+            if (player.duration) {
+                const seeker = document.getElementById('globalAudioSeeker');
+                seeker.value = (player.currentTime / player.duration) * 100;
+                document.getElementById('globalAudioCurrentTime').innerText = formatAudioTime(player.currentTime);
+                document.getElementById('globalAudioDuration').innerText = formatAudioTime(player.duration);
+            }
+        });
+
+        document.getElementById('globalAudioPlayer').addEventListener('ended', function() {
+            globalAudioNext();
+        });
+
+        function formatAudioTime(seconds) {
+            if (isNaN(seconds) || seconds < 0) return '00:00';
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
         const lastPluginState = {
             filemanager: '',
             editor: '',
+            audioplayer: '',
             imageviewer: '',
-            videoplayer: ''
+            videoplayer: '',
+            modelviewer: ''
         };
 
         function loadPluginView(pluginId, params) {
@@ -248,8 +390,8 @@
                 return;
             }
 
-            // Restore/save memory for File Manager, File Editor, Image Viewer, Video Player
-            if (['filemanager', 'editor', 'imageviewer', 'videoplayer'].includes(basePluginId)) {
+            // Restore/save memory for File Manager, File Editor, Audio Player, Image Viewer, Video Player, Model Viewer
+            if (['filemanager', 'editor', 'audioplayer', 'imageviewer', 'videoplayer', 'modelviewer'].includes(basePluginId)) {
                 if (queryStr) {
                     lastPluginState[basePluginId] = queryStr;
                 } else if (lastPluginState[basePluginId]) {

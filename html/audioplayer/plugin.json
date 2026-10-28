@@ -1,0 +1,7 @@
+{
+  "id": "audioplayer",
+  "name": "Audio Player",
+  "description": "Stream MP3, WAV, OGG, FLAC, and AAC audio files with playlist queue and persistent background playback",
+  "category": "Tools",
+  "default": true
+}
