@@ -103,6 +103,8 @@
         <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Execute instant or scheduled power operations on this Debian server.</p>
 
         <div style="display: flex; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <button class="btn" style="background:#1f6beb;" onclick="restartAppNow()">🔄 Restart App</button>
+            <button class="btn btn-danger" onclick="quitAppNow()">🛑 Quit App</button>
             <button class="btn btn-danger" onclick="poweroffNow()">Instant Power Off</button>
             <button class="btn btn-secondary" style="background:#d29922; color:#000;" onclick="rebootNow()">Instant Reboot</button>
             <button class="btn btn-secondary" onclick="cancelScheduledPower()">Cancel Scheduled Power Tasks</button>
@@ -207,6 +209,21 @@
             }
         }
 
+        async function quitAppNow() {
+            if (!confirm('Are you sure you want to QUIT and close the LinNAS application?')) return;
+            showOutput('Stopping LinNAS application...');
+            try {
+                await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'settings', cmd_key: 'quit_app_sudo', args: {} })
+                });
+                showOutput('LinNAS application stopped.');
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
         async function saveServerPort() {
             const port = parseInt(document.getElementById('serverPortInput').value, 10);
             if (!port || port <= 1024 || port > 65535) {
@@ -296,6 +313,22 @@
                 const data = await res.json();
                 showOutput(data.success ? `Successfully ${enable ? 'enabled' : 'disabled'} application autostart on boot.\n` + (data.output || '') : `Operation failed: ${data.error}\n${data.output}`);
                 checkBootServiceStatus();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function restartAppNow() {
+            if (!confirm('Are you sure you want to RESTART the LinNAS application?')) return;
+            showOutput('Restarting LinNAS application service...');
+            try {
+                await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'settings', cmd_key: 'restart_app_sudo', args: {} })
+                });
+                showOutput('Restart command sent. The page will reload in 3 seconds...');
+                setTimeout(() => { window.top.location.reload(); }, 3000);
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
             }

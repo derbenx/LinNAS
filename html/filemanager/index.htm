@@ -42,10 +42,10 @@
         .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 90%; max-width: 520px; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
 
         /* Context Menu */
-        .context-menu { position: fixed; background: #161b22; border: 1px solid #30363d; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); padding: 0.4rem 0; z-index: 500; display: none; min-width: 170px; }
-        .context-item { padding: 0.5rem 1rem; font-size: 0.85rem; color: #c9d1d9; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .context-menu { position: fixed; background: #161b22; border: 1px solid #30363d; border-radius: 6px; box-shadow: 0 6px 18px rgba(0,0,0,0.6); padding: 0.25rem 0; z-index: 500; display: none; min-width: 170px; }
+        .context-item { padding: 0.32rem 0.9rem; font-size: 0.83rem; color: #c9d1d9; cursor: pointer; display: flex; align-items: center; gap: 8px; }
         .context-item:hover { background: #1f242d; color: #58a6ff; }
-        .context-divider { height: 1px; background: #30363d; margin: 0.3rem 0; }
+        .context-divider { height: 1px; background: #30363d; margin: 0.2rem 0; }
 
         /* Hidden Upload Input */
         #fileUploadInput { display: none; }
@@ -716,8 +716,10 @@
         function showContextMenu(x, y, item) {
             const menu = document.getElementById('contextMenu');
             menu.style.display = 'block';
-            menu.style.left = Math.min(x, window.innerWidth - 180) + 'px';
-            menu.style.top = Math.min(y, window.innerHeight - 250) + 'px';
+            const menuHeight = menu.offsetHeight || 320;
+            const menuWidth = menu.offsetWidth || 180;
+            menu.style.left = Math.max(10, Math.min(x, window.innerWidth - menuWidth - 10)) + 'px';
+            menu.style.top = Math.max(10, Math.min(y - Math.floor(menuHeight / 2), window.innerHeight - menuHeight - 10)) + 'px';
 
             const ctxOpen = document.getElementById('ctxOpen');
             const ctxEdit = document.getElementById('ctxEdit');

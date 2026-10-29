@@ -51,6 +51,7 @@ Type commands below and press ENTER to execute with real-time streaming output.
         <div class="cmd-line">
             <span class="prompt-symbol">#</span>
             <input type="text" id="cmdInput" class="cmd-input" placeholder="Enter shell command (e.g. ls -la, htop, apt update, ip a)..." autofocus>
+            <button id="ctrlCBtn" class="btn btn-secondary" style="background:#da3633;" onclick="cancelCommand()" title="Send Ctrl+C interrupt signal to running task">Ctrl+C</button>
             <button id="runBtn" class="btn" onclick="executeCommand()">Run</button>
             <button id="stopBtn" class="btn btn-danger" style="display:none;" onclick="cancelCommand()">Stop</button>
         </div>
@@ -69,7 +70,10 @@ Type commands below and press ENTER to execute with real-time streaming output.
         const stopBtn = document.getElementById('stopBtn');
 
         inputEl.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+                e.preventDefault();
+                cancelCommand();
+            } else if (e.key === 'Enter') {
                 executeCommand();
             } else if (e.key === 'ArrowUp') {
                 if (cmdHistory.length > 0 && historyIdx < cmdHistory.length - 1) {

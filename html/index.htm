@@ -30,7 +30,8 @@
 
         .plugin-category { padding: 0.5rem 1rem 0.15rem 1rem; font-size: 0.72rem; font-weight: bold; text-transform: uppercase; color: #8b949e; letter-spacing: 0.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .nav-list { list-style: none; overflow-y: auto; flex: 1; }
-        .nav-item { padding: 0.45rem 1.2rem; cursor: pointer; color: #c9d1d9; font-size: 0.88rem; display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; transition: all 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nav-item { padding: 0.45rem 1.2rem; cursor: pointer; color: #c9d1d9; font-size: 0.95rem; display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; transition: all 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nav-icon { flex-shrink: 0; font-size: 1.05rem; display: inline-block; }
         .nav-item:hover { background: #1f242d; color: #fff; }
         .nav-item.active { background: #1f242d; color: #58a6ff; border-left-color: #58a6ff; font-weight: 600; }
 
@@ -162,15 +163,16 @@
                     userInfo.innerText = 'Authenticated';
                     authBtn.innerText = 'Logout';
                     authBtn.className = 'logout-btn';
-                    passBtn.style.display = 'inline';
+                    if (passBtn) passBtn.style.display = 'inline';
                 } else {
                     badge.innerText = 'Public View';
                     badge.className = 'badge-user';
                     userInfo.innerText = 'Read-Only Mode';
                     authBtn.innerText = '🔑 Login';
                     authBtn.className = 'bright-green-btn';
-                    passBtn.style.display = 'none';
+                    if (passBtn) passBtn.style.display = 'none';
                 }
+                renderNavigation();
             } catch (err) {
                 console.error('Auth check error:', err);
             }
@@ -211,6 +213,11 @@
             statusItem.innerHTML = '<span class="nav-icon">🖥️</span> <span class="nav-text">Server Status & Health</span>';
             statusItem.onclick = () => openPlugin('status', statusItem);
             nav.appendChild(statusItem);
+
+            // When logged out, only show the Server Status option in sidebar
+            if (!isLoggedIn) {
+                return;
+            }
 
             // Group Plugins by Category
             const categories = {};

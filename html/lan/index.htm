@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>LAN Network Config</title>
+    <script src="/js/crypto.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
@@ -137,10 +138,11 @@
 
         async function loadSystemHostname() {
             try {
+                const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'get_hostname_cmd', args: {} });
                 const res = await fetch('/api/plugin/exec', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ plugin: 'lan', cmd_key: 'get_hostname_cmd', args: {} })
+                    body: encBody
                 });
                 const data = await res.json();
                 if (data.success && data.output) {
@@ -160,10 +162,11 @@
 
             showOutput(`Setting system hostname to '${hostname}'...`);
             try {
+                const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'set_hostname_sudo', args: { hostname } });
                 const res = await fetch('/api/plugin/exec', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ plugin: 'lan', cmd_key: 'set_hostname_sudo', args: { hostname } })
+                    body: encBody
                 });
                 const data = await res.json();
                 showOutput(data.success ? `System hostname successfully updated to '${hostname}'.` : `Failed to set hostname: ${data.error}\n${data.output}`);
@@ -174,10 +177,11 @@
 
         async function detectLanInterfaces() {
             try {
+                const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'list_interfaces_cmd', args: {} });
                 const res = await fetch('/api/plugin/exec', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ plugin: 'lan', cmd_key: 'list_interfaces_cmd', args: {} })
+                    body: encBody
                 });
                 const data = await res.json();
                 if (data.success && data.output) {
@@ -246,10 +250,11 @@
 
             // Query IP Details
             try {
+                const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'get_ip_cmd', args: { iface: iface } });
                 const res = await fetch('/api/plugin/exec', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ plugin: 'lan', cmd_key: 'get_ip_cmd', args: { iface: iface } })
+                    body: encBody
                 });
                 const data = await res.json();
                 if (data.success && data.output) {
@@ -284,10 +289,11 @@
 
             // Query DNS Details
             try {
+                const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'get_dns_cmd', args: {} });
                 const res = await fetch('/api/plugin/exec', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ plugin: 'lan', cmd_key: 'get_dns_cmd', args: {} })
+                    body: encBody
                 });
                 const data = await res.json();
                 if (data.success && data.output) {
@@ -320,14 +326,15 @@
                         showOutput('Please fill in IPv4 Address and Subnet CIDR Mask.');
                         return;
                     }
+                    const encBody = await encryptPayload({
+                        plugin: 'lan',
+                        cmd_key: 'set_ip_sudo',
+                        args: { iface, ip: ip, cidr: cidr.toString() }
+                    });
                     const ipRes = await fetch('/api/plugin/exec', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            plugin: 'lan',
-                            cmd_key: 'set_ip_sudo',
-                            args: { iface, ip, cidr }
-                        })
+                        body: encBody
                     });
                     const ipData = await ipRes.json();
                     if (!ipData.success) {
@@ -344,14 +351,15 @@
                         showOutput('Please enter at least Primary DNS (DNS1) for DNS configuration.');
                         return;
                     }
+                    const encBody = await encryptPayload({
+                        plugin: 'lan',
+                        cmd_key: 'set_dns_sudo',
+                        args: { dns1, dns2 }
+                    });
                     const dnsRes = await fetch('/api/plugin/exec', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            plugin: 'lan',
-                            cmd_key: 'set_dns_sudo',
-                            args: { dns1, dns2 }
-                        })
+                        body: encBody
                     });
                     const dnsData = await dnsRes.json();
                     if (dnsData.success) {
@@ -360,14 +368,15 @@
                         showOutput(`DNS update error: ${dnsData.error}\n${dnsData.output}`);
                     }
                 } else {
+                    const encBody = await encryptPayload({
+                        plugin: 'lan',
+                        cmd_key: 'restore_dhcp_dns_sudo',
+                        args: { iface }
+                    });
                     await fetch('/api/plugin/exec', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            plugin: 'lan',
-                            cmd_key: 'restore_dhcp_dns_sudo',
-                            args: { iface }
-                        })
+                        body: encBody
                     });
                     showOutput(`Successfully applied settings on ${iface}: IP Mode=${ipMode.toUpperCase()}, DNS Mode=DHCP (Automatic).`);
                 }
@@ -380,14 +389,15 @@
             const iface = document.getElementById('ifaceSelect').value;
             showOutput(`Renewing DHCP lease on ${iface}...`);
             try {
+                const encBody = await encryptPayload({
+                    plugin: 'lan',
+                    cmd_key: 'dhcp_renew_sudo',
+                    args: { iface }
+                });
                 const res = await fetch('/api/plugin/exec', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        plugin: 'lan',
-                        cmd_key: 'dhcp_renew_sudo',
-                        args: { iface }
-                    })
+                    body: encBody
                 });
                 const data = await res.json();
                 showOutput(data.success ? `DHCP lease renewed on ${iface}.\n` + data.output : `DHCP renewal warning: ${data.error}\n${data.output}`);
