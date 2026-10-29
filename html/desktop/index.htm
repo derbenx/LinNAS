@@ -67,7 +67,8 @@
 
         /* Taskbar System Tray */
         .taskbar-tray { display: flex; align-items: center; gap: 12px; font-size: 0.8rem; color: #8b949e; padding-right: 0.5rem; }
-        .tray-clock { font-family: monospace; font-size: 0.85rem; color: #58a6ff; font-weight: bold; }
+        .tray-clock { font-family: monospace; font-size: 0.85rem; color: #58a6ff; font-weight: bold; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.15s; }
+        .tray-clock:hover { background: #21262d; color: #79c0ff; }
 
         /* Floating Desktop Window */
         .desktop-window { position: absolute; background: #161b22; border: 1px solid #30363d; border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.8); display: flex; flex-direction: column; overflow: hidden; min-width: 320px; min-height: 220px; z-index: 100; transition: border-color 0.15s; pointer-events: auto; }
@@ -88,6 +89,12 @@
         .window-resizer { position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; cursor: se-resize; z-index: 10; }
         .window-resizer::after { content: ''; position: absolute; bottom: 3px; right: 3px; width: 6px; height: 6px; border-right: 2px solid #8b949e; border-bottom: 2px solid #8b949e; }
 
+        /* Context Menu Styles */
+        .context-menu { position: fixed; background: #161b22; border: 1px solid #30363d; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.8); padding: 0.3rem 0; z-index: 9000; display: none; min-width: 170px; }
+        .context-item { padding: 0.4rem 0.9rem; font-size: 0.83rem; color: #c9d1d9; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.12s; }
+        .context-item:hover { background: #1f242d; color: #58a6ff; }
+        .context-divider { height: 1px; background: #30363d; margin: 0.3rem 0; }
+
         /* App UI Styles */
         /* File Manager App */
         .fm-toolbar { padding: 0.5rem; background: #161b22; border-bottom: 1px solid #30363d; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
@@ -97,7 +104,7 @@
         .fm-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
         .fm-table th, .fm-table td { padding: 0.45rem 0.6rem; text-align: left; border-bottom: 1px solid #21262d; }
         .fm-table th { color: #8b949e; font-weight: 600; background: #0d1117; position: sticky; top: 0; z-index: 5; }
-        .fm-row { cursor: pointer; }
+        .fm-row { cursor: pointer; transition: background 0.1s; }
         .fm-row:hover { background: #1f242d; }
         .fm-row.selected { background: #263850 !important; color: #79c0ff; }
         .fm-row.drag-over { background: rgba(88, 166, 255, 0.2) !important; border: 1px dashed #58a6ff; }
@@ -116,6 +123,13 @@
         .notice-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 340px; padding: 1.2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.8); text-align: center; }
         .notice-title { font-size: 1rem; font-weight: bold; color: #f85149; margin-bottom: 0.6rem; display: flex; align-items: center; justify-content: center; gap: 6px; }
         .notice-body { font-size: 0.85rem; color: #c9d1d9; margin-bottom: 1rem; line-height: 1.4; }
+
+        /* Chmod / Chown Modal */
+        .chmod-modal-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 380px; padding: 1.2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+
+        /* Fullscreen Screen Saver Canvas Overlay */
+        #screensaverOverlay { position: fixed; inset: 0; z-index: 99999; background: #000; display: none; }
+        #screensaverCanvas { display: block; width: 100vw; height: 100vh; border: 0; }
     </style>
 </head>
 <body>
@@ -140,7 +154,7 @@
         </div>
 
         <!-- Main Desktop Canvas -->
-        <div id="desktopArea" onclick="onDesktopClick(event)">
+        <div id="desktopArea" onclick="onDesktopClick(event)" oncontextmenu="onDesktopContextMenu(event)">
             <div class="desktop-watermark">LinNAS OS</div>
 
             <!-- Desktop Icons Grid -->
@@ -206,6 +220,9 @@
                     <span>🧊</span> <span>3D Viewer</span>
                 </div>
                 <div class="start-divider"></div>
+                <div class="start-item" onclick="openApp('screensaver'); hideStartMenu();">
+                    <span>🌌</span> <span>Screen Saver Settings</span>
+                </div>
                 <div class="start-item" onclick="openStatusPlugin(); hideStartMenu();">
                     <span>🖥️</span> <span>Server Status & Health</span>
                 </div>
@@ -216,21 +233,86 @@
 
             <!-- System Tray -->
             <div class="taskbar-tray">
-                <span id="trayClock" class="tray-clock">00:00:00 AM</span>
+                <span id="trayClock" class="tray-clock" onclick="toggleClockFormat()" title="Click to toggle 12h/24h format">00:00:00</span>
                 <span style="background: #21262d; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; color: #58a6ff;">LinNAS v1.0</span>
             </div>
         </div>
+    </div>
+
+    <!-- Screen Saver Fullscreen Canvas Overlay -->
+    <div id="screensaverOverlay">
+        <canvas id="screensaverCanvas"></canvas>
     </div>
 
     <!-- Alert Modal Notice -->
     <div id="noticeModal" class="notice-modal" onclick="closeNoticeModal()">
         <div class="notice-card" onclick="event.stopPropagation()">
             <div class="notice-title">
-                <span>⚠️</span> <span id="noticeTitle">Incompatible File</span>
+                <span>⚠️</span> <span id="noticeTitle">Notice</span>
             </div>
-            <div class="notice-body" id="noticeBody">The dropped file format is not supported by this application.</div>
+            <div class="notice-body" id="noticeBody">Notice details here.</div>
             <button class="btn" onclick="closeNoticeModal()">OK</button>
         </div>
+    </div>
+
+    <!-- Chmod & Chown Permissions Modal -->
+    <div id="chmodModal" class="notice-modal" onclick="closeChmodModal()">
+        <div class="chmod-modal-card" onclick="event.stopPropagation()">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; font-weight:bold; color:#58a6ff;">
+                <span>🔐 Edit Permissions & Ownership</span>
+                <button class="win-btn" onclick="closeChmodModal()">✕</button>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:0.8rem; margin-bottom:1.2rem;">
+                <div style="display:flex; flex-direction:column; gap:0.3rem;">
+                    <label style="font-size:0.8rem; color:#8b949e;">Octal Permission Mode (chmod)</label>
+                    <input type="text" id="chmodOctal" value="0755" style="padding:0.45rem; background:#0d1117; border:1px solid #30363d; border-radius:4px; color:#fff; font-family:monospace; font-size:0.85rem;">
+                </div>
+                <div style="display:flex; flex-direction:column; gap:0.3rem;">
+                    <label style="font-size:0.8rem; color:#8b949e;">Owner:Group (chown)</label>
+                    <input type="text" id="chownUser" placeholder="root:root or www-data:www-data" style="padding:0.45rem; background:#0d1117; border:1px solid #30363d; border-radius:4px; color:#fff; font-family:monospace; font-size:0.85rem;">
+                </div>
+                <label style="display:flex; align-items:center; gap:8px; font-size:0.8rem; color:#c9d1d9; cursor:pointer;">
+                    <input type="checkbox" id="chmodRecursive">
+                    <span>Apply recursively to all subfolders</span>
+                </label>
+            </div>
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="closeChmodModal()">Cancel</button>
+                <button class="btn" onclick="saveFmPermissionsAndOwner()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Desktop Background Context Menu -->
+    <div id="desktopContextMenu" class="context-menu">
+        <div class="context-item" onclick="openApp('screensaver')">🌌 Screen Saver Settings</div>
+        <div class="context-divider"></div>
+        <div class="context-item" onclick="openApp('filemanager')">📂 New File Manager</div>
+        <div class="context-item" style="color: #f85149;" onclick="closeAllWindows()">✕ Close All Windows</div>
+    </div>
+
+    <!-- File Manager Context Menu -->
+    <div id="fmContextMenu" class="context-menu">
+        <div class="context-item" id="fmCtxOpen" onclick="fmCtxOpenItem()">📄 Open / View</div>
+        <div class="context-item" id="fmCtxEdit" onclick="fmCtxEditItem()">📝 Text Edit</div>
+        <div class="context-divider"></div>
+        <div class="context-item" onclick="fmCtxNewFolder()">📁 New Folder</div>
+        <div class="context-item" onclick="fmCtxCopySelected('cut')">✂️ Cut</div>
+        <div class="context-item" onclick="fmCtxCopySelected('copy')">📋 Copy</div>
+        <div class="context-item" id="fmCtxPaste" onclick="fmCtxPasteClipboard()">📌 Paste</div>
+        <div class="context-item" id="fmCtxDownload" onclick="fmCtxDownloadSelected()">📥 Download File</div>
+        <div class="context-item" onclick="fmCtxOpenChmodModal()">🔐 Permissions & Ownership</div>
+        <div class="context-divider"></div>
+        <div class="context-item" onclick="fmCtxRenameSelected()">✏️ Rename</div>
+        <div class="context-item" style="color: #f85149;" onclick="fmCtxDeleteSelected()">🗑️ Delete</div>
+    </div>
+
+    <!-- Taskbar Window Tab Context Menu -->
+    <div id="tbContextMenu" class="context-menu">
+        <div class="context-item" onclick="tbCtxRestore()">🗖 Restore / Focus</div>
+        <div class="context-item" onclick="tbCtxMinimize()">_ Minimize</div>
+        <div class="context-divider"></div>
+        <div class="context-item" style="color: #f85149;" onclick="tbCtxClose()">✕ Close Window</div>
     </div>
 
     <script>
@@ -238,6 +320,13 @@
         let activeZIndex = 100;
         let fmCount = 0;
         let isFullscreenMode = false;
+        let is24HourClock = true;
+        let desktopClipboard = { action: null, sources: [] };
+
+        // Context Menu Targets
+        let fmCtxTargetWinId = null;
+        let fmCtxTargetItem = null;
+        let tbCtxTargetWinId = null;
 
         /* App Config Definition */
         const APP_DEFS = {
@@ -246,15 +335,38 @@
             'audioplayer': { title: 'Audio Player', icon: '🎵', width: 480, height: 320, multi: false },
             'imageviewer': { title: 'Image Viewer', icon: '🖼️', width: 640, height: 460, multi: false },
             'videoplayer': { title: 'Video Player', icon: '🎬', width: 660, height: 480, multi: false },
-            'modelviewer': { title: '3D Viewer', icon: '🧊', width: 680, height: 480, multi: false }
+            'modelviewer': { title: '3D Viewer', icon: '🧊', width: 680, height: 480, multi: false },
+            'screensaver': { title: 'Screen Saver Settings', icon: '🌌', width: 420, height: 360, multi: false }
         };
+
+        /* Desktop Context Menu Handler */
+        function onDesktopContextMenu(e) {
+            if (e.target.closest('.desktop-window') || e.target.closest('#taskbar') || e.target.closest('#topNav')) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            hideContextMenus();
+
+            const menu = document.getElementById('desktopContextMenu');
+            menu.style.display = 'block';
+            menu.style.left = Math.min(e.clientX, window.innerWidth - 180) + 'px';
+            menu.style.top = Math.min(e.clientY, window.innerHeight - 150) + 'px';
+        }
+
+        /* Prevent Default Browser Context Menu Everywhere Else */
+        document.addEventListener('contextmenu', (e) => {
+            if (e.target.closest('.fm-table') || e.target.closest('.fm-toolbar') || e.target.closest('.taskbar-item') || e.target.closest('.context-menu') || e.target.closest('#desktopArea')) {
+                return;
+            }
+            e.preventDefault();
+        });
 
         /* Window Management Engine */
         function openApp(appId, fileData) {
             const def = APP_DEFS[appId];
             if (!def) return;
 
-            // Handle multi-instance caps (FM cap = 4)
             if (def.multi) {
                 if (appId === 'filemanager') {
                     const existingFms = Object.keys(windowsMap).filter(k => k.startsWith('win_filemanager_'));
@@ -270,7 +382,6 @@
             } else {
                 const winId = `win_${appId}`;
                 if (windowsMap[winId]) {
-                    // Window exists: un-minimize, bring to front, and optionally load new file
                     restoreWindow(winId);
                     bringToFront(winId);
                     if (fileData) {
@@ -285,7 +396,6 @@
         function createWindow(winId, appId, title, icon, width, height, initialFileData) {
             const container = document.getElementById('windowsContainer');
 
-            // Stagger position
             const winCount = Object.keys(windowsMap).length;
             const left = Math.min(60 + winCount * 30, window.innerWidth - width - 40);
             const top = Math.min(40 + winCount * 25, window.innerHeight - height - 80);
@@ -328,15 +438,9 @@
                 state: {}
             };
 
-            // Setup Drag and Drop File Receiving for App Windows
             setupAppWindowDropTarget(winEl, winId, appId);
-
-            // Build Window Body Content
             buildAppContent(winId, appId, initialFileData);
-
-            // Add Taskbar Item
             addTaskbarItem(winId, title, icon);
-
             bringToFront(winId);
         }
 
@@ -417,6 +521,7 @@
 
         function closeAllWindows() {
             Object.keys(windowsMap).forEach(id => closeWindow(id));
+            hideContextMenus();
         }
 
         /* Drag Window Logic */
@@ -504,13 +609,14 @@
             document.removeEventListener('mouseup', stopResizeWindow);
         }
 
-        /* Taskbar UI Sync */
+        /* Taskbar UI Sync & Taskbar Context Menu */
         function addTaskbarItem(winId, title, icon) {
             const itemsContainer = document.getElementById('taskbarItems');
             const tbItem = document.createElement('div');
             tbItem.className = 'taskbar-item active';
             tbItem.id = `tb_${winId}`;
             tbItem.innerHTML = `<span>${icon}</span> <span>${escapeHtml(title)}</span>`;
+
             tbItem.onclick = () => {
                 const w = windowsMap[winId];
                 if (!w) return;
@@ -522,7 +628,38 @@
                     bringToFront(winId);
                 }
             };
+
+            tbItem.oncontextmenu = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                tbCtxTargetWinId = winId;
+                showTbContextMenu(e.clientX, e.clientY);
+            };
+
             itemsContainer.appendChild(tbItem);
+        }
+
+        function showTbContextMenu(x, y) {
+            hideContextMenus();
+            const menu = document.getElementById('tbContextMenu');
+            menu.style.display = 'block';
+            menu.style.left = Math.min(x, window.innerWidth - 160) + 'px';
+            menu.style.top = (y - menu.offsetHeight - 5) + 'px';
+        }
+
+        function tbCtxRestore() {
+            if (tbCtxTargetWinId) restoreWindow(tbCtxTargetWinId);
+            hideContextMenus();
+        }
+
+        function tbCtxMinimize() {
+            if (tbCtxTargetWinId) minimizeWindow(tbCtxTargetWinId);
+            hideContextMenus();
+        }
+
+        function tbCtxClose() {
+            if (tbCtxTargetWinId) closeWindow(tbCtxTargetWinId);
+            hideContextMenus();
         }
 
         /* Start Menu & Desktop Handlers */
@@ -540,7 +677,16 @@
             if (!e.target.closest('#startMenu') && !e.target.closest('.start-btn')) {
                 hideStartMenu();
             }
+            hideContextMenus();
         }
+
+        function hideContextMenus() {
+            document.getElementById('fmContextMenu').style.display = 'none';
+            document.getElementById('tbContextMenu').style.display = 'none';
+            document.getElementById('desktopContextMenu').style.display = 'none';
+        }
+
+        document.addEventListener('click', hideContextMenus);
 
         function openStatusPlugin() {
             if (window.parent && typeof window.parent.loadPluginView === 'function') {
@@ -548,11 +694,27 @@
             }
         }
 
-        /* Clock */
+        /* 24h / 12h Tray Clock Toggle */
         function updateClock() {
             const now = new Date();
-            document.getElementById('trayClock').innerText = now.toLocaleTimeString();
+            const clockEl = document.getElementById('trayClock');
+            if (!clockEl) return;
+
+            if (is24HourClock) {
+                const h = String(now.getHours()).padStart(2, '0');
+                const m = String(now.getMinutes()).padStart(2, '0');
+                const s = String(now.getSeconds()).padStart(2, '0');
+                clockEl.innerText = `${h}:${m}:${s}`;
+            } else {
+                clockEl.innerText = now.toLocaleTimeString();
+            }
         }
+
+        function toggleClockFormat() {
+            is24HourClock = !is24HourClock;
+            updateClock();
+        }
+
         setInterval(updateClock, 1000);
         updateClock();
 
@@ -582,7 +744,7 @@
             }
         });
 
-        /* Alert Notice Modal */
+        /* Notice Modal */
         function showNotice(title, message) {
             document.getElementById('noticeTitle').innerText = title;
             document.getElementById('noticeBody').innerText = message;
@@ -591,6 +753,71 @@
 
         function closeNoticeModal() {
             document.getElementById('noticeModal').style.display = 'none';
+        }
+
+        /* Chmod / Chown Permissions Modal */
+        function openChmodModal() {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
+            const wData = windowsMap[fmCtxTargetWinId];
+            if (wData.state.selectedPaths.size === 0) {
+                showNotice('Permissions Error', 'Please select at least 1 file/folder.');
+                return;
+            }
+            document.getElementById('chmodModal').style.display = 'flex';
+        }
+
+        function closeChmodModal() {
+            document.getElementById('chmodModal').style.display = 'none';
+        }
+
+        async function saveFmPermissionsAndOwner() {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
+            const wData = windowsMap[fmCtxTargetWinId];
+
+            const modeOctal = document.getElementById('chmodOctal').value.trim();
+            const chownUser = document.getElementById('chownUser').value.trim();
+            const recursive = document.getElementById('chmodRecursive').checked;
+            const paths = Array.from(wData.state.selectedPaths);
+
+            if (paths.length === 0) return;
+
+            try {
+                if (modeOctal) {
+                    const encBody = await encryptPayload({ paths, mode_octal: modeOctal, recursive });
+                    const res = await fetch('/api/fs/chmod', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: encBody
+                    });
+                    const data = await res.json();
+                    if (!data.success) {
+                        showNotice('Chmod Error', data.error || 'Failed to update permissions.');
+                        return;
+                    }
+                }
+
+                if (chownUser) {
+                    const parts = chownUser.split(':');
+                    const owner = parts[0] || '';
+                    const group = parts[1] || '';
+                    const encBody = await encryptPayload({ paths, owner, group, recursive });
+                    const res = await fetch('/api/fs/chown', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: encBody
+                    });
+                    const data = await res.json();
+                    if (!data.success) {
+                        showNotice('Chown Error', data.error || 'Failed to update ownership.');
+                        return;
+                    }
+                }
+
+                closeChmodModal();
+                fmRefresh(fmCtxTargetWinId);
+            } catch (err) {
+                showNotice('Permissions Error', err.message);
+            }
         }
 
         /* Drop Receiving Logic on App Windows */
@@ -614,15 +841,17 @@
                 try {
                     const payload = JSON.parse(dataStr);
                     if (payload.type === 'linnas-file') {
-                        if (payload.isDir) {
+                        const paths = payload.sourcePaths || [payload.sourcePath];
+                        const firstFile = paths.find(p => !p.endsWith('/'));
+
+                        if (!firstFile) {
                             showNotice('Folder Dropped', 'Please drop a valid media or data file, not a folder.');
                             return;
                         }
 
-                        // Verify capability
-                        const fileName = payload.sourcePath.split('/').pop();
+                        const fileName = firstFile.split('/').pop();
                         if (checkAppFileCapability(appId, fileName)) {
-                            loadMediaIntoAppWindow(winId, payload.sourcePath);
+                            loadMediaIntoAppWindow(winId, firstFile);
                         } else {
                             showNotice('Incompatible File Format', `'${fileName}' is not supported by ${APP_DEFS[appId].title}.`);
                         }
@@ -721,6 +950,48 @@
                 if (initialFileData && initialFileData.path) {
                     loadMediaIntoAppWindow(winId, initialFileData.path);
                 }
+            } else if (appId === 'screensaver') {
+                body.innerHTML = `
+                    <div style="padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem; color: #c9d1d9;">
+                        <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                            <label style="font-size: 0.85rem; font-weight: bold; color: #58a6ff;">Screensaver Visualizer</label>
+                            <select id="ssModuleSelect" style="padding: 0.5rem; background: #0d1117; border: 1px solid #30363d; border-radius: 5px; color: #fff; font-size: 0.85rem;">
+                                <option value="Disabled">Disabled</option>
+                                <option value="Random">Random (Selects module on trigger)</option>
+                                <option value="Starfield">Starfield (Space Warp)</option>
+                                <option value="Bubbles">Floating Bubbles</option>
+                                <option value="Qix">Qix (Neon Abstract Lines)</option>
+                                <option value="DigitalRain">Digital Rain (Cyber Matrix)</option>
+                                <option value="Lightning">Lightning Storm</option>
+                                <option value="Aurora">Vector Aurora</option>
+                                <option value="Plasma">Cosmic Plasma</option>
+                                <option value="Gravity">N-Body Chaos Gravity</option>
+                                <option value="Fireworks">Atmospheric Fireworks</option>
+                                <option value="Flocking">Boids Flocking Engine</option>
+                                <option value="Ripples">Water Ripple Interference</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                            <label style="font-size: 0.85rem; font-weight: bold; color: #58a6ff;">Idle Timeout</label>
+                            <select id="ssTimeoutSelect" style="padding: 0.5rem; background: #0d1117; border: 1px solid #30363d; border-radius: 5px; color: #fff; font-size: 0.85rem;">
+                                <option value="0">Disabled (Never launch)</option>
+                                <option value="60">1 Minute</option>
+                                <option value="120">2 Minutes</option>
+                                <option value="300">5 Minutes</option>
+                                <option value="600">10 Minutes</option>
+                                <option value="900">15 Minutes</option>
+                                <option value="1800">30 Minutes</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 0.8rem;">
+                            <button class="btn btn-secondary" onclick="previewScreensaverConfig()">👁️ Preview</button>
+                            <button class="btn" onclick="saveScreensaverConfig()">💾 Save Settings</button>
+                        </div>
+                    </div>
+                `;
+                // Load saved values
+                document.getElementById('ssModuleSelect').value = ssConfig.module;
+                document.getElementById('ssTimeoutSelect').value = ssConfig.timeout;
             }
         }
 
@@ -730,7 +1001,6 @@
             const appId = wData.appId;
             const fileName = filePath.split('/').pop();
 
-            // Update Window Title
             const titleEl = document.getElementById(`${winId}_title`);
             if (titleEl) {
                 titleEl.innerHTML = `<span>${wData.icon}</span> <span>${escapeHtml(APP_DEFS[appId].title)} - ${escapeHtml(fileName)}</span>`;
@@ -807,10 +1077,10 @@
             }
         }
 
-        /* Three.js 3D Model Rendering Engine inside Desktop Windows */
+        /* Three.js 3D Model Rendering Engine */
         function initThreeInWindow(winId, rawUrl, fileName) {
             const container = document.getElementById(`${winId}_canvas`);
-            container.innerHTML = ''; // clear previous canvas
+            container.innerHTML = '';
 
             const wData = windowsMap[winId];
             if (!wData) return;
@@ -830,7 +1100,6 @@
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
 
-            // Lights
             scene.add(new THREE.AmbientLight(0xffffff, 0.7));
             const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
             dirLight1.position.set(1, 1, 1).normalize();
@@ -842,7 +1111,7 @@
             wData.three = { scene, camera, renderer, controls };
 
             function animate() {
-                if (!windowsMap[winId]) return; // window closed
+                if (!windowsMap[winId]) return;
                 requestAnimationFrame(animate);
                 controls.update();
                 renderer.render(scene, camera);
@@ -909,11 +1178,13 @@
             controls.update();
         }
 
-        /* File Manager Multi-Window Implementation */
+        /* File Manager UI & Operations */
         function buildFileManagerUI(winId, initialPath) {
             const body = document.getElementById(`${winId}_body`);
             const wData = windowsMap[winId];
             wData.state.currentPath = initialPath || '/';
+            wData.state.selectedPaths = new Set();
+            wData.state.lastClickedIdx = null;
 
             body.innerHTML = `
                 <div class="fm-toolbar">
@@ -921,6 +1192,7 @@
                     <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="fmRefresh('${winId}')">🔄</button>
                     <button class="btn" style="padding: 0.25rem 0.5rem;" onclick="fmPromptNewFolder('${winId}')">📁+ New Folder</button>
                     <div class="fm-breadcrumbs" id="${winId}_breadcrumbs"></div>
+                    <span id="${winId}_selCount" style="font-size:0.75rem; color:#58a6ff; font-weight:bold;">0 sel</span>
                 </div>
                 <div style="flex: 1; overflow-y: auto;" id="${winId}_file_container" ondragover="fmOnDragOver(event, '${winId}')" ondrop="fmOnDrop(event, '${winId}')">
                     <table class="fm-table">
@@ -938,6 +1210,16 @@
                 </div>
             `;
 
+            const container = document.getElementById(`${winId}_file_container`);
+            container.oncontextmenu = (e) => {
+                if (e.target.closest('.fm-row')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                fmCtxTargetWinId = winId;
+                fmCtxTargetItem = null;
+                showFmContextMenu(e.clientX, e.clientY, null, wData.state.selectedPaths.size);
+            };
+
             loadFmDirectory(winId, wData.state.currentPath);
         }
 
@@ -945,6 +1227,8 @@
             const wData = windowsMap[winId];
             if (!wData) return;
             wData.state.currentPath = path || '/';
+            wData.state.selectedPaths.clear();
+            wData.state.lastClickedIdx = null;
 
             renderFmBreadcrumbs(winId, wData.state.currentPath);
 
@@ -1002,12 +1286,14 @@
 
             if (wData.state.items.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #8b949e; padding: 1.5rem;">Directory is empty.</td></tr>';
+                renderFmSelectionCount(winId);
                 return;
             }
 
-            wData.state.items.forEach(item => {
+            wData.state.items.forEach((item, idx) => {
                 const tr = document.createElement('tr');
                 tr.className = 'fm-row';
+                if (wData.state.selectedPaths.has(item.path)) tr.classList.add('selected');
                 tr.draggable = true;
 
                 const ext = item.name.split('.').pop().toLowerCase();
@@ -1028,11 +1314,40 @@
                     <td><span style="font-family: monospace; color: #8b949e;">${item.permissions || 'rwxr-xr-x'}</span></td>
                 `;
 
-                // Set HTML5 Drag Source Data
+                tr.onclick = (e) => {
+                    if (e.ctrlKey || e.metaKey) {
+                        if (wData.state.selectedPaths.has(item.path)) {
+                            wData.state.selectedPaths.delete(item.path);
+                        } else {
+                            wData.state.selectedPaths.add(item.path);
+                        }
+                        wData.state.lastClickedIdx = idx;
+                    } else if (e.shiftKey && wData.state.lastClickedIdx !== null) {
+                        const start = Math.min(wData.state.lastClickedIdx, idx);
+                        const end = Math.max(wData.state.lastClickedIdx, idx);
+                        if (!e.ctrlKey) wData.state.selectedPaths.clear();
+                        for (let i = start; i <= end; i++) {
+                            if (wData.state.items[i]) wData.state.selectedPaths.add(wData.state.items[i].path);
+                        }
+                    } else {
+                        wData.state.selectedPaths.clear();
+                        wData.state.selectedPaths.add(item.path);
+                        wData.state.lastClickedIdx = idx;
+                    }
+                    renderFmSelectionState(winId);
+                };
+
                 tr.ondragstart = (e) => {
+                    if (!wData.state.selectedPaths.has(item.path)) {
+                        wData.state.selectedPaths.clear();
+                        wData.state.selectedPaths.add(item.path);
+                        wData.state.lastClickedIdx = idx;
+                        renderFmSelectionState(winId);
+                    }
                     const payload = {
                         type: 'linnas-file',
                         sourceWinId: winId,
+                        sourcePaths: Array.from(wData.state.selectedPaths),
                         sourcePath: item.path,
                         isDir: item.is_dir,
                         name: item.name
@@ -1041,18 +1356,52 @@
                     e.dataTransfer.effectAllowed = 'move';
                 };
 
-                // Double click handler
                 tr.ondblclick = () => {
                     if (item.is_dir) {
                         loadFmDirectory(winId, item.path);
                     } else {
-                        // Open file in corresponding app
                         openFileInApp(item.path, item.name);
                     }
                 };
 
+                tr.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    fmCtxTargetWinId = winId;
+                    fmCtxTargetItem = item;
+                    if (!wData.state.selectedPaths.has(item.path)) {
+                        wData.state.selectedPaths.clear();
+                        wData.state.selectedPaths.add(item.path);
+                        wData.state.lastClickedIdx = idx;
+                        renderFmSelectionState(winId);
+                    }
+                    showFmContextMenu(e.clientX, e.clientY, item, wData.state.selectedPaths.size);
+                };
+
                 tbody.appendChild(tr);
             });
+
+            renderFmSelectionCount(winId);
+        }
+
+        function renderFmSelectionState(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            const rows = document.querySelectorAll(`#${winId}_table_body tr.fm-row`);
+            rows.forEach((tr, idx) => {
+                if (wData.state.items[idx]) {
+                    tr.classList.toggle('selected', wData.state.selectedPaths.has(wData.state.items[idx].path));
+                }
+            });
+            renderFmSelectionCount(winId);
+        }
+
+        function renderFmSelectionCount(winId) {
+            const wData = windowsMap[winId];
+            const cntEl = document.getElementById(`${winId}_selCount`);
+            if (wData && cntEl) {
+                cntEl.innerText = `${wData.state.selectedPaths ? wData.state.selectedPaths.size : 0} sel`;
+            }
         }
 
         function fmNavigateUp(winId) {
@@ -1097,6 +1446,187 @@
             }
         }
 
+        /* File Manager Context Menu Engine */
+        function showFmContextMenu(x, y, item, selCount) {
+            hideContextMenus();
+            const menu = document.getElementById('fmContextMenu');
+            menu.style.display = 'block';
+
+            const menuWidth = menu.offsetWidth || 180;
+            const menuHeight = menu.offsetHeight || 300;
+
+            menu.style.left = Math.min(x, window.innerWidth - menuWidth - 10) + 'px';
+            menu.style.top = Math.min(y, window.innerHeight - menuHeight - 10) + 'px';
+
+            const ctxOpen = document.getElementById('fmCtxOpen');
+            const ctxEdit = document.getElementById('fmCtxEdit');
+            const ctxPaste = document.getElementById('fmCtxPaste');
+
+            if (item) {
+                if (item.is_dir) {
+                    ctxOpen.innerText = '📁 Open Directory';
+                    ctxEdit.style.display = 'none';
+                } else {
+                    ctxOpen.innerText = '📄 Open File';
+                    ctxEdit.style.display = 'flex';
+                }
+            } else {
+                ctxOpen.innerText = '📄 Open';
+                ctxEdit.style.display = 'none';
+            }
+
+            ctxPaste.style.display = (desktopClipboard.action && desktopClipboard.sources.length > 0) ? 'flex' : 'none';
+            ctxPaste.innerText = `📌 Paste (${desktopClipboard.sources.length} items)`;
+        }
+
+        function fmCtxOpenItem() {
+            if (!fmCtxTargetItem) return;
+            if (fmCtxTargetItem.is_dir) {
+                loadFmDirectory(fmCtxTargetWinId, fmCtxTargetItem.path);
+            } else {
+                openFileInApp(fmCtxTargetItem.path, fmCtxTargetItem.name);
+            }
+            hideContextMenus();
+        }
+
+        function fmCtxEditItem() {
+            if (fmCtxTargetItem && !fmCtxTargetItem.is_dir) {
+                openApp('editor', { path: fmCtxTargetItem.path });
+            }
+            hideContextMenus();
+        }
+
+        function fmCtxNewFolder() {
+            if (fmCtxTargetWinId) fmPromptNewFolder(fmCtxTargetWinId);
+            hideContextMenus();
+        }
+
+        function fmCtxCopySelected(action) {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
+            const wData = windowsMap[fmCtxTargetWinId];
+            if (wData.state.selectedPaths.size === 0) return;
+
+            desktopClipboard.action = action;
+            desktopClipboard.sources = Array.from(wData.state.selectedPaths);
+            hideContextMenus();
+        }
+
+        async function fmCtxPasteClipboard() {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId] || !desktopClipboard.action || desktopClipboard.sources.length === 0) return;
+
+            const wData = windowsMap[fmCtxTargetWinId];
+            const destDir = wData.state.currentPath;
+            const endpoint = (desktopClipboard.action === 'cut') ? '/api/fs/move' : '/api/fs/copy';
+
+            try {
+                const encBody = await encryptPayload({
+                    sources: desktopClipboard.sources,
+                    destination: destDir
+                });
+
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    if (desktopClipboard.action === 'cut') {
+                        desktopClipboard = { action: null, sources: [] };
+                    }
+                    Object.keys(windowsMap).forEach(k => {
+                        if (windowsMap[k].appId === 'filemanager') fmRefresh(k);
+                    });
+                } else {
+                    showNotice('Paste Error', data.error || 'Failed to paste items.');
+                }
+            } catch (err) {
+                showNotice('Paste Error', err.message);
+            }
+            hideContextMenus();
+        }
+
+        function fmCtxDownloadSelected() {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
+            const wData = windowsMap[fmCtxTargetWinId];
+            wData.state.selectedPaths.forEach(path => {
+                const link = document.createElement('a');
+                link.href = `/api/fs/raw?path=${encodeURIComponent(path)}`;
+                link.download = path.split('/').pop();
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+            hideContextMenus();
+        }
+
+        function fmCtxOpenChmodModal() {
+            openChmodModal();
+            hideContextMenus();
+        }
+
+        async function fmCtxRenameSelected() {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
+            const wData = windowsMap[fmCtxTargetWinId];
+            if (wData.state.selectedPaths.size !== 1) {
+                showNotice('Rename Item', 'Please select exactly 1 item to rename.');
+                return;
+            }
+
+            const oldPath = Array.from(wData.state.selectedPaths)[0];
+            const oldName = oldPath.split('/').pop();
+            const newName = prompt('Enter new name:', oldName);
+            if (!newName || newName === oldName) return;
+
+            const parent = oldPath.substring(0, oldPath.lastIndexOf('/')) || '/';
+            const newPath = (parent === '/' ? '' : parent) + '/' + newName.trim();
+
+            try {
+                const encBody = await encryptPayload({ old_path: oldPath, new_path: newPath });
+                const res = await fetch('/api/fs/rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    fmRefresh(fmCtxTargetWinId);
+                } else {
+                    showNotice('Rename Error', data.error || 'Failed to rename item.');
+                }
+            } catch (err) {
+                showNotice('Rename Error', err.message);
+            }
+            hideContextMenus();
+        }
+
+        async function fmCtxDeleteSelected() {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
+            const wData = windowsMap[fmCtxTargetWinId];
+            if (wData.state.selectedPaths.size === 0) return;
+
+            if (!confirm(`Are you sure you want to delete ${wData.state.selectedPaths.size} selected item(s)?`)) return;
+
+            try {
+                const encBody = await encryptPayload({ paths: Array.from(wData.state.selectedPaths) });
+                const res = await fetch('/api/fs/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    fmRefresh(fmCtxTargetWinId);
+                } else {
+                    showNotice('Delete Error', data.error || 'Failed to delete items.');
+                }
+            } catch (err) {
+                showNotice('Delete Error', err.message);
+            }
+            hideContextMenus();
+        }
+
         /* Drag & Drop File Move Between File Managers */
         function fmOnDragOver(e, winId) {
             e.preventDefault();
@@ -1114,17 +1644,11 @@
             try {
                 const payload = JSON.parse(dataStr);
                 if (payload.type === 'linnas-file') {
-                    const sourcePath = payload.sourcePath;
+                    const sources = payload.sourcePaths || [payload.sourcePath];
                     const destDir = targetData.state.currentPath;
 
-                    // Don't move to same parent directory
-                    const sourceParent = sourcePath.substring(0, sourcePath.lastIndexOf('/')) || '/';
-                    if (sourceParent === destDir) return;
-
-                    showNotice('Moving File...', `Moving '${payload.name}' to '${destDir}'...`);
-
                     const encBody = await encryptPayload({
-                        sources: [sourcePath],
+                        sources: sources,
                         destination: destDir
                     });
 
@@ -1135,17 +1659,14 @@
                     });
 
                     const data = await res.json();
-                    closeNoticeModal();
 
                     if (data.success) {
-                        // Refresh source window if open
                         if (payload.sourceWinId && windowsMap[payload.sourceWinId]) {
                             fmRefresh(payload.sourceWinId);
                         }
-                        // Refresh target window
                         fmRefresh(targetWinId);
                     } else {
-                        showNotice('Move Error', data.error || 'Failed to move file.');
+                        showNotice('Move Error', data.error || 'Failed to move items.');
                     }
                 }
             } catch (err) {
@@ -1186,17 +1707,446 @@
             return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        /* Keyboard Shortcuts */
+        /* Keyboard Shortcuts Engine */
         document.addEventListener('keydown', (e) => {
             if (e.key === 'F11') {
                 e.preventDefault();
                 toggleFullscreenDesktop();
+                return;
+            }
+
+            const activeWinEl = document.querySelector('.desktop-window.active-window');
+            if (!activeWinEl) return;
+            const activeWinId = activeWinEl.id;
+            const wData = windowsMap[activeWinId];
+            if (!wData || wData.appId !== 'filemanager') return;
+
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+                if (wData.state.selectedPaths.size > 0) {
+                    desktopClipboard.action = 'copy';
+                    desktopClipboard.sources = Array.from(wData.state.selectedPaths);
+                }
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') {
+                if (wData.state.selectedPaths.size > 0) {
+                    desktopClipboard.action = 'cut';
+                    desktopClipboard.sources = Array.from(wData.state.selectedPaths);
+                }
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+                if (desktopClipboard.action && desktopClipboard.sources.length > 0) {
+                    fmCtxTargetWinId = activeWinId;
+                    fmCtxPasteClipboard();
+                }
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+                e.preventDefault();
+                wData.state.selectedPaths.clear();
+                wData.state.items.forEach(i => wData.state.selectedPaths.add(i.path));
+                renderFmSelectionState(activeWinId);
             }
         });
 
+        /* ========================================================== */
+        /* FULLSCREEN SCREENSAVER ENGINE (Ported from ss.html) */
+        /* ========================================================== */
+        let ssConfig = {
+            module: 'Starfield',
+            timeout: 300 // default 5 mins in seconds
+        };
+
+        // Load config from LocalStorage
+        try {
+            const saved = localStorage.getItem('linnas_ss_config');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.module !== undefined) ssConfig.module = parsed.module;
+                if (parsed.timeout !== undefined) ssConfig.timeout = parseInt(parsed.timeout, 10);
+            }
+        } catch (e) {}
+
+        function saveScreensaverConfig() {
+            const mod = document.getElementById('ssModuleSelect').value;
+            const to = parseInt(document.getElementById('ssTimeoutSelect').value, 10);
+
+            ssConfig.module = mod;
+            ssConfig.timeout = to;
+
+            try {
+                localStorage.setItem('linnas_ss_config', JSON.stringify(ssConfig));
+            } catch (e) {}
+
+            showNotice('Settings Saved', 'Screen Saver configuration updated successfully.');
+            resetIdleTimer();
+        }
+
+        function previewScreensaverConfig() {
+            const mod = document.getElementById('ssModuleSelect').value;
+            if (mod === 'Disabled') {
+                showNotice('Disabled', 'Screen saver module is set to Disabled.');
+                return;
+            }
+            startScreensaver(mod);
+        }
+
+        let ssActive = false;
+        let ssIntervalId = null;
+        let idleSeconds = 0;
+        let idleTimerId = null;
+
+        function resetIdleTimer() {
+            idleSeconds = 0;
+            if (ssActive) {
+                stopScreensaver();
+            }
+        }
+
+        // Track Mouse & Keyboard Activity
+        ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(evt => {
+            window.addEventListener(evt, resetIdleTimer, { passive: true });
+        });
+
+        setInterval(() => {
+            if (ssConfig.timeout <= 0 || ssConfig.module === 'Disabled') return;
+            idleSeconds++;
+            if (idleSeconds >= ssConfig.timeout && !ssActive) {
+                startScreensaver(ssConfig.module);
+            }
+        }, 1000);
+
+        function startScreensaver(moduleName) {
+            if (ssActive) return;
+            ssActive = true;
+
+            const overlay = document.getElementById('screensaverOverlay');
+            overlay.style.display = 'block';
+
+            const can = document.getElementById('screensaverCanvas');
+            const ctx = can.getContext('2d');
+
+            let mx = can.width = window.innerWidth;
+            let my = can.height = window.innerHeight;
+
+            const onResize = () => {
+                mx = can.width = window.innerWidth;
+                my = can.height = window.innerHeight;
+            };
+            window.addEventListener('resize', onResize);
+
+            // Ported Modules Definition
+            const ssModulesList = [
+                // Starfield
+                {
+                    name: "Starfield", interval: 30,
+                    init() {
+                        this.stars = 1000;
+                        this.stx = []; this.sty = []; this.sth = []; this.stv = [];
+                        this.stz = []; this.stw = []; this.stc = [];
+                        this.fr = Math.floor(Math.random() * 2) ? 1 : -1;
+                    },
+                    frame() {
+                        ctx.fillStyle = "#000000"; ctx.fillRect(0, 0, mx, my);
+                        for (let i = 0; i < this.stars; i++) {
+                            if (this.fr == 1 && (this.sty[i] === undefined || this.sty[i] > my || this.sty[i] < 0 || this.stx[i] > mx || this.stx[i] < 0)) {
+                                this.stx[i] = mx / 2; this.sty[i] = my / 2;
+                                this.sth[i] = ((Math.random() * 2) - 1) * 9; this.stv[i] = ((Math.random() * 2) - 1) * 9;
+                                this.stz[i] = 1; this.stw[i] = 1;
+                                this.stc[i] = "rgba(" + Math.random() * 255 + "," + Math.random() * 255 + "," + Math.random() * 255 + ",200)";
+                            }
+                            if (this.fr == -1 && ((this.sty[i] <= (my / 2) + 5 && this.sty[i] >= (my / 2) - 5) || this.stx[i] < 0 || this.stx[i] > mx || this.sty[i] < 0 || this.sty[i] > my)) {
+                                this.sty[i] = undefined;
+                            }
+                            if (this.fr == -1 && (this.sty[i] === undefined)) {
+                                let flip = Math.floor(Math.random() * 2);
+                                if (flip) {
+                                    this.stx[i] = Math.floor(Math.random() * mx - 1) + 1;
+                                    this.sty[i] = Math.floor(Math.random() * 2) ? 1 : my - 5;
+                                } else {
+                                    this.stx[i] = Math.floor(Math.random() * 2) ? 1 : mx - 5;
+                                    this.sty[i] = Math.floor(Math.random() * my - 1) + 1;
+                                }
+                                let tmpx = this.stx[i] > (mx / 2) ? this.stx[i] - (mx / 2) : (mx / 2) - this.stx[i];
+                                let tmpy = this.sty[i] > (my / 2) ? this.sty[i] - (my / 2) : (my / 2) - this.sty[i];
+                                if (!flip) { this.stv[i] = tmpx > 0 ? tmpy / tmpx : 0; this.sth[i] = 1; }
+                                else { this.stv[i] = 1; this.sth[i] = tmpy > 0 ? tmpx / tmpy : 0; }
+                                this.sth[i] = this.stx[i] > (mx / 2) ? -this.sth[i] : this.sth[i];
+                                this.stv[i] = this.sty[i] > (my / 2) ? -this.stv[i] : this.stv[i];
+                                this.stz[i] = 3; this.stw[i] = Math.random() * 5 + 1;
+                                this.stc[i] = "rgba(" + Math.random() * 255 + "," + Math.random() * 255 + "," + Math.random() * 255 + ",200)";
+                            }
+                            this.stx[i] = this.stx[i] + (this.sth[i] * this.stw[i]);
+                            this.sty[i] = this.sty[i] + (this.stv[i] * this.stw[i]);
+                            if (this.fr == 1) {
+                                this.stz[i] = this.stz[i] < 5 ? this.stz[i] + .02 : 5;
+                                this.stw[i] = this.stw[i] * 1.01234;
+                            } else {
+                                let tmpx = this.stx[i] > (mx / 2) ? this.stx[i] - (mx / 2) : (mx / 2) - this.stx[i];
+                                let tmpy = this.sty[i] > (my / 2) ? this.sty[i] - (my / 2) : (my / 2) - this.sty[i];
+                                this.stz[i] = tmpx > tmpy ? 1 + 2 * (tmpx / (mx / 2)) : 1 + 2 * (tmpy / (my / 2));
+                                this.stw[i] = this.stw[i] / 1.001;
+                            }
+                            ctx.fillStyle = this.stc[i]; ctx.fillRect(this.stx[i], this.sty[i], this.stz[i], this.stz[i]);
+                        }
+                    }
+                },
+                // Bubbles
+                {
+                    name: "Bubbles", interval: 25,
+                    init() {
+                        this.arrx = []; this.arry = []; this.arrz = []; this.arrc = [];
+                        this.num = 50 + Math.random() * 80; this.d = 15; this.grd = "#000";
+                        for (let i = 0; i < this.num; i++) this.arry.push(0);
+                    },
+                    frame() {
+                        ctx.fillStyle = this.grd; ctx.fillRect(0, 0, mx, my);
+                        ctx.strokeStyle = '#555555'; ctx.lineWidth = 1;
+                        for (let i = 0; i < this.num; i++) {
+                            if (this.arry[i] <= 0) {
+                                this.arry[i] = my + this.d;
+                                this.arrx[i] = (Math.random() * (mx)) + this.d;
+                                this.arrz[i] = (Math.random() * (this.d)) + (this.d / 2);
+                                this.arrc[i] = 'rgba(' + (150 + Math.random() * 105) + ',' + (150 + Math.random() * 105) + ',' + (150 + Math.random() * 105) + ',.1)';
+                            }
+                            this.arry[i] = this.arry[i] - (this.arrz[i] / 8);
+                            this.arrx[i] = this.arrx[i] + (Math.random() * 2) - 1;
+                            ctx.beginPath(); ctx.arc(this.arrx[i], this.arry[i], this.arrz[i], 0, 2 * Math.PI); ctx.stroke();
+                            ctx.fillStyle = this.arrc[i]; ctx.fill();
+                        }
+                    }
+                },
+                // Qix
+                {
+                    name: "Qix", interval: 1000 / 30,
+                    init() {
+                        this.step = 8; this.stmn = 4; this.stmx = this.step; this.cc = 1; this.chg = 500;
+                        this.la = []; this.lb = []; this.lc = []; this.ld = []; this.lz = [];
+                        this.lines = Math.floor(Math.random() * 25) + 50;
+                        this.vr = []; this.vg = []; this.vb = [];
+                        this.vr.push([255,255,255,  0,  0]); this.vg.push([  0,128,255,255,  0]); this.vb.push([  0,  0,  0,  0,255]);
+                        this.rgb = 0; this.r = this.vr[0]; this.g = this.vg[0]; this.b = this.vb[0];
+                    },
+                    frame() {
+                        ctx.fillStyle = "#000000"; ctx.fillRect(0, 0, mx, my); ctx.lineWidth = 4;
+                        for (let i = 0; i < this.lines; i++) {
+                            if (this.la[i] == undefined && i == 0) {
+                                this.la[i] = (Math.random() * (mx - 9)) + 9; this.lb[i] = (Math.random() * (my - 9)) + 9;
+                                this.lc[i] = (Math.random() * (mx - 9)) + 9; this.ld[i] = (Math.random() * (my - 9)) + 9;
+                                this.lz[i] = "rgba(" + Math.random() * 255 + "," + Math.random() * 255 + "," + Math.random() * 255 + ",200)";
+                                this.le = 1; this.lf = 1; this.lg = -1; this.lh = -1;
+                            }
+                            if (i == 0) {
+                                if (this.la[i] > mx || this.la[i] < 0) this.le *= -1;
+                                if (this.lb[i] > my || this.lb[i] < 0) this.lf *= -1;
+                                if (this.lc[i] > mx || this.lc[i] < 0) this.lg *= -1;
+                                if (this.ld[i] > my || this.ld[i] < 0) this.lh *= -1;
+                                this.la.unshift(this.la[i] + this.le * this.step); this.la.pop();
+                                this.lb.unshift(this.lb[i] + this.lf * this.step); this.lb.pop();
+                                this.lc.unshift(this.lc[i] + this.lg * this.step); this.lc.pop();
+                                this.ld.unshift(this.ld[i] + this.lh * this.step); this.ld.pop();
+                            }
+                            if (this.la[this.lines - i] != undefined) {
+                                ctx.strokeStyle = `hsl(${(i * 5) % 360}, 80%, 60%)`;
+                                ctx.beginPath(); ctx.moveTo(this.la[this.lines - i], this.lb[this.lines - i]);
+                                ctx.lineTo(this.lc[this.lines - i], this.ld[this.lines - i]); ctx.stroke();
+                            }
+                        }
+                    }
+                },
+                // DigitalRain
+                {
+                    name: "DigitalRain", interval: 40,
+                    init() {
+                        this.fontSize = 16; this.columns = Math.floor(mx / this.fontSize) + 1; this.drops = [];
+                        for (let i = 0; i < this.columns; i++) this.drops[i] = Math.random() * -100;
+                        this.chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()~<>";
+                        this.colorz = "#00ff66";
+                    },
+                    frame() {
+                        ctx.fillStyle = "rgba(0, 0, 0, 0.06)"; ctx.fillRect(0, 0, mx, my);
+                        ctx.font = `${this.fontSize}px monospace`;
+                        for (let i = 0; i < this.columns; i++) {
+                            const char = this.chars[Math.floor(Math.random() * this.chars.length)];
+                            ctx.fillStyle = Math.random() > 0.98 ? "#ffffff" : this.colorz;
+                            ctx.fillText(char, i * this.fontSize, this.drops[i] * this.fontSize);
+                            if (this.drops[i] * this.fontSize > my && Math.random() > 0.975) this.drops[i] = 0;
+                            this.drops[i]++;
+                        }
+                    }
+                },
+                // Lightning
+                {
+                    name: "Lightning", interval: 30,
+                    init() {
+                        this.rainDrops = []; this.flashOpacity = 0; this.lightningBolts = [];
+                        for (let i = 0; i < 200; i++) this.rainDrops.push({ x: Math.random() * mx, y: Math.random() * my, speed: 15, length: 10 });
+                    },
+                    frame() {
+                        ctx.fillStyle = "#000000"; ctx.fillRect(0, 0, mx, my);
+                        if (Math.random() < 0.03) {
+                            this.flashOpacity = 0.4;
+                            this.lightningBolts = [{ x1: Math.random() * mx, y1: 0, x2: Math.random() * mx, y2: my }];
+                        }
+                        if (this.flashOpacity > 0) {
+                            ctx.fillStyle = `rgba(180, 210, 255, ${this.flashOpacity})`; ctx.fillRect(0, 0, mx, my);
+                            this.flashOpacity -= 0.08;
+                        }
+                        ctx.strokeStyle = "rgba(174, 194, 224, 0.5)"; ctx.lineWidth = 1;
+                        this.rainDrops.forEach(drop => {
+                            drop.y += drop.speed;
+                            if (drop.y > my) drop.y = 0;
+                            ctx.beginPath(); ctx.moveTo(drop.x, drop.y); ctx.lineTo(drop.x, drop.y + drop.length); ctx.stroke();
+                        });
+                    }
+                },
+                // Aurora
+                {
+                    name: "Aurora", interval: 1000 / 30,
+                    init() { this.t = 0; },
+                    frame() {
+                        this.t += 0.02;
+                        ctx.fillStyle = "rgba(0, 0, 0, 0.1)"; ctx.fillRect(0, 0, mx, my);
+                        for (let i = 0; i < 3; i++) {
+                            ctx.beginPath();
+                            ctx.moveTo(0, my * 0.5);
+                            for (let x = 0; x <= mx; x += 20) {
+                                let y = my * 0.5 + Math.sin(x * 0.005 + this.t + i) * 80 + Math.cos(x * 0.01 - this.t) * 40;
+                                ctx.lineTo(x, y);
+                            }
+                            ctx.lineTo(mx, my); ctx.lineTo(0, my); ctx.closePath();
+                            let grad = ctx.createLinearGradient(0, 0, 0, my);
+                            grad.addColorStop(0, `hsla(${120 + i * 40}, 80%, 50%, 0.15)`);
+                            grad.addColorStop(1, 'rgba(0,0,0,0)');
+                            ctx.fillStyle = grad; ctx.fill();
+                        }
+                    }
+                },
+                // Plasma
+                {
+                    name: "Plasma", interval: 1000 / 30,
+                    init() { this.time = 0; this.res = 6; },
+                    frame() {
+                        this.time += 0.04;
+                        for (let x = 0; x < mx; x += this.res) {
+                            for (let y = 0; y < my; y += this.res) {
+                                let v1 = Math.sin(x * 0.01 + this.time);
+                                let v2 = Math.cos(y * 0.01 - this.time);
+                                let val = (v1 + v2 + 2) / 4;
+                                ctx.fillStyle = `rgb(${Math.floor(val * 255)}, ${Math.floor((1 - val) * 150)}, 200)`;
+                                ctx.fillRect(x, y, this.res, this.res);
+                            }
+                        }
+                    }
+                },
+                // Gravity
+                {
+                    name: "Gravity", interval: 1000 / 30,
+                    init() {
+                        this.planets = [];
+                        for (let i = 0; i < 8; i++) {
+                            this.planets.push({
+                                x: Math.random() * mx, y: Math.random() * my,
+                                vx: (Math.random() - 0.5) * 2, vy: (Math.random() - 0.5) * 2,
+                                radius: Math.random() * 8 + 4, color: "#58a6ff"
+                            });
+                        }
+                    },
+                    frame() {
+                        ctx.fillStyle = "rgba(0, 0, 0, 0.2)"; ctx.fillRect(0, 0, mx, my);
+                        this.planets.forEach(p => {
+                            p.x += p.vx; p.y += p.vy;
+                            if (p.x < 0 || p.x > mx) p.vx *= -1;
+                            if (p.y < 0 || p.y > my) p.vy *= -1;
+                            ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                            ctx.fillStyle = p.color; ctx.fill();
+                        });
+                    }
+                },
+                // Fireworks
+                {
+                    name: "Fireworks", interval: 1000 / 30,
+                    init() { this.particles = []; },
+                    frame() {
+                        ctx.fillStyle = "rgba(0, 0, 0, 0.2)"; ctx.fillRect(0, 0, mx, my);
+                        if (Math.random() < 0.08) {
+                            let cx = Math.random() * mx, cy = Math.random() * (my * 0.6);
+                            for (let i = 0; i < 30; i++) {
+                                let angle = Math.random() * Math.PI * 2;
+                                let spd = Math.random() * 4 + 1;
+                                this.particles.push({ x: cx, y: cy, vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd, alpha: 1, col: `hsl(${Math.random() * 360}, 100%, 60%)` });
+                            }
+                        }
+                        for (let i = this.particles.length - 1; i >= 0; i--) {
+                            let p = this.particles[i];
+                            p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.alpha -= 0.02;
+                            if (p.alpha <= 0) { this.particles.splice(i, 1); continue; }
+                            ctx.save(); ctx.globalAlpha = p.alpha; ctx.fillStyle = p.col;
+                            ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+                        }
+                    }
+                },
+                // Flocking
+                {
+                    name: "Flocking", interval: 1000 / 30,
+                    init() {
+                        this.boids = [];
+                        for (let i = 0; i < 60; i++) {
+                            this.boids.push({ x: Math.random() * mx, y: Math.random() * my, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3 });
+                        }
+                    },
+                    frame() {
+                        ctx.fillStyle = "rgba(0, 0, 0, 0.2)"; ctx.fillRect(0, 0, mx, my);
+                        this.boids.forEach(b => {
+                            b.x += b.vx; b.y += b.vy;
+                            if (b.x < 0) b.x = mx; if (b.x > mx) b.x = 0;
+                            if (b.y < 0) b.y = my; if (b.y > my) b.y = 0;
+                            ctx.fillStyle = "#7ee787"; ctx.beginPath(); ctx.arc(b.x, b.y, 3, 0, Math.PI * 2); ctx.fill();
+                        });
+                    }
+                },
+                // Ripples
+                {
+                    name: "Ripples", interval: 1000 / 30,
+                    init() { this.ripples = []; },
+                    frame() {
+                        ctx.fillStyle = "#000000"; ctx.fillRect(0, 0, mx, my);
+                        if (Math.random() < 0.05) {
+                            this.ripples.push({ x: Math.random() * mx, y: Math.random() * my, r: 1, alpha: 1 });
+                        }
+                        for (let i = this.ripples.length - 1; i >= 0; i--) {
+                            let rip = this.ripples[i];
+                            rip.r += 2; rip.alpha -= 0.015;
+                            if (rip.alpha <= 0) { this.ripples.splice(i, 1); continue; }
+                            ctx.strokeStyle = `rgba(88, 166, 255, ${rip.alpha})`;
+                            ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(rip.x, rip.y, rip.r, 0, Math.PI * 2); ctx.stroke();
+                        }
+                    }
+                }
+            ];
+
+            // Resolve module choice
+            let chosenMod = null;
+            if (moduleName === 'Random') {
+                chosenMod = ssModulesList[Math.floor(Math.random() * ssModulesList.length)];
+            } else {
+                chosenMod = ssModulesList.find(m => m.name === moduleName) || ssModulesList[0];
+            }
+
+            chosenMod.init();
+            ssIntervalId = setInterval(() => {
+                chosenMod.frame();
+            }, chosenMod.interval);
+        }
+
+        function stopScreensaver() {
+            if (!ssActive) return;
+            ssActive = false;
+
+            if (ssIntervalId) clearInterval(ssIntervalId);
+            ssIntervalId = null;
+
+            const overlay = document.getElementById('screensaverOverlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
         /* Initial Setup */
         window.onload = () => {
-            // Open 1 default File Manager window on launch
             openApp('filemanager');
         };
     </script>
