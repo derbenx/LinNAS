@@ -1,6 +1,6 @@
 {
   "id": "ntp",
-  "name": "NTP Time Server (Chrony)",
+  "name": "NTP Server",
   "description": "Configure system time synchronization, local NTP server daemon, upstream pool servers, and force clock sync",
   "category": "Network Services",
   "default": false,

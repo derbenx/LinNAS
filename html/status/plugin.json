@@ -1,6 +1,6 @@
 {
   "id": "status",
-  "name": "Server Status & Power",
+  "name": "Server Status",
   "description": "Monitor CPU, RAM, SMART drive health, disk space, Conky-like system stats, service states, power off/reboot, and boot service autostart",
   "category": "System",
   "default": true,

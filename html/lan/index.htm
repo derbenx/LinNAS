@@ -56,7 +56,7 @@
     </style>
 </head>
 <body>
-    <h2>LAN Network Config</h2>
+    <h2>LAN Config</h2>
     <p class="subtitle">Configure Ethernet interface addressing and DNS server resolvers with independent DHCP or Manual modes and field overrides.</p>
 
     <div id="hardwareWarning" class="no-hardware-box">
@@ -79,13 +79,13 @@
             </div>
         </div>
 
-        <!-- IP Mode Row -->
+        <!-- Network Addressing & DNS Mode Row -->
         <div class="form-row">
-            <div class="form-group" style="max-width: 220px;">
-                <label>IP Mode</label>
-                <select id="ipModeSelect">
-                    <option value="dhcp">DHCP (Automatic)</option>
-                    <option value="manual">Manual (Static)</option>
+            <div class="form-group" style="max-width: 240px;">
+                <label>IP & DNS Assignment Mode</label>
+                <select id="ipModeSelect" onchange="toggleIpModeFields()">
+                    <option value="dhcp">DHCP (Automatic IP & DNS)</option>
+                    <option value="manual">Manual (Static IP & Custom DNS)</option>
                 </select>
             </div>
             <div class="form-group">
@@ -98,21 +98,14 @@
             </div>
         </div>
 
-        <!-- DNS Mode Row -->
-        <div class="form-row">
-            <div class="form-group" style="max-width: 220px;">
-                <label>DNS Mode</label>
-                <select id="dnsModeSelect">
-                    <option value="dhcp">DHCP (Automatic)</option>
-                    <option value="manual">Manual (Override)</option>
-                </select>
-            </div>
+        <!-- Custom DNS Row -->
+        <div class="form-row" id="dnsRow">
             <div class="form-group">
-                <label>Primary DNS (DNS1)</label>
+                <label>Primary DNS Server (DNS1)</label>
                 <input type="text" id="dns1" placeholder="1.1.1.1">
             </div>
             <div class="form-group">
-                <label>Secondary DNS (DNS2)</label>
+                <label>Secondary DNS Server (DNS2)</label>
                 <input type="text" id="dns2" placeholder="8.8.8.8">
             </div>
         </div>
@@ -306,10 +299,18 @@
             }
         }
 
+        function toggleIpModeFields() {
+            const mode = document.getElementById('ipModeSelect').value;
+            const isManual = (mode === 'manual');
+            document.getElementById('ipAddr').readOnly = !isManual;
+            document.getElementById('cidrMask').readOnly = !isManual;
+            document.getElementById('dns1').readOnly = !isManual;
+            document.getElementById('dns2').readOnly = !isManual;
+        }
+
         async function applyLanConfig() {
             const iface = document.getElementById('ifaceSelect').value;
             const ipMode = document.getElementById('ipModeSelect').value;
-            const dnsMode = document.getElementById('dnsModeSelect').value;
 
             const ip = document.getElementById('ipAddr').value.trim();
             const maskInput = document.getElementById('cidrMask').value.trim();
@@ -320,8 +321,7 @@
             showOutput(`Applying configuration settings to ${iface}...`);
 
             try {
-                // Apply IP settings
-                if (ipMode === 'manual' || ip) {
+                if (ipMode === 'manual') {
                     if (!ip || !cidr) {
                         showOutput('Please fill in IPv4 Address and Subnet CIDR Mask.');
                         return;
@@ -341,32 +341,20 @@
                         showOutput(`IP assignment failed: ${ipData.error}\n${ipData.output}`);
                         return;
                     }
-                } else {
-                    await renewDhcpLease();
-                }
 
-                // Apply DNS settings
-                if (dnsMode === 'manual' || dns1) {
-                    if (!dns1) {
-                        showOutput('Please enter at least Primary DNS (DNS1) for DNS configuration.');
-                        return;
+                    if (dns1) {
+                        const dnsEnc = await encryptPayload({
+                            plugin: 'lan',
+                            cmd_key: 'set_dns_sudo',
+                            args: { dns1, dns2 }
+                        });
+                        await fetch('/api/plugin/exec', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: dnsEnc
+                        });
                     }
-                    const encBody = await encryptPayload({
-                        plugin: 'lan',
-                        cmd_key: 'set_dns_sudo',
-                        args: { dns1, dns2 }
-                    });
-                    const dnsRes = await fetch('/api/plugin/exec', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: encBody
-                    });
-                    const dnsData = await dnsRes.json();
-                    if (dnsData.success) {
-                        showOutput(`Successfully updated settings on ${iface}: IP=${ip}/${cidr}, DNS1=${dns1}${dns2 ? ', DNS2=' + dns2 : ''}.`);
-                    } else {
-                        showOutput(`DNS update error: ${dnsData.error}\n${dnsData.output}`);
-                    }
+                    showOutput(`Successfully updated settings on ${iface}: IP=${ip}/${cidr}${dns1 ? ', DNS1=' + dns1 : ''}${dns2 ? ', DNS2=' + dns2 : ''}.`);
                 } else {
                     const encBody = await encryptPayload({
                         plugin: 'lan',
@@ -378,7 +366,8 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: encBody
                     });
-                    showOutput(`Successfully applied settings on ${iface}: IP Mode=${ipMode.toUpperCase()}, DNS Mode=DHCP (Automatic).`);
+                    await renewDhcpLease();
+                    showOutput(`Successfully applied DHCP settings on ${iface}. Active leased values loaded.`);
                 }
             } catch (err) {
                 showOutput('Execution error: ' + err.message);

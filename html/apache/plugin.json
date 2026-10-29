@@ -1,6 +1,6 @@
 {
   "id": "apache",
-  "name": "Apache Web Server",
+  "name": "Apache Server",
   "description": "Configure Apache HTTP server listening port, document root, and virtual hosts",
   "category": "Web Services",
   "default": false,

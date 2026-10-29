@@ -1,6 +1,6 @@
 {
   "id": "drive_mount",
-  "name": "Drives, ISO & VHD",
+  "name": "VHD & ISO",
   "description": "Mount local disk partitions, ISO images, and VHD disk files into filesystem",
   "category": "Storage",
   "default": true,

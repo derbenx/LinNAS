@@ -1,6 +1,6 @@
 {
   "id": "mysql",
-  "name": "MySQL / MariaDB Database",
+  "name": "MySQL Database",
   "description": "Configure MySQL / MariaDB database server, create users, and access SQL Web Client",
   "category": "Web Services",
   "default": false,

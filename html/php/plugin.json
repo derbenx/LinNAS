@@ -1,6 +1,6 @@
 {
   "id": "php",
-  "name": "PHP Scripting Engine",
+  "name": "PHP Engine",
   "description": "Install PHP runtime versions, FPM service, and php.ini directives",
   "category": "Web Services",
   "default": false,

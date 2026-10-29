@@ -1,12 +1,12 @@
 {
   "id": "lan",
-  "name": "LAN Network Config",
+  "name": "LAN Config",
   "description": "Configure Ethernet network interfaces with independent IP mode (DHCP/Manual) and DNS mode (DHCP/Manual)",
   "category": "Network",
   "default": true,
   "commands": {
     "get_hostname_cmd": "hostname",
-    "set_hostname_sudo": "(hostnamectl set-hostname \"{hostname}\" || hostname \"{hostname}\") && echo \"{hostname}\" > /etc/hostname && sed -i \"s/127.0.1.1.*/127.0.1.1\t{hostname}/g\" /etc/hosts",
+    "set_hostname_sudo": "OLD_HN=$(hostname); (hostnamectl set-hostname \"{hostname}\" || hostname \"{hostname}\") && echo \"{hostname}\" > /etc/hostname && sed -i \"s/\\b$OLD_HN\\b/{hostname}/g\" /etc/hosts",
     "list_interfaces_cmd": "ip -j link show",
     "get_ip_cmd": "ip -j addr show {iface}",
     "get_dns_cmd": "grep '^nameserver' /etc/resolv.conf | awk '{print $2}'",

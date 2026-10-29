@@ -1,6 +1,6 @@
 {
   "id": "veracrypt",
-  "name": "VeraCrypt / TrueCrypt Config (tcplay)",
+  "name": "VeraCrypt & TrueCrypt",
   "description": "Mount and dismount encrypted VeraCrypt and TrueCrypt volume containers using tcplay",
   "category": "Storage",
   "default": false,

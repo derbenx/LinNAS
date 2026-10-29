@@ -1,6 +1,6 @@
 {
   "id": "dns",
-  "name": "DNS & AdBlock Config",
+  "name": "DNS & AdBlock",
   "description": "Configure upstream DNS resolvers and network-wide ad blocking rules",
   "category": "Network",
   "default": true,

@@ -1,6 +1,6 @@
 {
   "id": "fastfetch",
-  "name": "Fastfetch System Info",
+  "name": "Fastfetch",
   "description": "Display Debian system summary, OS version, kernel, uptime, packages, and ASCII art logo",
   "category": "System",
   "default": false,
@@ -9,6 +9,6 @@
   "install_sudo": "apt-get update && apt-get install -y fastfetch",
   "remove_sudo": "apt-get purge -y fastfetch 2>/dev/null; true",
   "commands": {
-    "fastfetch_cmd": "export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/games; fastfetch --color true 2>/dev/null || neofetch 2>/dev/null"
+    "fastfetch_cmd": "export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/games; fastfetch --color true 2>/dev/null"
   }
 }

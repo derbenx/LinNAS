@@ -1,6 +1,6 @@
 {
   "id": "ufw",
-  "name": "UFW Firewall Config",
+  "name": "UFW Firewall",
   "description": "Configure Uncomplicated Firewall (UFW) rules, allow/deny network ports, and toggle quick presets",
   "category": "Network",
   "default": false,

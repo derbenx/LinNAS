@@ -1,6 +1,6 @@
 {
   "id": "ping",
-  "name": "Network Diagnostics (Ping/Traceroute)",
+  "name": "Network Diagnostics",
   "description": "Test network latency and trace route paths to remote hosts or IP addresses",
   "category": "Network",
   "default": true,

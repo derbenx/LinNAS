@@ -1,6 +1,6 @@
 {
   "id": "apt",
-  "name": "APT Package Installer",
+  "name": "Package Installer",
   "description": "Install or remove software packages and plugin modules on this server",
   "category": "System",
   "default": true

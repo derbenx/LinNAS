@@ -6,7 +6,7 @@
   "default": true,
   "commands": {
     "get_hostname_cmd": "hostname",
-    "set_hostname_sudo": "(hostnamectl set-hostname \"{hostname}\" || hostname \"{hostname}\") && echo \"{hostname}\" > /etc/hostname && sed -i \"s/127.0.1.1.*/127.0.1.1\t{hostname}/g\" /etc/hosts",
+    "set_hostname_sudo": "OLD_HN=$(hostname); (hostnamectl set-hostname \"{hostname}\" || hostname \"{hostname}\") && echo \"{hostname}\" > /etc/hostname && sed -i \"s/\\b$OLD_HN\\b/{hostname}/g\" /etc/hosts",
     "boot_service_status_cmd": "systemctl is-enabled linnas || test -f /etc/systemd/system/linnas.service",
     "enable_boot_service_sudo": "mkdir -p /usr/local/bin && CUR_DIR=\"$(pwd)\" && (go build -o /usr/local/bin/linnas \"$CUR_DIR/main.go\" 2>/dev/null || cp \"$CUR_DIR/linnas\" /usr/local/bin/linnas 2>/dev/null || cp /proc/self/exe /usr/local/bin/linnas) && chmod +x /usr/local/bin/linnas && printf '[Unit]\\nDescription=LinNAS Web Control Panel\\nAfter=network.target network-online.target local-fs.target\\nWants=network-online.target\\n\\n[Service]\\nType=simple\\nWorkingDirectory=%s\\nStandardOutput=append:%s/autostart_debug.log\\nStandardError=append:%s/autostart_debug.log\\nExecStart=/usr/local/bin/linnas -a\\nRestart=always\\nRestartSec=3\\nUser=root\\n\\n[Install]\\nWantedBy=multi-user.target\\n' \"$CUR_DIR\" \"$CUR_DIR\" \"$CUR_DIR\" > /etc/systemd/system/linnas.service && chmod 644 /etc/systemd/system/linnas.service && systemctl daemon-reload && systemctl unmask linnas && systemctl enable --now linnas",
     "disable_boot_service_sudo": "systemctl disable --now linnas || true; rm -f /etc/systemd/system/linnas.service /usr/local/bin/linnas; systemctl daemon-reload",

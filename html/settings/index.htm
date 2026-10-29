@@ -36,7 +36,7 @@
     </style>
 </head>
 <body>
-    <h2>Server Central Settings</h2>
+    <h2>Server Settings</h2>
     <p class="subtitle">Manage server hostname, web server HTTP port, automatic boot startup, admin account password, and power operations.</p>
 
     <!-- Hostname & Port Settings -->
@@ -97,15 +97,23 @@
         </div>
     </div>
 
+    <!-- Application Management & Controls -->
+    <div class="section">
+        <div class="section-title">LinNAS Application Management</div>
+        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Restart or stop the LinNAS application process, or restore default embedded plugin assets from binary disk image.</p>
+        <div style="display: flex; gap: 0.8rem; flex-wrap: wrap;">
+            <button class="btn" style="background:#1f6beb;" onclick="restartAppNow()">🔄 Restart App</button>
+            <button class="btn btn-secondary" style="background:#21262d; border: 1px solid #30363d; color:#58a6ff;" onclick="restoreDefaultPlugins()">🔄 Restore Default Plugins from Binary</button>
+            <button class="btn btn-danger" onclick="quitAppNow()">🛑 Quit / Close App</button>
+        </div>
+    </div>
+
     <!-- Power Control & Schedule -->
     <div class="section">
         <div class="section-title">Power Control & Scheduled Power Tasks</div>
         <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Execute instant or scheduled power operations on this Debian server.</p>
 
         <div style="display: flex; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 1rem;">
-            <button class="btn" style="background:#1f6beb;" onclick="restartAppNow()">🔄 Restart App</button>
-            <button class="btn btn-secondary" style="background:#21262d; border: 1px solid #30363d; color:#58a6ff;" onclick="restoreDefaultPlugins()">🔄 Restore Plugins from Binary</button>
-            <button class="btn btn-danger" onclick="quitAppNow()">🛑 Quit App</button>
             <button class="btn btn-danger" onclick="poweroffNow()">Instant Power Off</button>
             <button class="btn btn-secondary" style="background:#d29922; color:#000;" onclick="rebootNow()">Instant Reboot</button>
             <button class="btn btn-secondary" onclick="cancelScheduledPower()">Cancel Scheduled Power Tasks</button>

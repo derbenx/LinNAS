@@ -1,6 +1,6 @@
 {
   "id": "smb",
-  "name": "SMB Shares & User Config",
+  "name": "SMB Shares",
   "description": "Configure Samba shares, network permissions, and user accounts",
   "category": "Storage",
   "default": false,
