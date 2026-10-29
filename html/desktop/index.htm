@@ -145,6 +145,9 @@
                 <span>LinNAS Virtual Desktop</span>
             </div>
             <div class="nav-controls">
+                <span id="adminWarningBadge" style="background: #381e1d; border: 1px solid #f85149; color: #ff7b72; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: bold; display: none; align-items: center; gap: 4px;">
+                    ⚠️ Admin / Root Privilege Mode
+                </span>
                 <button class="btn btn-secondary" onclick="toggleFullscreenDesktop()" title="Toggle Fullscreen Mode (F11)">
                     <span>📺</span> <span>Fullscreen (F11)</span>
                 </button>
@@ -273,6 +276,22 @@
             </div>
             <div class="notice-body" id="noticeBody">Notice details here.</div>
             <button class="btn" onclick="closeNoticeModal()">OK</button>
+        </div>
+    </div>
+
+    <!-- Custom Delete Modal -->
+    <div id="deleteModal" class="notice-modal" onclick="closeDeleteModal()">
+        <div class="notice-card" onclick="event.stopPropagation()" style="max-width: 420px; border-color: #f85149;">
+            <div class="notice-title" style="color: #f85149;">
+                <span>🗑️</span> <span>Confirm Deletion</span>
+            </div>
+            <div class="notice-body" id="deleteModalBody" style="color: #c9d1d9; font-size: 0.88rem; margin-bottom: 1rem;">
+                Are you sure you want to permanently delete the selected item(s)?
+            </div>
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="executeFmDelete()">Delete</button>
+            </div>
         </div>
     </div>
 
@@ -531,6 +550,68 @@
                 win.classList.remove('is-minimized');
                 windowsMap[winId].isMinimized = false;
             }
+            bringToFront(winId);
+        }
+
+        function snapWindowPosition(winId, key) {
+            const win = document.getElementById(winId);
+            if (!win) return;
+            const wData = windowsMap[winId];
+
+            if (wData.isMaximized) {
+                win.classList.remove('is-maximized');
+                wData.isMaximized = false;
+            }
+
+            const desktopArea = document.getElementById('desktopArea');
+            const dWidth = desktopArea ? desktopArea.clientWidth : window.innerWidth;
+            const dHeight = desktopArea ? desktopArea.clientHeight : (window.innerHeight - 82);
+
+            let left = 0, top = 0, width = dWidth / 2, height = dHeight / 2;
+
+            if (key === '1') {
+                // Top-Left Quarter
+                left = 0;
+                top = 0;
+                width = dWidth / 2;
+                height = dHeight / 2;
+            } else if (key === '2') {
+                // Top-Right Quarter
+                left = dWidth / 2;
+                top = 0;
+                width = dWidth / 2;
+                height = dHeight / 2;
+            } else if (key === '3') {
+                // Bottom-Left Quarter
+                left = 0;
+                top = dHeight / 2;
+                width = dWidth / 2;
+                height = dHeight / 2;
+            } else if (key === '4') {
+                // Bottom-Right Quarter
+                left = dWidth / 2;
+                top = dHeight / 2;
+                width = dWidth / 2;
+                height = dHeight / 2;
+            } else if (key === 'ArrowLeft') {
+                // Left Half
+                left = 0;
+                top = 0;
+                width = dWidth / 2;
+                height = dHeight;
+            } else if (key === 'ArrowRight') {
+                // Right Half
+                left = dWidth / 2;
+                top = 0;
+                width = dWidth / 2;
+                height = dHeight;
+            }
+
+            win.style.left = `${left}px`;
+            win.style.top = `${top}px`;
+            win.style.width = `${width}px`;
+            win.style.height = `${height}px`;
+
             bringToFront(winId);
         }
 
@@ -907,6 +988,52 @@
             }
         }
 
+        /* Show App-Sized Toast Notification inside Window */
+        function showAppToast(winId, message) {
+            const winEl = document.getElementById(winId);
+            if (!winEl) return;
+
+            let toast = winEl.querySelector('.app-window-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.className = 'app-window-toast';
+                toast.style.cssText = `
+                    position: absolute;
+                    bottom: 12px;
+                    left: 50%;
+                    transform: translateX(-50%) translateY(20px);
+                    background: rgba(238, 75, 43, 0.92);
+                    color: #fff;
+                    padding: 0.4rem 0.8rem;
+                    border-radius: 6px;
+                    font-size: 0.78rem;
+                    font-weight: 500;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                    z-index: 100;
+                    opacity: 0;
+                    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+                    pointer-events: none;
+                    white-space: nowrap;
+                    max-width: 90%;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                `;
+                winEl.appendChild(toast);
+            }
+
+            toast.innerText = message;
+            requestAnimationFrame(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateX(-50%) translateY(0)';
+            });
+
+            if (toast._timer) clearTimeout(toast._timer);
+            toast._timer = setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(-50%) translateY(20px)';
+            }, 2600);
+        }
+
         /* Drop Receiving Logic on App Windows */
         function setupAppWindowDropTarget(winEl, winId, appId) {
             winEl.addEventListener('dragover', (e) => {
@@ -932,7 +1059,7 @@
                         const firstFile = paths.find(p => !p.endsWith('/'));
 
                         if (!firstFile) {
-                            showNotice('Folder Dropped', 'Please drop a valid media or data file, not a folder.');
+                            showAppToast(winId, '⚠️ Please drop a valid media file, not a folder.');
                             return;
                         }
 
@@ -940,7 +1067,7 @@
                         if (checkAppFileCapability(appId, fileName)) {
                             loadMediaIntoAppWindow(winId, firstFile);
                         } else {
-                            showNotice('Incompatible File Format', `'${fileName}' is not supported by ${APP_DEFS[appId].title}.`);
+                            showAppToast(winId, `⚠️ '${fileName}' is not supported by ${APP_DEFS[appId].title}`);
                         }
                     }
                 } catch (err) {
@@ -1056,12 +1183,9 @@
                                 <option value="Qix">Qix (Neon Abstract Lines)</option>
                                 <option value="DigitalRain">Digital Rain (Cyber Matrix)</option>
                                 <option value="Lightning">Lightning Storm</option>
-                                <option value="Aurora">Vector Aurora</option>
-                                <option value="Plasma">Cosmic Plasma</option>
                                 <option value="Gravity">N-Body Chaos Gravity</option>
                                 <option value="Fireworks">Atmospheric Fireworks</option>
                                 <option value="Flocking">Boids Flocking Engine</option>
-                                <option value="Ripples">Water Ripple Interference</option>
                             </select>
                         </div>
                         <div style="display: flex; flex-direction: column; gap: 0.4rem;">
@@ -1386,6 +1510,7 @@
             wData.state.items.forEach((item, idx) => {
                 const tr = document.createElement('tr');
                 tr.className = 'fm-row';
+                tr.setAttribute('data-path', item.path);
                 if (wData.state.selectedPaths.has(item.path)) tr.classList.add('selected');
                 tr.draggable = true;
 
@@ -1718,15 +1843,40 @@
             hideContextMenus();
         }
 
-        async function fmCtxDeleteSelected() {
-            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
-            const wData = windowsMap[fmCtxTargetWinId];
-            if (wData.state.selectedPaths.size === 0) return;
+        let pendingDeleteWinId = null;
 
-            if (!confirm(`Are you sure you want to delete ${wData.state.selectedPaths.size} selected item(s)?`)) return;
+        function promptFmDelete(winId) {
+            const targetWinId = winId || fmCtxTargetWinId;
+            if (!targetWinId || !windowsMap[targetWinId]) return;
+            const wData = windowsMap[targetWinId];
+            if (!wData.state.selectedPaths || wData.state.selectedPaths.size === 0) return;
+
+            pendingDeleteWinId = targetWinId;
+            const count = wData.state.selectedPaths.size;
+            document.getElementById('deleteModalBody').innerText = `Are you sure you want to permanently delete ${count} selected item(s)?`;
+            document.getElementById('deleteModal').style.display = 'flex';
+            hideContextMenus();
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').style.display = 'none';
+            pendingDeleteWinId = null;
+        }
+
+        async function executeFmDelete() {
+            if (!pendingDeleteWinId || !windowsMap[pendingDeleteWinId]) {
+                closeDeleteModal();
+                return;
+            }
+            const targetWinId = pendingDeleteWinId;
+            const wData = windowsMap[targetWinId];
+            const paths = Array.from(wData.state.selectedPaths);
+            closeDeleteModal();
+
+            if (paths.length === 0) return;
 
             try {
-                const encBody = await encryptPayload({ paths: Array.from(wData.state.selectedPaths) });
+                const encBody = await encryptPayload({ paths });
                 const res = await fetch('/api/fs/delete', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1734,14 +1884,17 @@
                 });
                 const data = await res.json();
                 if (data.success) {
-                    fmRefresh(fmCtxTargetWinId);
+                    fmRefresh(targetWinId);
                 } else {
                     showNotice('Delete Error', data.error || 'Failed to delete items.');
                 }
             } catch (err) {
                 showNotice('Delete Error', err.message);
             }
-            hideContextMenus();
+        }
+
+        function fmCtxDeleteSelected() {
+            promptFmDelete(fmCtxTargetWinId);
         }
 
         /* Drag & Drop File Move Between File Managers */
@@ -1832,7 +1985,7 @@
             return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
-        /* Keyboard Shortcuts Engine */
+        /* Keyboard Shortcuts Engine & Navigation */
         document.addEventListener('keydown', (e) => {
             if (e.key === 'F11') {
                 e.preventDefault();
@@ -1840,28 +1993,97 @@
                 return;
             }
 
+            const isInputFocus = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+
+            // Tab key cycling between active app windows
+            if (e.key === 'Tab' && !isInputFocus) {
+                const openWinIds = Object.keys(windowsMap);
+                if (openWinIds.length > 1) {
+                    e.preventDefault();
+                    const activeWinEl = document.querySelector('.desktop-window.active-window');
+                    let currIdx = openWinIds.findIndex(id => id === activeWinEl?.id);
+                    let nextIdx = (currIdx + (e.shiftKey ? -1 : 1) + openWinIds.length) % openWinIds.length;
+                    bringToFront(openWinIds[nextIdx]);
+                }
+                return;
+            }
+
             const activeWinEl = document.querySelector('.desktop-window.active-window');
             if (!activeWinEl) return;
             const activeWinId = activeWinEl.id;
             const wData = windowsMap[activeWinId];
+
+            // Window Snap & Tiling Shortcuts: Ctrl+1-4 (corners) and Ctrl+Left/Right (halves)
+            if ((e.ctrlKey || e.metaKey) && ['1', '2', '3', '4', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+                snapWindowPosition(activeWinId, e.key);
+                return;
+            }
+
             if (!wData || wData.appId !== 'filemanager') return;
 
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+            // Delete key shortcut for File Manager
+            if (e.key === 'Delete' && !isInputFocus) {
+                if (wData.state.selectedPaths && wData.state.selectedPaths.size > 0) {
+                    e.preventDefault();
+                    promptFmDelete(activeWinId);
+                    return;
+                }
+            }
+
+            // Arrow, Page, Home, End keys for File Manager list navigation
+            if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key) && !isInputFocus) {
+                const items = wData.state.items || [];
+                if (items.length === 0) return;
+                e.preventDefault();
+
+                let selPaths = Array.from(wData.state.selectedPaths);
+                let lastPath = selPaths[selPaths.length - 1];
+                let currentIdx = items.findIndex(i => i.path === lastPath);
+                let targetIdx = 0;
+
+                if (e.key === 'ArrowUp') {
+                    targetIdx = currentIdx > 0 ? currentIdx - 1 : 0;
+                } else if (e.key === 'ArrowDown') {
+                    targetIdx = currentIdx < items.length - 1 ? currentIdx + 1 : items.length - 1;
+                } else if (e.key === 'PageUp') {
+                    targetIdx = Math.max(0, currentIdx - 8);
+                } else if (e.key === 'PageDown') {
+                    targetIdx = Math.min(items.length - 1, currentIdx + 8);
+                } else if (e.key === 'Home') {
+                    targetIdx = 0;
+                } else if (e.key === 'End') {
+                    targetIdx = items.length - 1;
+                }
+
+                if (!e.shiftKey) {
+                    wData.state.selectedPaths.clear();
+                }
+                wData.state.selectedPaths.add(items[targetIdx].path);
+                renderFmSelectionState(activeWinId);
+
+                // Scroll item into view
+                const rowEl = document.querySelector(`#${activeWinId}_body tr[data-path="${CSS.escape(items[targetIdx].path)}"]`);
+                if (rowEl) rowEl.scrollIntoView({ block: 'nearest' });
+                return;
+            }
+
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && !isInputFocus) {
                 if (wData.state.selectedPaths.size > 0) {
                     desktopClipboard.action = 'copy';
                     desktopClipboard.sources = Array.from(wData.state.selectedPaths);
                 }
-            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x') {
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'x' && !isInputFocus) {
                 if (wData.state.selectedPaths.size > 0) {
                     desktopClipboard.action = 'cut';
                     desktopClipboard.sources = Array.from(wData.state.selectedPaths);
                 }
-            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v' && !isInputFocus) {
                 if (desktopClipboard.action && desktopClipboard.sources.length > 0) {
                     fmCtxTargetWinId = activeWinId;
                     fmCtxPasteClipboard();
                 }
-            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+            } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && !isInputFocus) {
                 e.preventDefault();
                 wData.state.selectedPaths.clear();
                 wData.state.items.forEach(i => wData.state.selectedPaths.add(i.path));
@@ -2455,347 +2677,7 @@
             }
         }
     },
-     // Module 7: Vector Aurora (Dynamic Travel & Rarity Gradients)
     // Cite: Color probabilities and pseudo-3D travel logic custom-written to user specs
-    {
-        name: "Aurora",
-        interval: 1000 / 30,
-        init() {
-            this.curtains = [];
-            this.globalIntensity = 0.2;
-            this.targetIntensity = Math.random();
-            this.intensityTimer = 0;
-
-            // Flag to ensure we only swap palettes during the dark phase
-            this.waitingForPalette = false;
-            this.currentPalette = this.generatePalette();
-
-            this.spawnCurtain();
-        },
-        generatePalette() {
-            const roll = Math.random();
-
-            // Format: [position_in_gradient, R, G, B, relative_alpha_strength]
-
-            // 1. Common (40%): Pure Green
-            if (roll < 0.40) return [
-                { pos: 0.1, r: 20,  g: 255, b: 110, a: 1.0 },
-                { pos: 0.7, r: 10,  g: 150, b: 60,  a: 0.6 }
-            ];
-            // 2. Common (30%): Green base, Purple top
-            if (roll < 0.70) return [
-                { pos: 0.08, r: 20,  g: 255, b: 110, a: 1.0 },
-                { pos: 0.45, r: 40,  g: 180, b: 150, a: 0.8 },
-                { pos: 0.85, r: 145, g: 30,  b: 240, a: 0.5 }
-            ];
-            // 3. Uncommon (15%): Green base, Purple mid, Red top
-            if (roll < 0.85) return [
-                { pos: 0.05, r: 20,  g: 255, b: 110, a: 1.0 },
-                { pos: 0.35, r: 145, g: 30,  b: 240, a: 0.8 },
-                { pos: 0.85, r: 245, g: 40,  b: 80,  a: 0.5 }
-            ];
-            // 4. Rare (8%): Mostly Red (Deep pink base, hot red top)
-            if (roll < 0.93) return [
-                { pos: 0.1, r: 255, g: 40,  b: 100, a: 1.0 },
-                { pos: 0.8, r: 200, g: 10,  b: 20,  a: 0.6 }
-            ];
-            // 5. Rare (5%): White base, Green/Purple high
-            if (roll < 0.98) return [
-                { pos: 0.05, r: 255, g: 255, b: 255, a: 1.0 }, // White
-                { pos: 0.25, r: 50,  g: 255, b: 150, a: 0.9 },
-                { pos: 0.80, r: 150, g: 50,  b: 255, a: 0.5 }
-            ];
-            // 6. Ultra-Rare (2%): Blue base, Green mid, Red/Purple high
-            return [
-                { pos: 0.02, r: 30,  g: 100, b: 255, a: 1.0 }, // Blue lowest
-                { pos: 0.25, r: 20,  g: 255, b: 110, a: 0.9 },
-                { pos: 0.60, r: 145, g: 30,  b: 240, a: 0.7 },
-                { pos: 0.90, r: 245, g: 40,  b: 60,  a: 0.4 }  // Red highest
-            ];
-        },
-        spawnCurtain() {
-            this.curtains.push({
-                // Base layout
-                yBase: my * (Math.random() * 0.3 + 0.4),
-                baseHeight: my * (Math.random() * 0.4 + 0.4),
-                frequency: Math.random() * 0.002 + 0.001,
-                phase: Math.random() * 100,
-                phaseSpeed: (Math.random() * 0.015 + 0.008) * (Math.random() > 0.5 ? 1 : -1),
-
-                // Pseudo-3D Spatial Coordinates
-                z: Math.random() * 1.5 + 0.5, // 0.5 is close, 2.0 is far away
-                xOffset: 0,
-                yOffset: 0,
-
-                // Travel Vectors (dx, dy, dz)
-                vx: (Math.random() * 2 - 1),        // Drift left/right
-                vy: (Math.random() * 1 - 0.5),      // Drift up/down the sky
-                vz: (Math.random() * 0.004 - 0.002),// Move towards/away from viewer
-
-                tilt: (Math.random() * 1.0 - 0.5),
-                targetTilt: (Math.random() * 1.0 - 0.5),
-
-                alpha: 0,
-                targetAlpha: Math.random() * 0.6 + 0.4,
-                age: 0,
-                lifeSpan: Math.random() * 600 + 400
-            });
-        },
-        frame() {
-            // 1. STORM CYCLES & PALETTE SWAPPING
-            this.intensityTimer++;
-            if (this.intensityTimer > 300) {
-                // 20% chance to black out the sky
-                this.targetIntensity = Math.random() < 0.40 ? 0 : Math.random();
-                this.intensityTimer = 0;
-            }
-            this.globalIntensity += (this.targetIntensity - this.globalIntensity) * 0.005;
-
-            // When the sky goes completely dark, prep a new palette for the next wave
-            if (this.globalIntensity < 0.02 && this.targetIntensity === 0) {
-                this.waitingForPalette = true;
-            }
-            // Once the storm flares back up, lock in the new palette
-            if (this.waitingForPalette && this.targetIntensity > 0) {
-                this.currentPalette = this.generatePalette();
-                this.waitingForPalette = false;
-            }
-
-            const maxAllowedCurtains = Math.floor(this.globalIntensity * 5) + 1;
-            if (this.globalIntensity > 0.05 && this.curtains.length < maxAllowedCurtains && Math.random() < 0.015) {
-                this.spawnCurtain();
-            }
-
-            // 2. BACKGROUND
-            ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
-            ctx.fillRect(0, 0, mx, my);
-
-            // 3. RENDER TRAVELLING CURTAINS
-            ctx.globalCompositeOperation = "screen";
-
-            for (let c = this.curtains.length - 1; c >= 0; c--) {
-                let curtain = this.curtains[c];
-                curtain.age++;
-                curtain.phase += curtain.phaseSpeed;
-
-                // Apply spatial travel vectors
-                curtain.xOffset += curtain.vx;
-                curtain.yOffset += curtain.vy;
-                curtain.z += curtain.vz;
-
-                // Prevent Z from clipping behind the camera or floating infinitely away
-                if (curtain.z < 0.2) curtain.vz *= -1;
-                if (curtain.z > 3.0) curtain.vz *= -1;
-
-                curtain.tilt += (curtain.targetTilt - curtain.tilt) * 0.004;
-                if (Math.random() < 0.005) curtain.targetTilt = (Math.random() * 1.4 - 0.7);
-
-                // Fades
-                if (curtain.age > curtain.lifeSpan || this.globalIntensity < 0.02) {
-                    curtain.targetAlpha = 0;
-                } else if (curtain.alpha < curtain.targetAlpha) {
-                    curtain.alpha += 0.005;
-                }
-
-                if (curtain.targetAlpha === 0) {
-                    curtain.alpha -= 0.01;
-                    if (curtain.alpha <= 0) {
-                        this.curtains.splice(c, 1);
-                        continue;
-                    }
-                }
-
-                if (curtain.alpha <= 0) continue;
-
-                // 3D Perspective Scaling
-                const scale = 1 / curtain.z;
-                const scaledHeight = curtain.baseHeight * scale;
-                const sliceWidth = 3;
-
-                // Pad rendering boundary to account for scaling and horizontal drift
-                for (let x = -200; x < mx + 200; x += sliceWidth) {
-
-                    // The wave calculation now respects the Z-scale (wider folds when closer)
-                    // and the X/Y travel drift.
-                    let waveX = (x - curtain.xOffset) / scale;
-
-                    let wave = Math.sin(waveX * curtain.frequency + curtain.phase) +
-                               Math.sin(waveX * curtain.frequency * 1.9 - curtain.phase * 1.2) * 0.4 +
-                               Math.sin(waveX * curtain.frequency * 3.2 + curtain.phase * 0.7) * 0.15;
-
-                    // Scale the wave amplitude vertically
-                    let yBottom = curtain.yBase + curtain.yOffset + (wave * 45 * scale);
-
-                    // Recalculate optical edge-on depth using the scaled wave
-                    let edgeOn = Math.abs(Math.cos(waveX * curtain.frequency + curtain.phase));
-                    let rayJitter = Math.random() * 0.25 + 0.75;
-
-                    let finalAlpha = edgeOn * rayJitter * curtain.alpha * this.globalIntensity;
-                    if (finalAlpha <= 0.01) continue;
-
-                    let xTop = x + (curtain.tilt * scaledHeight);
-                    let yTop = yBottom - scaledHeight;
-
-                    // Build dynamic gradient based on the currently active cycle palette
-                    let grad = ctx.createLinearGradient(x, yBottom, xTop, yTop);
-                    grad.addColorStop(0, `rgba(0, 0, 0, 0)`);
-
-                    this.currentPalette.forEach(color => {
-                        grad.addColorStop(color.pos, `rgba(${color.r}, ${color.g}, ${color.b}, ${finalAlpha * color.a})`);
-                    });
-
-                    grad.addColorStop(1, `rgba(0, 0, 0, 0)`);
-                    ctx.fillStyle = grad;
-
-                    ctx.beginPath();
-                    ctx.moveTo(x, yBottom);
-                    ctx.lineTo(x + sliceWidth, yBottom);
-                    ctx.lineTo(xTop + sliceWidth, yTop);
-                    ctx.lineTo(xTop, yTop);
-                    ctx.closePath();
-                    ctx.fill();
-                }
-            }
-            ctx.globalCompositeOperation = "source-over";
-        }
-    },
-    // Module 8: Cosmic Plasma with Shockwave Supernovas
-    // Comment: Generates rolling gas clouds via compounding sine fields alongside interactive structural disruptions
-    {
-        name: "Plasma",
-        interval: 1000 / 30, // 30 FPS
-        init() {
-            this.time = 0;
-            this.supernovas = [];
-
-            // Generate a vibrant, interstellar gas palette (Deep Purple, Cosmic Pink, Cyan, Stellar Gold)
-            this.gases = [
-                { r: 15,  g: 5,   b: 30  },  // Background nebula deep space space
-                { r: 140, g: 20,  b: 180 },  // Ionized Hydrogen (Purple/Pink)
-                { r: 0,   g: 210, b: 255 },  // Oxygen III glow (Cyan)
-                { r: 255, g: 160, b: 0   }   // High temperature stardust (Gold)
-            ];
-
-            // Define resolution step scaling for fast field generation (4x4 pixel matrices)
-            this.res = 4;
-        },
-        spawnSupernova() {
-            this.supernovas.push({
-                x: Math.random() * mx,
-                y: Math.random() * my,
-                radius: 0,
-                maxRadius: Math.max(mx, my) * 0.4,
-                speed: Math.random() * 8 + 12,
-                force: Math.random() * 30 + 20,
-                life: 1.0,
-                decay: Math.random() * 0.03 + 0.02
-            });
-        },
-        frame() {
-            this.time += 0.03;
-
-            // 1. MANAGE SUPERNOVA SHOCKWAVES
-            if (Math.random() < 0.015 && this.supernovas.length < 3) {
-                this.spawnSupernova();
-            }
-
-            for (let s = this.supernovas.length - 1; s >= 0; s--) {
-                let sn = this.supernovas[s];
-                sn.radius += sn.speed;
-                sn.life -= sn.decay;
-                if (sn.life <= 0) {
-                    this.supernovas.splice(s, 1);
-                }
-            }
-
-            // 2. COMPUTE AND RENDER THE PLASMA MATRIX
-            // Increment steps of this.res to keep background performance incredibly smooth
-            for (let x = 0; x < mx; x += this.res) {
-                for (let y = 0; y < my; y += this.res) {
-
-                    let evalX = x;
-                    let evalY = y;
-
-                    // Apply coordinate displacements if an active supernova wave hits this coordinate
-                    for (let s = 0; s < this.supernovas.length; s++) {
-                        let sn = this.supernovas[s];
-                        let dx = x - sn.x;
-                        let dy = y - sn.y;
-                        let dist = Math.sqrt(dx * dx + dy * dy);
-
-                        // Check if the coordinate is near the ripple front line
-                        let diff = Math.abs(dist - sn.radius);
-                        if (diff < 40 && dist > 0) {
-                            let factor = (1 - (diff / 40)) * sn.life;
-                            let push = (sn.force / dist) * factor * 15;
-                            evalX += dx * push;
-                            evalY += dy * push;
-                        }
-                    }
-
-                    // Map spatial locations to mathematical sine wave combinations
-                    let nx = evalX / mx - 0.5;
-                    let ny = evalY / my - 0.5;
-
-                    // Multi-octave wave combination mimicking real fluid turbulence
-                    let v1 = Math.sin(nx * 4.0 + this.time);
-                    let v2 = Math.cos(ny * 3.5 - this.time * 1.3);
-                    let v3 = Math.sin((nx + ny) * 2.8 + this.time * 0.8);
-                    let cx = nx + 0.5 * Math.sin(this.time / 3.0);
-                    let cy = ny + 0.5 * Math.cos(this.time / 2.0);
-                    let v4 = Math.sin(Math.sqrt(cx * cx + cy * cy) * 6.0 - this.time);
-
-                    // Normalize value array structure between 0 and 1
-                    let total = (v1 + v2 + v3 + v4) / 4.0;
-                    let value = (total + 1.0) / 2.0;
-
-                    // Clamp safety boundaries
-                    value = Math.max(0, Math.min(1, value));
-
-                    // 3. PALETTE WEIGHTING LOGIC
-                    let r = 0, g = 0, b = 0;
-                    if (value < 0.33) {
-                        // Blend deep space into ionized pinks
-                        let p = value / 0.33;
-                        r = this.gases[0].r + p * (this.gases[1].r - this.gases[0].r);
-                        g = this.gases[0].g + p * (this.gases[1].g - this.gases[0].g);
-                        b = this.gases[0].b + p * (this.gases[1].b - this.gases[0].b);
-                    } else if (value < 0.66) {
-                        // Blend pinks into structural cyans
-                        let p = (value - 0.33) / 0.33;
-                        r = this.gases[1].r + p * (this.gases[2].r - this.gases[1].r);
-                        g = this.gases[1].g + p * (this.gases[2].g - this.gases[1].g);
-                        b = this.gases[1].b + p * (this.gases[2].b - this.gases[1].b);
-                    } else {
-                        // Blend cyans into ultra-dense stellar golds
-                        let p = (value - 0.66) / 0.34;
-                        r = this.gases[2].r + p * (this.gases[3].r - this.gases[2].r);
-                        g = this.gases[2].g + p * (this.gases[3].g - this.gases[2].g);
-                        b = this.gases[2].b + p * (this.gases[3].b - this.gases[2].b);
-                    }
-
-                    // Add flash brightness adjustments if inside a core supernova explosion blast zone
-                    for (let s = 0; s < this.supernovas.length; s++) {
-                        let sn = this.supernovas[s];
-                        let dx = x - sn.x;
-                        let dy = y - sn.y;
-                        let dist = Math.sqrt(dx * dx + dy * dy);
-                        if (dist < sn.radius && sn.radius < sn.maxRadius) {
-                            let flash = (1 - (dist / sn.maxRadius)) * sn.life * 45;
-                            r += flash * 1.5;
-                            g += flash * 1.2;
-                            b += flash * 0.8;
-                        }
-                    }
-
-                    ctx.fillStyle = `rgb(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)})`;
-                    ctx.fillRect(x, y, this.res, this.res);
-                }
-            }
-        }
-    },
-// Module 8: N-Body Chaos Engine with Fragmentation (Fixed Loop & Mass Volume)
-    // Comment: Orchestrates mutual gravitational orbits, fusion mechanics, and critical mass explosion thresholds safely
     {
         name: "Gravity",
         interval: 1000 / 30, // 30 FPS
@@ -3353,132 +3235,7 @@
             }
         }
     },
-    // Module 11: Water Ripple Interference Engine
-    // Comment: Simulates cascading drop propagation and compounding wave packets for fluid cross-interference
-    {
-        name: "Ripples",
-        interval: 1000 / 30, // 30 FPS
-        init() {
-            this.drops = [];
-            this.spawnTimer = 0;
-            this.spawnInterval = 35; // Frame frequency for steady rain drips
-            this.res = 4;            // Performance matrix rendering grid matching the Plasma module
-
-            this.palette = [
-                { r: 0,   g: 0,  b: 0  },
-                { r: 4,   g: 5,  b: 10  },
-                { r: 0,   g: 75, b: 120 },
-                { r: 135, g: 150, b: 155 }
-            ];
-        },
-        spawnDrip() {
-            this.drops.push({
-                x: Math.random() * mx,
-                y: Math.random() * my,
-                age: 0,
-                maxAge: Math.random() * 70 + 60,
-                speed: 5.2,          // Ripple propagation expansion speed
-                wavelength: 0.14,     // Density of the concentric rings
-                amplitude: Math.random() * 20 + 15
-            });
-        },
-        frame() {
-            // 1. WEATHER CYCLE ENGINE
-            this.spawnTimer++;
-            if (this.spawnTimer >= this.spawnInterval) {
-                this.spawnTimer = 0;
-                this.spawnDrip();
-            }
-
-            // Intermittent ambient rogue drips
-            if (Math.random() < 0.03 && this.drops.length < 6) {
-                this.spawnDrip();
-            }
-
-            // Progress lifetimes and purge expired drops
-            for (let i = this.drops.length - 1; i >= 0; i--) {
-                this.drops[i].age++;
-                if (this.drops[i].age >= this.drops[i].maxAge) {
-                    this.drops.splice(i, 1);
-                }
-            }
-
-            // Optimization shortcut: If the water settles, render static deep blue and skip heavy matrix math
-            if (this.drops.length === 0) {
-                ctx.fillStyle = `rgb(${this.palette[0].r}, ${this.palette[0].g}, ${this.palette[0].b})`;
-                ctx.fillRect(0, 0, mx, my);
-                return;
-            }
-
-            // 2. COMPUTE INTERFERENCE SURFACE MATRIX
-            for (let x = 0; x < mx; x += this.res) {
-                for (let y = 0; y < my; y += this.res) {
-                    let totalHeight = 0;
-
-                    // Aggregate the concurrent mathematical force fields of all drops
-                    for (let i = 0; i < this.drops.length; i++) {
-                        let drop = this.drops[i];
-                        let dx = x - drop.x;
-                        let dy = y - drop.y;
-                        let dist = Math.sqrt(dx * dx + dy * dy);
-
-                        let waveFront = drop.age * drop.speed;
-
-                        // Check if the wave packet radius has rolled over this point
-                        if (dist < waveFront + 60) {
-                            let distFromFront = Math.abs(dist - waveFront);
-
-                            // Ring boundaries constraints (Envelope falloff width)
-                            if (distFromFront < 80) {
-                                let envelope = Math.cos((distFromFront / 80) * Math.PI / 2);
-                                let lifeDecay = 1.0 - (drop.age / drop.maxAge);
-                                let distanceFade = Math.max(0, 1.0 - (dist / (Math.max(mx, my) * 0.75)));
-
-                                // Direct cumulative superpositioning (creates genuine interference patterns)
-                                totalHeight += Math.sin((dist - waveFront) * drop.wavelength) * drop.amplitude * envelope * lifeDecay * distanceFade;
-                            }
-                        }
-                    }
-
-                    // Convert raw offset waves into a normalized clamp range [0.0 - 1.0] centered at equilibrium (0.5)
-                    let h = (totalHeight / 50) + 0.5;
-                    h = Math.max(0, Math.min(1, h));
-
-                    // 3. WATER SHADING & REFLECTION COLOR RENDERING
-                    let r = 0, g = 0, b = 0;
-                    if (h === 0.5) {
-                        // Flat equilibrium state: Remain pure black void
-                        r = this.palette[0].r;
-                        g = this.palette[0].g;
-                        b = this.palette[0].b;
-                    } else if (h < 0.5) {
-                        // Wave Troughs (Shadows): Blend from Black up to a very dark blue/cyan base
-                        let p = h / 0.5; // Scale [0 to 0.5] into [0 to 1]
-                        r = this.palette[0].r + p * (this.palette[1].r - this.palette[0].r);
-                        g = this.palette[0].g + p * (this.palette[1].g - this.palette[0].g);
-                        b = this.palette[0].b + p * (this.palette[1].b - this.palette[0].b);
-                    } else if (h < 0.82) {
-                        // Wave Slopes: Blend from dark base up to brilliant Electric Cyan
-                        let p = (h - 0.5) / 0.32; // Scale [0.5 to 0.82] into [0 to 1]
-                        r = this.palette[1].r + p * (this.palette[2].r - this.palette[1].r);
-                        g = this.palette[1].g + p * (this.palette[2].g - this.palette[1].g);
-                        b = this.palette[1].b + p * (this.palette[2].b - this.palette[1].b);
-                    } else {
-                        // Specular Crest Peaks: Blend from Cyan into brilliant white highlights
-                        let p = (h - 0.82) / 0.18; // Scale [0.82 to 1.0] into [0 to 1]
-                        r = this.palette[2].r + p * (this.palette[3].r - this.palette[2].r);
-                        g = this.palette[2].g + p * (this.palette[3].g - this.palette[2].g);
-                        b = this.palette[2].b + p * (this.palette[3].b - this.palette[2].b);
-                    }
-
-                    ctx.fillStyle = `rgb(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)})`;
-                    ctx.fillRect(x, y, this.res, this.res);
-                }
-            }
-        }
-    }
-
-];
+    ];
 
 // Select and execute a random module
 ;
@@ -3507,8 +3264,20 @@
             if (overlay) overlay.style.display = 'none';
         }
 
+        async function checkAuthStatus() {
+            try {
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+                if (data.is_root) {
+                    const badge = document.getElementById('adminWarningBadge');
+                    if (badge) badge.style.display = 'inline-flex';
+                }
+            } catch (e) {}
+        }
+
         /* Initial Setup */
         window.onload = () => {
+            checkAuthStatus();
             openApp('filemanager');
         };
     </script>
