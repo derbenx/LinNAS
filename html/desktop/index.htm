@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Virtual Desktop - LinNAS</title>
+    <script src="/js/crypto.js"></script>
+    <!-- Three.js + Loaders for 3D Viewer inside Virtual Desktop -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1117; color: #c9d1d9; user-select: none; }
+
+        body.is-fullscreen #topNav { display: none; }
+
+        /* Outer Container */
+        #desktopWrapper { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
+
+        /* Top Action Bar */
+        #topNav { height: 42px; background: #161b22; border-bottom: 1px solid #30363d; display: flex; align-items: center; justify-content: space-between; padding: 0 1rem; z-index: 500; }
+        .nav-title { font-size: 1rem; font-weight: bold; color: #58a6ff; display: flex; align-items: center; gap: 8px; }
+        .nav-controls { display: flex; gap: 0.5rem; align-items: center; }
+        .btn { padding: 0.35rem 0.8rem; background: #238636; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 5px; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #30363d; color: white; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #b62324; }
+
+        /* Main Desktop Workspace */
+        #desktopArea { flex: 1; position: relative; overflow: hidden; background: radial-gradient(circle at 50% 40%, #161f2e 0%, #0d1117 75%); }
+        #desktopArea::before { content: ''; position: absolute; inset: 0; background-image: radial-gradient(rgba(88, 166, 255, 0.08) 1px, transparent 1px); background-size: 24px 24px; pointer-events: none; }
+
+        /* LinNAS Watermark */
+        .desktop-watermark { position: absolute; bottom: 30px; right: 30px; font-size: 3.5rem; font-weight: 800; color: rgba(255,255,255,0.03); letter-spacing: 0.3rem; pointer-events: none; user-select: none; }
+
+        /* Desktop Icons Grid */
+        .desktop-icons { position: absolute; top: 20px; left: 20px; display: flex; flex-direction: column; flex-wrap: wrap; gap: 20px; max-height: calc(100% - 40px); z-index: 10; }
+        .desktop-icon { width: 90px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px; border-radius: 8px; cursor: pointer; transition: background 0.15s, transform 0.1s; text-align: center; }
+        .desktop-icon:hover { background: rgba(88, 166, 255, 0.15); border: 1px solid rgba(88, 166, 255, 0.3); }
+        .desktop-icon:active { transform: scale(0.95); }
+        .icon-symbol { font-size: 2.2rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+        .icon-label { font-size: 0.78rem; font-weight: 600; color: #f0f6fc; text-shadow: 0 1px 3px rgba(0,0,0,0.8); line-height: 1.1; word-break: break-word; }
+
+        /* Bottom Taskbar */
+        #taskbar { height: 44px; background: rgba(22, 27, 34, 0.95); backdrop-filter: blur(10px); border-top: 1px solid #30363d; display: flex; align-items: center; justify-content: space-between; padding: 0 0.5rem; z-index: 1000; position: relative; }
+
+        /* Start Button & Menu */
+        .start-btn { padding: 0.4rem 0.9rem; background: linear-gradient(135deg, #1f6feb 0%, #238636 100%); color: white; border: 1px solid #388bfd; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(31, 111, 235, 0.4); }
+        .start-btn:hover { filter: brightness(1.1); }
+
+        #startMenu { display: none; position: absolute; bottom: 50px; left: 10px; width: 280px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.7); z-index: 2000; padding: 0.5rem; }
+        .start-menu-header { padding: 0.6rem 0.8rem; border-bottom: 1px solid #30363d; font-weight: bold; color: #58a6ff; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
+        .start-item { padding: 0.55rem 0.8rem; display: flex; align-items: center; gap: 10px; cursor: pointer; border-radius: 4px; font-size: 0.85rem; color: #c9d1d9; margin-top: 2px; }
+        .start-item:hover { background: #1f242d; color: #58a6ff; }
+        .start-divider { height: 1px; background: #30363d; margin: 0.4rem 0; }
+
+        /* Taskbar Items */
+        .taskbar-items { display: flex; gap: 6px; flex: 1; margin: 0 1rem; overflow-x: auto; height: 100%; align-items: center; }
+        .taskbar-item { padding: 0.35rem 0.75rem; background: #21262d; border: 1px solid #30363d; border-radius: 5px; color: #c9d1d9; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 6px; max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: all 0.15s; }
+        .taskbar-item:hover { background: #30363d; color: #fff; }
+        .taskbar-item.active { background: #1f242d; border-color: #58a6ff; color: #58a6ff; font-weight: 600; box-shadow: inset 0 -2px 0 #58a6ff; }
+        .taskbar-item.minimized { opacity: 0.6; }
+
+        /* Taskbar System Tray */
+        .taskbar-tray { display: flex; align-items: center; gap: 12px; font-size: 0.8rem; color: #8b949e; padding-right: 0.5rem; }
+        .tray-clock { font-family: monospace; font-size: 0.85rem; color: #58a6ff; font-weight: bold; }
+
+        /* Floating Desktop Window */
+        .desktop-window { position: absolute; background: #161b22; border: 1px solid #30363d; border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.8); display: flex; flex-direction: column; overflow: hidden; min-width: 320px; min-height: 220px; z-index: 100; transition: border-color 0.15s; }
+        .desktop-window.active-window { border-color: #58a6ff; box-shadow: 0 12px 36px rgba(0,0,0,0.9), 0 0 10px rgba(88,166,255,0.2); }
+        .desktop-window.is-minimized { display: none !important; }
+        .desktop-window.is-maximized { top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0 !important; }
+
+        .window-header { height: 36px; background: #21262d; border-bottom: 1px solid #30363d; display: flex; align-items: center; justify-content: space-between; padding: 0 0.8rem; cursor: move; user-select: none; flex-shrink: 0; }
+        .window-title { font-size: 0.85rem; font-weight: bold; color: #f0f6fc; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .window-controls { display: flex; align-items: center; gap: 4px; }
+        .win-btn { width: 24px; height: 24px; border-radius: 4px; border: none; background: transparent; color: #8b949e; font-size: 0.75rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s, color 0.15s; }
+        .win-btn:hover { background: #30363d; color: #fff; }
+        .win-btn-close:hover { background: #da3633; color: #fff; }
+
+        .window-body { flex: 1; position: relative; overflow: auto; background: #0d1117; display: flex; flex-direction: column; }
+
+        /* Window Resizer Handle */
+        .window-resizer { position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; cursor: se-resize; z-index: 10; }
+        .window-resizer::after { content: ''; position: absolute; bottom: 3px; right: 3px; width: 6px; height: 6px; border-right: 2px solid #8b949e; border-bottom: 2px solid #8b949e; }
+
+        /* App UI Styles */
+        /* File Manager App */
+        .fm-toolbar { padding: 0.5rem; background: #161b22; border-bottom: 1px solid #30363d; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+        .fm-breadcrumbs { display: flex; align-items: center; gap: 4px; font-family: monospace; font-size: 0.8rem; color: #58a6ff; flex: 1; overflow-x: auto; white-space: nowrap; }
+        .fm-breadcrumb-item { cursor: pointer; padding: 2px 4px; border-radius: 3px; }
+        .fm-breadcrumb-item:hover { background: #30363d; color: #79c0ff; }
+        .fm-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        .fm-table th, .fm-table td { padding: 0.45rem 0.6rem; text-align: left; border-bottom: 1px solid #21262d; }
+        .fm-table th { color: #8b949e; font-weight: 600; background: #0d1117; position: sticky; top: 0; z-index: 5; }
+        .fm-row { cursor: pointer; }
+        .fm-row:hover { background: #1f242d; }
+        .fm-row.selected { background: #263850 !important; color: #79c0ff; }
+        .fm-row.drag-over { background: rgba(88, 166, 255, 0.2) !important; border: 1px dashed #58a6ff; }
+
+        /* Drop Overlay Notice */
+        .drop-target-overlay { position: absolute; inset: 0; background: rgba(88, 166, 255, 0.15); border: 2px dashed #58a6ff; display: none; align-items: center; justify-content: center; color: #58a6ff; font-weight: bold; font-size: 1rem; pointer-events: none; z-index: 100; }
+        .drop-target-active .drop-target-overlay { display: flex; }
+
+        /* App Specific Layouts */
+        .app-media-container { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1rem; position: relative; background: #0d1117; }
+        .app-empty-state { text-align: center; color: #8b949e; font-size: 0.85rem; display: flex; flex-direction: column; align-items: center; gap: 0.8rem; }
+        .app-empty-icon { font-size: 3rem; }
+
+        /* Notice Popup Modal */
+        .notice-modal { display: none; position: fixed; z-index: 9999; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); align-items: center; justify-content: center; }
+        .notice-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 340px; padding: 1.2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.8); text-align: center; }
+        .notice-title { font-size: 1rem; font-weight: bold; color: #f85149; margin-bottom: 0.6rem; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .notice-body { font-size: 0.85rem; color: #c9d1d9; margin-bottom: 1rem; line-height: 1.4; }
+    </style>
+</head>
+<body>
+    <div id="desktopWrapper">
+        <!-- Top Nav Header -->
+        <div id="topNav">
+            <div class="nav-title">
+                <span>🖥️</span>
+                <span>LinNAS Virtual Desktop</span>
+            </div>
+            <div class="nav-controls">
+                <button class="btn btn-secondary" onclick="toggleFullscreenDesktop()" title="Toggle Fullscreen Mode (F11)">
+                    <span>📺</span> <span>Fullscreen (F11)</span>
+                </button>
+                <button class="btn btn-secondary" onclick="openApp('filemanager')" title="Open File Manager">
+                    <span>📂</span> <span>File Manager</span>
+                </button>
+                <button class="btn btn-danger" style="padding: 0.3rem 0.6rem;" onclick="closeAllWindows()" title="Close All Desktop Windows">
+                    <span>✕</span> <span>Close All</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Desktop Canvas -->
+        <div id="desktopArea" onclick="onDesktopClick(event)">
+            <div class="desktop-watermark">LinNAS OS</div>
+
+            <!-- Desktop Icons Grid -->
+            <div class="desktop-icons">
+                <div class="desktop-icon" onclick="openApp('filemanager')">
+                    <div class="icon-symbol">📂</div>
+                    <div class="icon-label">File Manager</div>
+                </div>
+                <div class="desktop-icon" onclick="openApp('editor')">
+                    <div class="icon-symbol">📝</div>
+                    <div class="icon-label">Text Editor</div>
+                </div>
+                <div class="desktop-icon" onclick="openApp('audioplayer')">
+                    <div class="icon-symbol">🎵</div>
+                    <div class="icon-label">Audio Player</div>
+                </div>
+                <div class="desktop-icon" onclick="openApp('imageviewer')">
+                    <div class="icon-symbol">🖼️</div>
+                    <div class="icon-label">Image Viewer</div>
+                </div>
+                <div class="desktop-icon" onclick="openApp('videoplayer')">
+                    <div class="icon-symbol">🎬</div>
+                    <div class="icon-label">Video Player</div>
+                </div>
+                <div class="desktop-icon" onclick="openApp('modelviewer')">
+                    <div class="icon-symbol">🧊</div>
+                    <div class="icon-label">3D Viewer</div>
+                </div>
+            </div>
+
+            <!-- Opened Windows Container -->
+            <div id="windowsContainer"></div>
+        </div>
+
+        <!-- Bottom Taskbar -->
+        <div id="taskbar">
+            <!-- Start Button -->
+            <button class="start-btn" onclick="toggleStartMenu(event)">
+                <span>🚀</span> <span>NAS</span>
+            </button>
+
+            <!-- Start Menu Dropdown -->
+            <div id="startMenu" onclick="event.stopPropagation()">
+                <div class="start-menu-header">
+                    <span>⚙️</span> <span>LinNAS Applications</span>
+                </div>
+                <div class="start-item" onclick="openApp('filemanager'); hideStartMenu();">
+                    <span>📂</span> <span>File Manager</span>
+                </div>
+                <div class="start-item" onclick="openApp('editor'); hideStartMenu();">
+                    <span>📝</span> <span>Text Editor</span>
+                </div>
+                <div class="start-item" onclick="openApp('audioplayer'); hideStartMenu();">
+                    <span>🎵</span> <span>Audio Player</span>
+                </div>
+                <div class="start-item" onclick="openApp('imageviewer'); hideStartMenu();">
+                    <span>🖼️</span> <span>Image Viewer</span>
+                </div>
+                <div class="start-item" onclick="openApp('videoplayer'); hideStartMenu();">
+                    <span>🎬</span> <span>Video Player</span>
+                </div>
+                <div class="start-item" onclick="openApp('modelviewer'); hideStartMenu();">
+                    <span>🧊</span> <span>3D Viewer</span>
+                </div>
+                <div class="start-divider"></div>
+                <div class="start-item" onclick="openStatusPlugin(); hideStartMenu();">
+                    <span>🖥️</span> <span>Server Status & Health</span>
+                </div>
+            </div>
+
+            <!-- Taskbar Tabs -->
+            <div class="taskbar-items" id="taskbarItems"></div>
+
+            <!-- System Tray -->
+            <div class="taskbar-tray">
+                <span id="trayClock" class="tray-clock">00:00:00 AM</span>
+                <span style="background: #21262d; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; color: #58a6ff;">LinNAS v1.0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Modal Notice -->
+    <div id="noticeModal" class="notice-modal" onclick="closeNoticeModal()">
+        <div class="notice-card" onclick="event.stopPropagation()">
+            <div class="notice-title">
+                <span>⚠️</span> <span id="noticeTitle">Incompatible File</span>
+            </div>
+            <div class="notice-body" id="noticeBody">The dropped file format is not supported by this application.</div>
+            <button class="btn" onclick="closeNoticeModal()">OK</button>
+        </div>
+    </div>
+
+    <script>
+        let windowsMap = {};
+        let activeZIndex = 100;
+        let fmCount = 0;
+        let isFullscreenMode = false;
+
+        /* App Config Definition */
+        const APP_DEFS = {
+            'filemanager': { title: 'File Manager', icon: '📂', width: 680, height: 460, multi: true, cap: 4 },
+            'editor': { title: 'Text Editor', icon: '📝', width: 620, height: 450, multi: false },
+            'audioplayer': { title: 'Audio Player', icon: '🎵', width: 480, height: 320, multi: false },
+            'imageviewer': { title: 'Image Viewer', icon: '🖼️', width: 640, height: 460, multi: false },
+            'videoplayer': { title: 'Video Player', icon: '🎬', width: 660, height: 480, multi: false },
+            'modelviewer': { title: '3D Viewer', icon: '🧊', width: 680, height: 480, multi: false }
+        };
+
+        /* Window Management Engine */
+        function openApp(appId, fileData) {
+            const def = APP_DEFS[appId];
+            if (!def) return;
+
+            // Handle multi-instance caps (FM cap = 4)
+            if (def.multi) {
+                if (appId === 'filemanager') {
+                    const existingFms = Object.keys(windowsMap).filter(k => k.startsWith('win_filemanager_'));
+                    if (existingFms.length >= (def.cap || 4)) {
+                        showNotice('Maximum Windows Reached', `You can have up to ${def.cap || 4} File Manager windows open simultaneously.`);
+                        bringToFront(existingFms[existingFms.length - 1]);
+                        return;
+                    }
+                    fmCount++;
+                    const winId = `win_filemanager_${fmCount}`;
+                    createWindow(winId, appId, `${def.title} #${fmCount}`, def.icon, def.width, def.height, fileData);
+                }
+            } else {
+                const winId = `win_${appId}`;
+                if (windowsMap[winId]) {
+                    // Window exists: un-minimize, bring to front, and optionally load new file
+                    restoreWindow(winId);
+                    bringToFront(winId);
+                    if (fileData) {
+                        loadMediaIntoAppWindow(winId, fileData.path);
+                    }
+                    return;
+                }
+                createWindow(winId, appId, def.title, def.icon, def.width, def.height, fileData);
+            }
+        }
+
+        function createWindow(winId, appId, title, icon, width, height, initialFileData) {
+            const container = document.getElementById('windowsContainer');
+
+            // Stagger position
+            const winCount = Object.keys(windowsMap).length;
+            const left = Math.min(60 + winCount * 30, window.innerWidth - width - 40);
+            const top = Math.min(40 + winCount * 25, window.innerHeight - height - 80);
+
+            const winEl = document.createElement('div');
+            winEl.className = 'desktop-window active-window';
+            winEl.id = winId;
+            winEl.style.width = width + 'px';
+            winEl.style.height = height + 'px';
+            winEl.style.left = Math.max(10, left) + 'px';
+            winEl.style.top = Math.max(10, top) + 'px';
+            winEl.style.zIndex = ++activeZIndex;
+
+            winEl.innerHTML = `
+                <div class="window-header" onmousedown="startDragWindow(event, '${winId}')">
+                    <span class="window-title" id="${winId}_title"><span>${icon}</span> <span>${escapeHtml(title)}</span></span>
+                    <div class="window-controls">
+                        <button class="win-btn" onclick="minimizeWindow('${winId}')" title="Minimize">_</button>
+                        <button class="win-btn" onclick="toggleMaximizeWindow('${winId}')" title="Maximize / Restore">🗖</button>
+                        <button class="win-btn win-btn-close" onclick="closeWindow('${winId}')" title="Close">✕</button>
+                    </div>
+                </div>
+                <div class="window-body" id="${winId}_body"></div>
+                <div class="window-resizer" onmousedown="startResizeWindow(event, '${winId}')"></div>
+                <div class="drop-target-overlay">📥 Drop File to Load</div>
+            `;
+
+            winEl.onclick = () => bringToFront(winId);
+
+            container.appendChild(winEl);
+
+            windowsMap[winId] = {
+                id: winId,
+                appId: appId,
+                title: title,
+                icon: icon,
+                isMinimized: false,
+                isMaximized: false,
+                prevPos: null,
+                state: {}
+            };
+
+            // Setup Drag and Drop File Receiving for App Windows
+            setupAppWindowDropTarget(winEl, winId, appId);
+
+            // Build Window Body Content
+            buildAppContent(winId, appId, initialFileData);
+
+            // Add Taskbar Item
+            addTaskbarItem(winId, title, icon);
+
+            bringToFront(winId);
+        }
+
+        function bringToFront(winId) {
+            document.querySelectorAll('.desktop-window').forEach(w => w.classList.remove('active-window'));
+            document.querySelectorAll('.taskbar-item').forEach(t => t.classList.remove('active'));
+
+            const win = document.getElementById(winId);
+            if (win) {
+                win.classList.add('active-window');
+                win.style.zIndex = ++activeZIndex;
+            }
+
+            const tb = document.getElementById(`tb_${winId}`);
+            if (tb) {
+                tb.classList.add('active');
+                tb.classList.remove('minimized');
+            }
+        }
+
+        function minimizeWindow(winId) {
+            const win = document.getElementById(winId);
+            if (win) {
+                win.classList.add('is-minimized');
+                windowsMap[winId].isMinimized = true;
+            }
+            const tb = document.getElementById(`tb_${winId}`);
+            if (tb) {
+                tb.classList.remove('active');
+                tb.classList.add('minimized');
+            }
+        }
+
+        function restoreWindow(winId) {
+            const win = document.getElementById(winId);
+            if (win) {
+                win.classList.remove('is-minimized');
+                windowsMap[winId].isMinimized = false;
+            }
+            bringToFront(winId);
+        }
+
+        function toggleMaximizeWindow(winId) {
+            const win = document.getElementById(winId);
+            if (!win) return;
+            const wData = windowsMap[winId];
+
+            if (wData.isMaximized) {
+                win.classList.remove('is-maximized');
+                if (wData.prevPos) {
+                    win.style.left = wData.prevPos.left;
+                    win.style.top = wData.prevPos.top;
+                    win.style.width = wData.prevPos.width;
+                    win.style.height = wData.prevPos.height;
+                }
+                wData.isMaximized = false;
+            } else {
+                wData.prevPos = {
+                    left: win.style.left,
+                    top: win.style.top,
+                    width: win.style.width,
+                    height: win.style.height
+                };
+                win.classList.add('is-maximized');
+                wData.isMaximized = true;
+            }
+        }
+
+        function closeWindow(winId) {
+            const win = document.getElementById(winId);
+            if (win) win.remove();
+
+            const tb = document.getElementById(`tb_${winId}`);
+            if (tb) tb.remove();
+
+            delete windowsMap[winId];
+        }
+
+        function closeAllWindows() {
+            Object.keys(windowsMap).forEach(id => closeWindow(id));
+        }
+
+        /* Drag Window Logic */
+        let draggingWinId = null;
+        let dragOffset = { x: 0, y: 0 };
+
+        function startDragWindow(e, winId) {
+            if (e.target.classList.contains('win-btn') || e.target.classList.contains('window-controls')) return;
+            const win = document.getElementById(winId);
+            if (!win || windowsMap[winId].isMaximized) return;
+
+            draggingWinId = winId;
+            bringToFront(winId);
+
+            dragOffset.x = e.clientX - win.offsetLeft;
+            dragOffset.y = e.clientY - win.offsetTop;
+
+            document.addEventListener('mousemove', onDragWindow);
+            document.addEventListener('mouseup', stopDragWindow);
+        }
+
+        function onDragWindow(e) {
+            if (!draggingWinId) return;
+            const win = document.getElementById(draggingWinId);
+            if (!win) return;
+
+            let newLeft = e.clientX - dragOffset.x;
+            let newTop = e.clientY - dragOffset.y;
+
+            newLeft = Math.max(-win.offsetWidth + 80, Math.min(newLeft, window.innerWidth - 80));
+            newTop = Math.max(0, Math.min(newTop, window.innerHeight - 80));
+
+            win.style.left = newLeft + 'px';
+            win.style.top = newTop + 'px';
+        }
+
+        function stopDragWindow() {
+            draggingWinId = null;
+            document.removeEventListener('mousemove', onDragWindow);
+            document.removeEventListener('mouseup', stopDragWindow);
+        }
+
+        /* Resize Window Logic */
+        let resizingWinId = null;
+        let resizeStart = { x: 0, y: 0, w: 0, h: 0 };
+
+        function startResizeWindow(e, winId) {
+            e.stopPropagation();
+            const win = document.getElementById(winId);
+            if (!win || windowsMap[winId].isMaximized) return;
+
+            resizingWinId = winId;
+            bringToFront(winId);
+
+            resizeStart = {
+                x: e.clientX,
+                y: e.clientY,
+                w: win.offsetWidth,
+                h: win.offsetHeight
+            };
+
+            document.addEventListener('mousemove', onResizeWindow);
+            document.addEventListener('mouseup', stopResizeWindow);
+        }
+
+        function onResizeWindow(e) {
+            if (!resizingWinId) return;
+            const win = document.getElementById(resizingWinId);
+            if (!win) return;
+
+            const newW = Math.max(300, resizeStart.w + (e.clientX - resizeStart.x));
+            const newH = Math.max(200, resizeStart.h + (e.clientY - resizeStart.y));
+
+            win.style.width = newW + 'px';
+            win.style.height = newH + 'px';
+
+            if (windowsMap[resizingWinId] && windowsMap[resizingWinId].appId === 'modelviewer') {
+                triggerThreeResize(resizingWinId);
+            }
+        }
+
+        function stopResizeWindow() {
+            resizingWinId = null;
+            document.removeEventListener('mousemove', onResizeWindow);
+            document.removeEventListener('mouseup', stopResizeWindow);
+        }
+
+        /* Taskbar UI Sync */
+        function addTaskbarItem(winId, title, icon) {
+            const itemsContainer = document.getElementById('taskbarItems');
+            const tbItem = document.createElement('div');
+            tbItem.className = 'taskbar-item active';
+            tbItem.id = `tb_${winId}`;
+            tbItem.innerHTML = `<span>${icon}</span> <span>${escapeHtml(title)}</span>`;
+            tbItem.onclick = () => {
+                const w = windowsMap[winId];
+                if (!w) return;
+                if (w.isMinimized) {
+                    restoreWindow(winId);
+                } else if (document.getElementById(winId).classList.contains('active-window')) {
+                    minimizeWindow(winId);
+                } else {
+                    bringToFront(winId);
+                }
+            };
+            itemsContainer.appendChild(tbItem);
+        }
+
+        /* Start Menu & Desktop Handlers */
+        function toggleStartMenu(e) {
+            if (e) e.stopPropagation();
+            const menu = document.getElementById('startMenu');
+            menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+        }
+
+        function hideStartMenu() {
+            document.getElementById('startMenu').style.display = 'none';
+        }
+
+        function onDesktopClick(e) {
+            if (!e.target.closest('#startMenu') && !e.target.closest('.start-btn')) {
+                hideStartMenu();
+            }
+        }
+
+        function openStatusPlugin() {
+            if (window.parent && typeof window.parent.loadPluginView === 'function') {
+                window.parent.loadPluginView('status');
+            }
+        }
+
+        /* Clock */
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('trayClock').innerText = now.toLocaleTimeString();
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        /* Fullscreen Desktop Toggle */
+        function toggleFullscreenDesktop() {
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                const el = document.documentElement;
+                if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+                else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+                document.body.classList.add('is-fullscreen');
+                isFullscreenMode = true;
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+                else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+                document.body.classList.remove('is-fullscreen');
+                isFullscreenMode = false;
+            }
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                document.body.classList.remove('is-fullscreen');
+                isFullscreenMode = false;
+            } else {
+                document.body.classList.add('is-fullscreen');
+                isFullscreenMode = true;
+            }
+        });
+
+        /* Alert Notice Modal */
+        function showNotice(title, message) {
+            document.getElementById('noticeTitle').innerText = title;
+            document.getElementById('noticeBody').innerText = message;
+            document.getElementById('noticeModal').style.display = 'flex';
+        }
+
+        function closeNoticeModal() {
+            document.getElementById('noticeModal').style.display = 'none';
+        }
+
+        /* Drop Receiving Logic on App Windows */
+        function setupAppWindowDropTarget(winEl, winId, appId) {
+            winEl.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                winEl.classList.add('drop-target-active');
+            });
+
+            winEl.addEventListener('dragleave', () => {
+                winEl.classList.remove('drop-target-active');
+            });
+
+            winEl.addEventListener('drop', (e) => {
+                e.preventDefault();
+                winEl.classList.remove('drop-target-active');
+
+                const dataStr = e.dataTransfer.getData('application/json');
+                if (!dataStr) return;
+
+                try {
+                    const payload = JSON.parse(dataStr);
+                    if (payload.type === 'linnas-file') {
+                        if (payload.isDir) {
+                            showNotice('Folder Dropped', 'Please drop a valid media or data file, not a folder.');
+                            return;
+                        }
+
+                        // Verify capability
+                        const fileName = payload.sourcePath.split('/').pop();
+                        if (checkAppFileCapability(appId, fileName)) {
+                            loadMediaIntoAppWindow(winId, payload.sourcePath);
+                        } else {
+                            showNotice('Incompatible File Format', `'${fileName}' is not supported by ${APP_DEFS[appId].title}.`);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Drop parse error:', err);
+                }
+            });
+        }
+
+        function checkAppFileCapability(appId, fileName) {
+            const ext = fileName.split('.').pop().toLowerCase();
+            switch (appId) {
+                case 'audioplayer': return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext);
+                case 'imageviewer': return ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'].includes(ext);
+                case 'videoplayer': return ['mp4', 'webm', 'ogg', 'ogv', 'mkv', 'mov', 'avi'].includes(ext);
+                case 'editor': return ['txt', 'conf', 'json', 'sh', 'py', 'go', 'js', 'html', 'htm', 'css', 'md', 'log', 'yaml', 'yml', 'ini', 'xml', 'csv'].includes(ext);
+                case 'modelviewer': return ['stl', 'obj', 'gltf', 'glb', '3mf'].includes(ext);
+                case 'filemanager': return true;
+                default: return false;
+            }
+        }
+
+        /* App Window Content Builders & Media Loaders */
+        function buildAppContent(winId, appId, initialFileData) {
+            const body = document.getElementById(`${winId}_body`);
+
+            if (appId === 'filemanager') {
+                buildFileManagerUI(winId, initialFileData ? initialFileData.path : '/');
+            } else if (appId === 'editor') {
+                body.innerHTML = `
+                    <div style="padding: 0.5rem; background: #161b22; border-bottom: 1px solid #30363d; display: flex; gap: 0.5rem; align-items: center;">
+                        <span id="${winId}_filepath" style="font-family: monospace; font-size: 0.8rem; color: #58a6ff; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">No file loaded</span>
+                        <button class="btn" style="padding: 0.25rem 0.6rem;" onclick="saveEditorContent('${winId}')">💾 Save File</button>
+                    </div>
+                    <textarea id="${winId}_textarea" style="flex: 1; width: 100%; background: #0d1117; color: #7ee787; border: none; outline: none; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; resize: none;" placeholder="Open a text file or drop a file from File Manager here..."></textarea>
+                `;
+                if (initialFileData && initialFileData.path) {
+                    loadMediaIntoAppWindow(winId, initialFileData.path);
+                }
+            } else if (appId === 'audioplayer') {
+                body.innerHTML = `
+                    <div class="app-media-container">
+                        <div id="${winId}_empty" class="app-empty-state">
+                            <div class="app-empty-icon">🎵</div>
+                            <div>No audio file playing. Drop an audio file (.mp3, .wav, .flac, .ogg) here.</div>
+                        </div>
+                        <div id="${winId}_player_box" style="display: none; flex-direction: column; align-items: center; gap: 1rem; width: 100%;">
+                            <div style="font-size: 2.5rem;">🎵</div>
+                            <div id="${winId}_track_title" style="font-weight: bold; color: #58a6ff; font-size: 0.95rem; text-align: center; font-family: monospace; word-break: break-all;"></div>
+                            <audio id="${winId}_audio" controls style="width: 85%; margin-top: 0.5rem;"></audio>
+                        </div>
+                    </div>
+                `;
+                if (initialFileData && initialFileData.path) {
+                    loadMediaIntoAppWindow(winId, initialFileData.path);
+                }
+            } else if (appId === 'imageviewer') {
+                body.innerHTML = `
+                    <div class="app-media-container" style="overflow: hidden;">
+                        <div id="${winId}_empty" class="app-empty-state">
+                            <div class="app-empty-icon">🖼️</div>
+                            <div>No image loaded. Drop an image file (.png, .jpg, .webp, .svg) here.</div>
+                        </div>
+                        <div id="${winId}_img_box" style="display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center;">
+                            <img id="${winId}_img" style="max-width: 100%; max-height: 100%; object-fit: contain; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6));">
+                        </div>
+                    </div>
+                `;
+                if (initialFileData && initialFileData.path) {
+                    loadMediaIntoAppWindow(winId, initialFileData.path);
+                }
+            } else if (appId === 'videoplayer') {
+                body.innerHTML = `
+                    <div class="app-media-container" style="padding: 0;">
+                        <div id="${winId}_empty" class="app-empty-state" style="padding: 1rem;">
+                            <div class="app-empty-icon">🎬</div>
+                            <div>No video loaded. Drop a video file (.mp4, .webm, .mkv) here.</div>
+                        </div>
+                        <video id="${winId}_video" controls style="display: none; width: 100%; height: 100%; background: #000; object-fit: contain;"></video>
+                    </div>
+                `;
+                if (initialFileData && initialFileData.path) {
+                    loadMediaIntoAppWindow(winId, initialFileData.path);
+                }
+            } else if (appId === 'modelviewer') {
+                body.innerHTML = `
+                    <div class="app-media-container" style="padding: 0; position: relative;">
+                        <div id="${winId}_empty" class="app-empty-state" style="padding: 1rem;">
+                            <div class="app-empty-icon">🧊</div>
+                            <div>No 3D model loaded. Drop a 3D file (.stl, .obj, .gltf, .glb) here.</div>
+                        </div>
+                        <div id="${winId}_canvas" style="display: none; width: 100%; height: 100%;"></div>
+                    </div>
+                `;
+                if (initialFileData && initialFileData.path) {
+                    loadMediaIntoAppWindow(winId, initialFileData.path);
+                }
+            }
+        }
+
+        async function loadMediaIntoAppWindow(winId, filePath) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            const appId = wData.appId;
+            const fileName = filePath.split('/').pop();
+
+            // Update Window Title
+            const titleEl = document.getElementById(`${winId}_title`);
+            if (titleEl) {
+                titleEl.innerHTML = `<span>${wData.icon}</span> <span>${escapeHtml(APP_DEFS[appId].title)} - ${escapeHtml(fileName)}</span>`;
+            }
+
+            const rawUrl = `/api/fs/raw?path=${encodeURIComponent(filePath)}`;
+
+            if (appId === 'editor') {
+                document.getElementById(`${winId}_filepath`).innerText = filePath;
+                const area = document.getElementById(`${winId}_textarea`);
+                area.value = 'Loading file content...';
+
+                try {
+                    const res = await fetch(rawUrl);
+                    const text = await res.text();
+                    area.value = text;
+                    wData.state.filePath = filePath;
+                } catch (err) {
+                    area.value = 'Failed to load file: ' + err.message;
+                }
+            } else if (appId === 'audioplayer') {
+                document.getElementById(`${winId}_empty`).style.display = 'none';
+                const box = document.getElementById(`${winId}_player_box`);
+                box.style.display = 'flex';
+                document.getElementById(`${winId}_track_title`).innerText = fileName;
+                const audio = document.getElementById(`${winId}_audio`);
+                audio.src = rawUrl;
+                audio.play().catch(() => {});
+            } else if (appId === 'imageviewer') {
+                document.getElementById(`${winId}_empty`).style.display = 'none';
+                const box = document.getElementById(`${winId}_img_box`);
+                box.style.display = 'flex';
+                const img = document.getElementById(`${winId}_img`);
+                img.src = rawUrl;
+            } else if (appId === 'videoplayer') {
+                document.getElementById(`${winId}_empty`).style.display = 'none';
+                const vid = document.getElementById(`${winId}_video`);
+                vid.style.display = 'block';
+                vid.src = rawUrl;
+                vid.play().catch(() => {});
+            } else if (appId === 'modelviewer') {
+                document.getElementById(`${winId}_empty`).style.display = 'none';
+                const container = document.getElementById(`${winId}_canvas`);
+                container.style.display = 'block';
+                initThreeInWindow(winId, rawUrl, fileName);
+            }
+        }
+
+        async function saveEditorContent(winId) {
+            const wData = windowsMap[winId];
+            if (!wData || !wData.state || !wData.state.filePath) {
+                showNotice('No File', 'No file is currently loaded to save.');
+                return;
+            }
+
+            const filePath = wData.state.filePath;
+            const content = document.getElementById(`${winId}_textarea`).value;
+
+            try {
+                const encBody = await encryptPayload({ filepath: filePath, content: content });
+                const res = await fetch('/api/file/write', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showNotice('File Saved', `Successfully saved '${filePath.split('/').pop()}'.`);
+                } else {
+                    showNotice('Save Error', data.error || 'Failed to save file.');
+                }
+            } catch (err) {
+                showNotice('Save Error', err.message);
+            }
+        }
+
+        /* Three.js 3D Model Rendering Engine inside Desktop Windows */
+        function initThreeInWindow(winId, rawUrl, fileName) {
+            const container = document.getElementById(`${winId}_canvas`);
+            container.innerHTML = ''; // clear previous canvas
+
+            const wData = windowsMap[winId];
+            if (!wData) return;
+
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0d1117);
+
+            const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 50, 100);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lights
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight1.position.set(1, 1, 1).normalize();
+            scene.add(dirLight1);
+
+            const gridHelper = new THREE.GridHelper(200, 50, 0x30363d, 0x21262d);
+            scene.add(gridHelper);
+
+            wData.three = { scene, camera, renderer, controls };
+
+            function animate() {
+                if (!windowsMap[winId]) return; // window closed
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            const ext = fileName.split('.').pop().toLowerCase();
+
+            if (ext === 'stl') {
+                const loader = new THREE.STLLoader();
+                loader.load(rawUrl, function(geometry) {
+                    const material = new THREE.MeshStandardMaterial({ color: 0x58a6ff, roughness: 0.3, metalness: 0.2 });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    centerAndFit3DObject(mesh, camera, controls);
+                    scene.add(mesh);
+                });
+            } else if (ext === 'obj') {
+                const loader = new THREE.OBJLoader();
+                loader.load(rawUrl, function(obj) {
+                    obj.traverse(child => {
+                        if (child.isMesh) child.material = new THREE.MeshStandardMaterial({ color: 0x7ee787, roughness: 0.4 });
+                    });
+                    centerAndFit3DObject(obj, camera, controls);
+                    scene.add(obj);
+                });
+            } else if (ext === 'gltf' || ext === 'glb') {
+                const loader = new THREE.GLTFLoader();
+                loader.load(rawUrl, function(gltf) {
+                    const obj = gltf.scene;
+                    centerAndFit3DObject(obj, camera, controls);
+                    scene.add(obj);
+                });
+            }
+        }
+
+        function triggerThreeResize(winId) {
+            const wData = windowsMap[winId];
+            if (wData && wData.three) {
+                const container = document.getElementById(`${winId}_canvas`);
+                if (container) {
+                    wData.three.camera.aspect = container.clientWidth / container.clientHeight;
+                    wData.three.camera.updateProjectionMatrix();
+                    wData.three.renderer.setSize(container.clientWidth, container.clientHeight);
+                }
+            }
+        }
+
+        function centerAndFit3DObject(object, camera, controls) {
+            const box = new THREE.Box3().setFromObject(object);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+
+            object.position.x += (object.position.x - center.x);
+            object.position.y += (object.position.y - center.y);
+            object.position.z += (object.position.z - center.z);
+
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const fov = camera.fov * (Math.PI / 180);
+            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.8;
+
+            camera.position.set(0, maxDim * 0.5, cameraZ || 50);
+            camera.lookAt(0, 0, 0);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        /* File Manager Multi-Window Implementation */
+        function buildFileManagerUI(winId, initialPath) {
+            const body = document.getElementById(`${winId}_body`);
+            const wData = windowsMap[winId];
+            wData.state.currentPath = initialPath || '/';
+
+            body.innerHTML = `
+                <div class="fm-toolbar">
+                    <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="fmNavigateUp('${winId}')">⬆ Up</button>
+                    <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="fmRefresh('${winId}')">🔄</button>
+                    <button class="btn" style="padding: 0.25rem 0.5rem;" onclick="fmPromptNewFolder('${winId}')">📁+ New Folder</button>
+                    <div class="fm-breadcrumbs" id="${winId}_breadcrumbs"></div>
+                </div>
+                <div style="flex: 1; overflow-y: auto;" id="${winId}_file_container" ondragover="fmOnDragOver(event, '${winId}')" ondrop="fmOnDrop(event, '${winId}')">
+                    <table class="fm-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th style="width: 90px;">Size</th>
+                                <th style="width: 100px;">Mode</th>
+                            </tr>
+                        </thead>
+                        <tbody id="${winId}_table_body">
+                            <tr><td colspan="3" style="text-align: center; color: #8b949e; padding: 1rem;">Loading directory...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            loadFmDirectory(winId, wData.state.currentPath);
+        }
+
+        async function loadFmDirectory(winId, path) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            wData.state.currentPath = path || '/';
+
+            renderFmBreadcrumbs(winId, wData.state.currentPath);
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(wData.state.currentPath)}`);
+                const data = await res.json();
+                if (data.error) {
+                    showNotice('Directory Error', data.error);
+                    return;
+                }
+
+                wData.state.items = data.items || [];
+                renderFmFileList(winId);
+            } catch (err) {
+                showNotice('Fetch Error', err.message);
+            }
+        }
+
+        function renderFmBreadcrumbs(winId, path) {
+            const container = document.getElementById(`${winId}_breadcrumbs`);
+            if (!container) return;
+            container.innerHTML = '';
+
+            const parts = path.split('/').filter(Boolean);
+
+            const rootItem = document.createElement('span');
+            rootItem.className = 'fm-breadcrumb-item';
+            rootItem.innerText = '📁 /';
+            rootItem.onclick = () => loadFmDirectory(winId, '/');
+            container.appendChild(rootItem);
+
+            let accumulated = '';
+            parts.forEach(p => {
+                accumulated += '/' + p;
+                const sep = document.createElement('span');
+                sep.innerText = '/';
+                sep.style.color = '#8b949e';
+                container.appendChild(sep);
+
+                const item = document.createElement('span');
+                item.className = 'fm-breadcrumb-item';
+                item.innerText = p;
+                const target = accumulated;
+                item.onclick = () => loadFmDirectory(winId, target);
+                container.appendChild(item);
+            });
+        }
+
+        function renderFmFileList(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            const tbody = document.getElementById(`${winId}_table_body`);
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            if (wData.state.items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #8b949e; padding: 1.5rem;">Directory is empty.</td></tr>';
+                return;
+            }
+
+            wData.state.items.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = 'fm-row';
+                tr.draggable = true;
+
+                const ext = item.name.split('.').pop().toLowerCase();
+                let icon = '📄';
+                if (item.is_dir) icon = '📁';
+                else if (['stl', 'obj', 'gltf', 'glb', '3mf'].includes(ext)) icon = '🧊';
+                else if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].includes(ext)) icon = '🎵';
+                else if (['mp4', 'webm', 'mkv', 'mov'].includes(ext)) icon = '🎬';
+                else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) icon = '🖼️';
+                else if (['txt', 'json', 'sh', 'py', 'go', 'js', 'html', 'css', 'md', 'conf'].includes(ext)) icon = '📝';
+
+                tr.innerHTML = `
+                    <td>
+                        <span style="margin-right: 6px;">${icon}</span>
+                        <strong>${escapeHtml(item.name)}</strong>
+                    </td>
+                    <td>${item.is_dir ? '--' : formatBytes(item.size)}</td>
+                    <td><span style="font-family: monospace; color: #8b949e;">${item.permissions || 'rwxr-xr-x'}</span></td>
+                `;
+
+                // Set HTML5 Drag Source Data
+                tr.ondragstart = (e) => {
+                    const payload = {
+                        type: 'linnas-file',
+                        sourceWinId: winId,
+                        sourcePath: item.path,
+                        isDir: item.is_dir,
+                        name: item.name
+                    };
+                    e.dataTransfer.setData('application/json', JSON.stringify(payload));
+                    e.dataTransfer.effectAllowed = 'move';
+                };
+
+                // Double click handler
+                tr.ondblclick = () => {
+                    if (item.is_dir) {
+                        loadFmDirectory(winId, item.path);
+                    } else {
+                        // Open file in corresponding app
+                        openFileInApp(item.path, item.name);
+                    }
+                };
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        function fmNavigateUp(winId) {
+            const wData = windowsMap[winId];
+            if (!wData || wData.state.currentPath === '/') return;
+            const parts = wData.state.currentPath.split('/').filter(Boolean);
+            parts.pop();
+            const parent = '/' + parts.join('/');
+            loadFmDirectory(winId, parent);
+        }
+
+        function fmRefresh(winId) {
+            const wData = windowsMap[winId];
+            if (wData) loadFmDirectory(winId, wData.state.currentPath);
+        }
+
+        async function fmPromptNewFolder(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+
+            const name = prompt('Enter new folder name:');
+            if (!name) return;
+
+            const cleanName = name.trim().replace(/[^a-zA-Z0-9_\-\.\ ]/g, '_');
+            const target = (wData.state.currentPath === '/' ? '' : wData.state.currentPath) + '/' + cleanName;
+
+            try {
+                const encBody = await encryptPayload({ path: target });
+                const res = await fetch('/api/fs/mkdir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    fmRefresh(winId);
+                } else {
+                    showNotice('New Folder Error', data.error || 'Failed to create folder.');
+                }
+            } catch (err) {
+                showNotice('New Folder Error', err.message);
+            }
+        }
+
+        /* Drag & Drop File Move Between File Managers */
+        function fmOnDragOver(e, winId) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        }
+
+        async function fmOnDrop(e, targetWinId) {
+            e.preventDefault();
+            const targetData = windowsMap[targetWinId];
+            if (!targetData) return;
+
+            const dataStr = e.dataTransfer.getData('application/json');
+            if (!dataStr) return;
+
+            try {
+                const payload = JSON.parse(dataStr);
+                if (payload.type === 'linnas-file') {
+                    const sourcePath = payload.sourcePath;
+                    const destDir = targetData.state.currentPath;
+
+                    // Don't move to same parent directory
+                    const sourceParent = sourcePath.substring(0, sourcePath.lastIndexOf('/')) || '/';
+                    if (sourceParent === destDir) return;
+
+                    showNotice('Moving File...', `Moving '${payload.name}' to '${destDir}'...`);
+
+                    const encBody = await encryptPayload({
+                        sources: [sourcePath],
+                        destination: destDir
+                    });
+
+                    const res = await fetch('/api/fs/move', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: encBody
+                    });
+
+                    const data = await res.json();
+                    closeNoticeModal();
+
+                    if (data.success) {
+                        // Refresh source window if open
+                        if (payload.sourceWinId && windowsMap[payload.sourceWinId]) {
+                            fmRefresh(payload.sourceWinId);
+                        }
+                        // Refresh target window
+                        fmRefresh(targetWinId);
+                    } else {
+                        showNotice('Move Error', data.error || 'Failed to move file.');
+                    }
+                }
+            } catch (err) {
+                console.error('FM Drop Error:', err);
+            }
+        }
+
+        /* Open File in Compatible App */
+        function openFileInApp(filePath, fileName) {
+            const ext = fileName.split('.').pop().toLowerCase();
+
+            if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext)) {
+                openApp('audioplayer', { path: filePath });
+            } else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'].includes(ext)) {
+                openApp('imageviewer', { path: filePath });
+            } else if (['mp4', 'webm', 'mkv', 'mov', 'ogv', 'avi'].includes(ext)) {
+                openApp('videoplayer', { path: filePath });
+            } else if (['stl', 'obj', 'gltf', 'glb', '3mf'].includes(ext)) {
+                openApp('modelviewer', { path: filePath });
+            } else if (['txt', 'conf', 'json', 'sh', 'py', 'go', 'js', 'html', 'htm', 'css', 'md', 'log', 'yaml', 'yml', 'ini', 'xml', 'csv'].includes(ext)) {
+                openApp('editor', { path: filePath });
+            } else {
+                showNotice('Unknown File Type', `No default desktop app registered for extension '.${ext}'. Opening in Text Editor...`);
+                openApp('editor', { path: filePath });
+            }
+        }
+
+        /* Helpers */
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        /* Keyboard Shortcuts */
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F11') {
+                e.preventDefault();
+                toggleFullscreenDesktop();
+            }
+        });
+
+        /* Initial Setup */
+        window.onload = () => {
+            // Open 1 default File Manager window on launch
+            openApp('filemanager');
+        };
+    </script>
+</body>
+</html>

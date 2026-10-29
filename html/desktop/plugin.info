@@ -1,0 +1,13 @@
+<div style="font-family: 'Segoe UI', Arial, sans-serif; color: #c9d1d9; line-height: 1.5;">
+    <h3 style="color: #58a6ff; margin-bottom: 0.5rem;">🖥️ Virtual Desktop Plugin</h3>
+    <p style="margin-bottom: 0.8rem; font-size: 0.9rem;">
+        The Virtual Desktop transforms your web browser into an integrated NAS operating system environment. Launch multiple floating, resizable windows, organize storage, edit text files, play music and videos, view images, and inspect 3D models.
+    </p>
+    <h4 style="color: #79c0ff; margin-top: 0.8rem; margin-bottom: 0.4rem; font-size: 0.95rem;">Key Features:</h4>
+    <ul style="padding-left: 1.2rem; font-size: 0.88rem; margin-bottom: 0.8rem;">
+        <li><strong>Multi-Window File Manager:</strong> Open up to 4 independent File Manager windows side-by-side. Drag and drop files between folders and manager windows to physically move them.</li>
+        <li><strong>Drag & Drop Media Launching:</strong> Drag files directly from any File Manager window onto open app windows (Audio Player, Image Viewer, Video Player, 3D Model Viewer, Text Editor) to open or play them instantly.</li>
+        <li><strong>Fullscreen OS Mode:</strong> Click the F11 Fullscreen button for an immersive full-monitor desktop experience.</li>
+        <li><strong>NAS Start Menu & Taskbar:</strong> Quick access to all system tools, open window tabs, real-time clock, and window management controls.</li>
+    </ul>
+</div>
