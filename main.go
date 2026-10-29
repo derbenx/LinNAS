@@ -965,6 +965,88 @@ func syncSystemConfigs(pluginID string, body []byte) {
 	}
 }
 
+func parseSystemSMBConf() SMBData {
+	var smbData SMBData
+	var shares []SMBShare
+
+	confPaths := []string{"/etc/samba/conf.d/shares.conf", "/etc/samba/smb.conf"}
+	seenShares := make(map[string]bool)
+
+	for _, confPath := range confPaths {
+		contentBytes, err := os.ReadFile(confPath)
+		if err != nil || len(contentBytes) == 0 {
+			continue
+		}
+
+		lines := strings.Split(string(contentBytes), "\n")
+		var currentShare *SMBShare
+
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+				continue
+			}
+
+			if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+				sectionName := strings.TrimSpace(line[1 : len(line)-1])
+				lowerSec := strings.ToLower(sectionName)
+				if lowerSec == "global" {
+					currentShare = nil
+					continue
+				}
+				if lowerSec == "homes" {
+					smbData.HideHomes = true
+					currentShare = nil
+					continue
+				}
+
+				if seenShares[sectionName] {
+					currentShare = nil
+					continue
+				}
+
+				seenShares[sectionName] = true
+				shares = append(shares, SMBShare{
+					Name:     sectionName,
+					Path:     "",
+					Enabled:  true,
+					ReadOnly: false,
+				})
+				currentShare = &shares[len(shares)-1]
+			} else if currentShare != nil && strings.Contains(line, "=") {
+				parts := strings.SplitN(line, "=", 2)
+				key := strings.ToLower(strings.TrimSpace(parts[0]))
+				val := strings.TrimSpace(parts[1])
+
+				switch key {
+				case "path":
+					currentShare.Path = val
+				case "comment":
+					currentShare.Comment = val
+				case "read only":
+					currentShare.ReadOnly = (strings.ToLower(val) == "yes" || strings.ToLower(val) == "true" || val == "1")
+				case "valid users":
+					currentShare.ValidUsers = strings.Fields(val)
+				case "available", "browseable":
+					if strings.ToLower(val) == "no" || strings.ToLower(val) == "false" || val == "0" {
+						currentShare.Enabled = false
+					}
+				}
+			}
+		}
+	}
+
+	var validShares []SMBShare
+	for _, s := range shares {
+		if s.Path != "" {
+			validShares = append(validShares, s)
+		}
+	}
+
+	smbData.Shares = validShares
+	return smbData
+}
+
 func handlePluginData(w http.ResponseWriter, r *http.Request) {
 	pluginID := r.URL.Query().Get("plugin")
 	if matched, _ := regexp.MatchString(`^[a-zA-Z0-9_\-]+$`, pluginID); !matched || pluginID == "" {
@@ -972,16 +1054,43 @@ func handlePluginData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dataPath := filepath.Join("html", pluginID, "data.json")
+	persistentPath := filepath.Join("data", pluginID+".json")
+	htmlPath := filepath.Join("html", pluginID, "data.json")
 
 	switch r.Method {
 	case http.MethodGet:
-		if _, err := os.Stat(dataPath); os.IsNotExist(err) {
+		dataBytes, err := os.ReadFile(persistentPath)
+		if err != nil || len(dataBytes) == 0 {
+			dataBytes, err = os.ReadFile(htmlPath)
+		}
+
+		if pluginID == "smb" {
+			var smbTest SMBData
+			if err != nil || len(dataBytes) == 0 || json.Unmarshal(dataBytes, &smbTest) != nil || len(smbTest.Shares) == 0 {
+				recovered := parseSystemSMBConf()
+				if len(recovered.Shares) > 0 {
+					if recBytes, err2 := json.MarshalIndent(recovered, "", "  "); err2 == nil {
+						_ = os.MkdirAll("data", 0755)
+						_ = os.WriteFile(persistentPath, recBytes, 0644)
+						_ = os.MkdirAll(filepath.Dir(htmlPath), 0755)
+						_ = os.WriteFile(htmlPath, recBytes, 0644)
+						syncSystemConfigs("smb", recBytes)
+						w.Header().Set("Content-Type", "application/json")
+						w.Write(recBytes)
+						return
+					}
+				}
+			}
+		}
+
+		if err != nil || len(dataBytes) == 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte("{}"))
 			return
 		}
-		http.ServeFile(w, r, dataPath)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(dataBytes)
 
 	case http.MethodPost, http.MethodPut:
 		body, err := io.ReadAll(r.Body)
@@ -1002,11 +1111,11 @@ func handlePluginData(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		_ = os.MkdirAll(filepath.Dir(dataPath), 0755)
-		if err := os.WriteFile(dataPath, decryptedBody, 0644); err != nil {
-			http.Error(w, "Failed to write data file", http.StatusInternalServerError)
-			return
-		}
+		_ = os.MkdirAll("data", 0755)
+		_ = os.WriteFile(persistentPath, decryptedBody, 0644)
+
+		_ = os.MkdirAll(filepath.Dir(htmlPath), 0755)
+		_ = os.WriteFile(htmlPath, decryptedBody, 0644)
 
 		// Sync data directly to system config files (/etc/samba, /etc/dnsmasq.d)
 		syncSystemConfigs(pluginID, decryptedBody)
@@ -1971,10 +2080,31 @@ func main() {
 	loadConfig()
 
 	_ = os.MkdirAll("html", 0755)
+	_ = os.MkdirAll("data", 0755)
 
-	// Sync SMB config at startup if data.json exists
-	if smbDataBytes, err := os.ReadFile("html/smb/data.json"); err == nil && len(smbDataBytes) > 0 {
-		syncSystemConfigs("smb", smbDataBytes)
+	// Sync SMB config at startup if data exists or recover from system config
+	var smbBytes []byte
+	if b, err := os.ReadFile("data/smb.json"); err == nil && len(b) > 0 {
+		smbBytes = b
+	} else if b, err := os.ReadFile("html/smb/data.json"); err == nil && len(b) > 0 {
+		smbBytes = b
+	}
+
+	var smbCheck SMBData
+	if len(smbBytes) == 0 || json.Unmarshal(smbBytes, &smbCheck) != nil || len(smbCheck.Shares) == 0 {
+		recovered := parseSystemSMBConf()
+		if len(recovered.Shares) > 0 {
+			if recBytes, err := json.MarshalIndent(recovered, "", "  "); err == nil {
+				smbBytes = recBytes
+				_ = os.WriteFile("data/smb.json", recBytes, 0644)
+				_ = os.MkdirAll("html/smb", 0755)
+				_ = os.WriteFile("html/smb/data.json", recBytes, 0644)
+			}
+		}
+	}
+
+	if len(smbBytes) > 0 {
+		syncSystemConfigs("smb", smbBytes)
 	}
 
 	mux := http.NewServeMux()

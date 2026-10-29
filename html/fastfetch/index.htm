@@ -147,7 +147,12 @@
                 const data = await res.json();
                 const output = (data.output || '').trim();
 
-                if (data.success && output.length > 0 && !output.includes('not found') && !output.includes('No such file')) {
+                const isNotFound = output.toLowerCase().includes('command not found') ||
+                                  output.toLowerCase().includes('not found') ||
+                                  output.toLowerCase().includes('no such file or directory') ||
+                                  output.toLowerCase().includes('not installed');
+
+                if (output.length > 0 && !isNotFound) {
                     promptCard.style.display = 'none';
                     term.innerHTML = ansiToHtml(output);
                 } else {
