@@ -57,5 +57,10 @@ After changing these options, press <button id='circstart2'>-New Game-</button>!
 <div id="wrp"><canvas id='can'></canvas><canvas id='spr'></canvas></div>
 </center>
 <script src='js.js'></script>
-<div id='btg'><a href='..'>back to games</a></div>
+<script>
+    window.addEventListener('load', function() {
+        var btn = document.getElementById('circstart');
+        if (btn) btn.click();
+    });
+</script>
 </html>

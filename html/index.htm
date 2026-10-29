@@ -273,6 +273,7 @@
         function initSidebarResizer() {
             const sidebar = document.getElementById('sidebar');
             const resizer = document.getElementById('sidebarResizer');
+            const collapseBtn = document.getElementById('collapseBtn');
             let isResizing = false;
 
             resizer.addEventListener('mousedown', (e) => {
@@ -286,10 +287,12 @@
             document.addEventListener('mousemove', (e) => {
                 if (!isResizing) return;
                 let newWidth = e.clientX;
-                if (newWidth < 120) {
-                    if (!isSidebarCollapsed) toggleSidebarCollapse();
-                } else if (newWidth > 120 && newWidth <= 500) {
-                    if (isSidebarCollapsed) toggleSidebarCollapse();
+                if (newWidth >= 160 && newWidth <= 500) {
+                    if (isSidebarCollapsed) {
+                        isSidebarCollapsed = false;
+                        sidebar.classList.remove('collapsed');
+                        collapseBtn.innerText = '◀';
+                    }
                     sidebar.style.width = newWidth + 'px';
                     lastSidebarWidth = newWidth;
                 }
