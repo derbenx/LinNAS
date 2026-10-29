@@ -10,7 +10,8 @@
         body { display: flex; height: 100vh; background: #0d1117; color: #c9d1d9; overflow: hidden; }
 
         /* Sidebar Styling */
-        #sidebar { width: 260px; min-width: 60px; max-width: 500px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; position: relative; transition: width 0.05s ease-out; }
+        #sidebar { width: 260px; min-width: 60px; max-width: 500px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; position: relative; }
+        #sidebar.is-resizing { transition: none !important; }
         #sidebar.collapsed { width: 60px !important; min-width: 60px !important; }
         #sidebar.collapsed .sidebar-title-text,
         #sidebar.collapsed .plugin-category,
@@ -274,20 +275,23 @@
             const sidebar = document.getElementById('sidebar');
             const resizer = document.getElementById('sidebarResizer');
             const collapseBtn = document.getElementById('collapseBtn');
+            const frame = document.getElementById('plugin-frame');
             let isResizing = false;
 
             resizer.addEventListener('mousedown', (e) => {
                 e.preventDefault();
                 isResizing = true;
+                sidebar.classList.add('is-resizing');
                 resizer.classList.add('resizing');
+                if (frame) frame.style.pointerEvents = 'none';
                 document.body.style.cursor = 'col-resize';
                 document.body.style.userSelect = 'none';
             });
 
-            document.addEventListener('mousemove', (e) => {
+            window.addEventListener('mousemove', (e) => {
                 if (!isResizing) return;
                 let newWidth = e.clientX;
-                if (newWidth >= 160 && newWidth <= 500) {
+                if (newWidth >= 140 && newWidth <= 500) {
                     if (isSidebarCollapsed) {
                         isSidebarCollapsed = false;
                         sidebar.classList.remove('collapsed');
@@ -298,10 +302,12 @@
                 }
             });
 
-            document.addEventListener('mouseup', () => {
+            window.addEventListener('mouseup', () => {
                 if (isResizing) {
                     isResizing = false;
+                    sidebar.classList.remove('is-resizing');
                     resizer.classList.remove('resizing');
+                    if (frame) frame.style.pointerEvents = 'auto';
                     document.body.style.cursor = '';
                     document.body.style.userSelect = '';
                 }
