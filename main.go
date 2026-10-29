@@ -889,20 +889,10 @@ func syncSystemConfigs(pluginID string, body []byte) {
 					continue
 				}
 
-				// Check if share path is in /mnt/ or /media/ and if it's unmounted/non-existent
+				// Ensure directory exists for share path
 				cleanPath := filepath.Clean(share.Path)
-				if strings.HasPrefix(cleanPath, "/mnt/") || strings.HasPrefix(cleanPath, "/media/") {
-					info, err := os.Stat(cleanPath)
-					if os.IsNotExist(err) || err != nil || !info.IsDir() {
-						log.Printf("[SMB-SYNC] Skipping unmounted or missing share path: %s (%s)", share.Name, share.Path)
-						continue
-					}
-					// Check if directory is empty (unmounted mount point)
-					entries, readErr := os.ReadDir(cleanPath)
-					if readErr == nil && len(entries) == 0 {
-						log.Printf("[SMB-SYNC] Skipping empty unmounted mount point share: %s (%s)", share.Name, share.Path)
-						continue
-					}
+				if info, err := os.Stat(cleanPath); os.IsNotExist(err) || err != nil || !info.IsDir() {
+					_ = os.MkdirAll(cleanPath, 0777)
 				}
 
 				activeShares = append(activeShares, share)

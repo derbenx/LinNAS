@@ -291,7 +291,14 @@
             window.addEventListener('mousemove', (e) => {
                 if (!isResizing) return;
                 let newWidth = e.clientX;
-                if (newWidth >= 140 && newWidth <= 500) {
+                if (newWidth < 100) {
+                    if (!isSidebarCollapsed) {
+                        isSidebarCollapsed = true;
+                        sidebar.classList.add('collapsed');
+                        collapseBtn.innerText = '▶';
+                    }
+                    sidebar.style.width = '60px';
+                } else if (newWidth <= 500) {
                     if (isSidebarCollapsed) {
                         isSidebarCollapsed = false;
                         sidebar.classList.remove('collapsed');

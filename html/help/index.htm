@@ -104,7 +104,7 @@
             allPlugins.forEach(p => {
                 const cat = p.category || 'Tools';
                 const infoText = (helpData[p.id] || '').toLowerCase();
-                const matchesFilter = !filter || p.name.toLowerCase().includes(filter) || p.description.toLowerCase().includes(filter) || infoText.includes(filter) || cat.toLowerCase().includes(filter);
+                const matchesFilter = !filter || p.id.toLowerCase().includes(filter) || p.name.toLowerCase().includes(filter) || p.description.toLowerCase().includes(filter) || infoText.includes(filter) || cat.toLowerCase().includes(filter) || (p.id === 'ufw' && ('firewall'.includes(filter) || 'ufw'.includes(filter)));
 
                 if (matchesFilter) {
                     if (!categories[cat]) categories[cat] = [];

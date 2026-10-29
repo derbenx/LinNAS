@@ -196,6 +196,23 @@ async function clku(evn){
   }
 }
 
+function getCoords(evn) {
+ var rect = spr.getBoundingClientRect();
+ var clientX = evn.clientX;
+ var clientY = evn.clientY;
+ if (evn.changedTouches && evn.changedTouches.length > 0) {
+  clientX = evn.changedTouches[0].clientX;
+  clientY = evn.changedTouches[0].clientY;
+ } else if (evn.touches && evn.touches.length > 0) {
+  clientX = evn.touches[0].clientX;
+  clientY = evn.touches[0].clientY;
+ }
+ return {
+  x: Math.floor((clientX - rect.left) * (bw / rect.width)),
+  y: Math.floor((clientY - rect.top) * (bh / rect.height))
+ };
+}
+
 function clkd(evn){
  if (flow.length) { return; }
  flox=[];floy=[];
@@ -203,11 +220,9 @@ function clkd(evn){
  redraw(1);
  bgsk=0;
  if (done) { return; }
- if (evn.changedTouches){
-  var rect = can.getBoundingClientRect();
-  mx=Math.floor(evn.changedTouches[0].clientX-rect.left);
-  my=Math.floor(evn.changedTouches[0].clientY-rect.top);
- }
+ var coords = getCoords(evn);
+ mx = coords.x;
+ my = coords.y;
  fx=mx;fy=my;
  gx=Math.floor((mx/bw)*xx); gy=Math.floor((my/bh)*yy);
  if (gy>5 && sprd[gx][gy-6] && sprd[gx][gy-6].substr(0,1)=='x'){
@@ -217,12 +232,9 @@ function clkd(evn){
 
 function movr(evn){
  if (done) { return; }
- mx=evn.offsetX; my=evn.offsetY;
- if (!mx && evn.changedTouches!=undefined){
-  var rect = can.getBoundingClientRect();
-  mx=Math.floor(evn.changedTouches[0].clientX-rect.left);
-  my=Math.floor(evn.changedTouches[0].clientY-rect.top);
- }
+ var coords = getCoords(evn);
+ mx = coords.x;
+ my = coords.y;
 
  if (fx==-1){ return; }
  drag=1;
@@ -367,6 +379,7 @@ function start(){
  spr.onmousedown = clkd;
  spr.onmouseup = clku;
  spr.onmousemove = movr;
+ spr.oncontextmenu = function(e) { e.preventDefault(); return false; };
  spr.addEventListener("touchstart", clkd, {passive: true});
  spr.addEventListener("touchend", clku, false);
  spr.addEventListener("touchmove", movr, {passive: true});

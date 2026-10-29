@@ -183,7 +183,11 @@
                 if (data.success && data.output) {
                     let links = [];
                     try {
-                        links = JSON.parse(data.output);
+                        const raw = data.output.trim();
+                        const jsonStart = raw.indexOf('[');
+                        const jsonEnd = raw.lastIndexOf(']');
+                        const cleanJson = (jsonStart !== -1 && jsonEnd !== -1) ? raw.substring(jsonStart, jsonEnd + 1) : raw;
+                        links = JSON.parse(cleanJson);
                     } catch (e) {
                         console.error('Failed to parse list_interfaces_cmd output:', e);
                     }
@@ -251,7 +255,11 @@
                 if (data.success && data.output) {
                     let addrInfo = [];
                     try {
-                        addrInfo = JSON.parse(data.output);
+                        const raw = data.output.trim();
+                        const jsonStart = raw.indexOf('[');
+                        const jsonEnd = raw.lastIndexOf(']');
+                        const cleanJson = (jsonStart !== -1 && jsonEnd !== -1) ? raw.substring(jsonStart, jsonEnd + 1) : raw;
+                        addrInfo = JSON.parse(cleanJson);
                     } catch (e) {
                         console.error('Failed to parse get_ip_cmd output:', e);
                     }

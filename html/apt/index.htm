@@ -274,19 +274,19 @@
         async function showPluginInfo(pluginId, pluginName) {
             document.getElementById('infoTitle').innerText = `${pluginName} Documentation`;
             const body = document.getElementById('infoBody');
-            body.innerText = 'Loading documentation...';
+            body.innerHTML = 'Loading documentation...';
             document.getElementById('infoModal').style.display = 'block';
 
             try {
                 const res = await fetch(`/${pluginId}/plugin.info`);
                 if (res.ok) {
                     const text = await res.text();
-                    body.innerText = text;
+                    body.innerHTML = text;
                 } else {
-                    body.innerText = 'No plugin.info documentation available.';
+                    body.innerHTML = 'No plugin.info documentation available.';
                 }
             } catch (err) {
-                body.innerText = 'Failed to load plugin documentation.';
+                body.innerHTML = 'Failed to load plugin documentation.';
             }
         }
 
