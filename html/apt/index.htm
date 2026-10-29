@@ -294,6 +294,29 @@
             document.getElementById('infoModal').style.display = 'none';
         }
 
+        async function restoreDefaultPlugins() {
+            if (!confirm('Are you sure you want to restore all default plugins from the embedded application binary? Custom plugin edits may be overwritten.')) return;
+            showConsole('[START] Restoring default plugins from embedded binary...\n', true);
+            try {
+                const res = await fetch('/api/plugins/restore', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    updateConsole(`[FINISHED] ${data.message}`, false);
+                    await loadAptPlugins();
+                    if (window.parent) {
+                        window.parent.postMessage('reload_plugins', '*');
+                        if (typeof window.parent.loadPlugins === 'function') {
+                            window.parent.loadPlugins();
+                        }
+                    }
+                } else {
+                    updateConsole('Failed to restore plugins: ' + data.error, false);
+                }
+            } catch (err) {
+                updateConsole('Restore error: ' + err.message, false);
+            }
+        }
+
         window.onload = loadAptPlugins;
     </script>
 </body>

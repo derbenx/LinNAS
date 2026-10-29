@@ -1820,13 +1820,8 @@ func logStartupEvent(msg string) {
 	}
 }
 
-func extractEmbeddedHTML() {
-	// If html/ exists and contains index.htm, assume disk assets are present
-	if _, err := os.Stat(filepath.Join("html", "index.htm")); err == nil {
-		return
-	}
-
-	logStartupEvent("Extracting default embedded html/ assets and plugin files...")
+func restoreEmbeddedPlugins(forceOverwrite bool) error {
+	logStartupEvent("Restoring default embedded html/ assets and plugin files...")
 	err := fs.WalkDir(embeddedHTML, "html", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -1840,9 +1835,11 @@ func extractEmbeddedHTML() {
 			return err
 		}
 
-		// Don't overwrite existing user files
-		if _, err := os.Stat(path); err == nil {
-			return nil
+		if !forceOverwrite {
+			// Don't overwrite existing user files if forceOverwrite is false
+			if _, err := os.Stat(path); err == nil {
+				return nil
+			}
 		}
 
 		_ = os.MkdirAll(filepath.Dir(path), 0755)
@@ -1851,9 +1848,18 @@ func extractEmbeddedHTML() {
 
 	if err != nil {
 		logStartupEvent(fmt.Sprintf("Error extracting embedded HTML: %v", err))
-	} else {
-		logStartupEvent("Successfully extracted default embedded html/ assets.")
+		return err
 	}
+	logStartupEvent("Successfully extracted default embedded html/ assets.")
+	return nil
+}
+
+func extractEmbeddedHTML() {
+	// If html/ exists and contains index.htm, assume disk assets are present
+	if _, err := os.Stat(filepath.Join("html", "index.htm")); err == nil {
+		return
+	}
+	_ = restoreEmbeddedPlugins(false)
 }
 
 func ensureWorkingDirectory() {
@@ -2036,6 +2042,17 @@ func main() {
 	mux.HandleFunc("/api/file/write", authMiddleware(handleFileWrite))
 	mux.HandleFunc("/api/startup/issues", authMiddleware(handleStartupIssues))
 	mux.HandleFunc("/api/startup/clear", authMiddleware(handleStartupClear))
+	mux.HandleFunc("/api/plugins/restore", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if err := restoreEmbeddedPlugins(true); err != nil {
+			jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+			return
+		}
+		jsonResponse(w, map[string]interface{}{"success": true, "message": "Successfully restored default plugins from embedded application binary."})
+	}))
 	mux.HandleFunc("/api/console/stream", authMiddleware(handleConsoleStream))
 	mux.HandleFunc("/api/dns/convert", authMiddleware(handleDNSConvert))
 	mux.HandleFunc("/api/settings/get", authMiddleware(func(w http.ResponseWriter, r *http.Request) {

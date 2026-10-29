@@ -104,6 +104,7 @@
 
         <div style="display: flex; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 1rem;">
             <button class="btn" style="background:#1f6beb;" onclick="restartAppNow()">🔄 Restart App</button>
+            <button class="btn btn-secondary" style="background:#21262d; border: 1px solid #30363d; color:#58a6ff;" onclick="restoreDefaultPlugins()">🔄 Restore Plugins from Binary</button>
             <button class="btn btn-danger" onclick="quitAppNow()">🛑 Quit App</button>
             <button class="btn btn-danger" onclick="poweroffNow()">Instant Power Off</button>
             <button class="btn btn-secondary" style="background:#d29922; color:#000;" onclick="rebootNow()">Instant Reboot</button>
@@ -315,6 +316,25 @@
                 checkBootServiceStatus();
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function restoreDefaultPlugins() {
+            if (!confirm('Are you sure you want to restore all default plugins from the embedded application binary? Custom plugin edits may be overwritten.')) return;
+            showOutput('Restoring default plugins from embedded binary...');
+            try {
+                const res = await fetch('/api/plugins/restore', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    showOutput(`Successfully restored default plugins from binary.`);
+                    if (window.parent && typeof window.parent.loadPlugins === 'function') {
+                        window.parent.loadPlugins();
+                    }
+                } else {
+                    showOutput('Failed to restore plugins: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Restore error: ' + err.message);
             }
         }
 
