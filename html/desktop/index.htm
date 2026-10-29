@@ -172,7 +172,7 @@
             </div>
 
             <!-- Opened Windows Container -->
-            <div id="windowsContainer"></div>
+            <div id="windowsContainer" style="position: absolute; inset: 0; pointer-events: none; z-index: 20;"></div>
         </div>
 
         <!-- Bottom Taskbar -->
@@ -1183,7 +1183,7 @@
         }
 
         function escapeHtml(str) {
-            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace/>/g, '&gt;').replace(/"/g, '&quot;');
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
         /* Keyboard Shortcuts */
