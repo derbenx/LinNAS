@@ -440,6 +440,7 @@
                 });
                 renderUsers();
                 renderShares();
+                await restartSMBService();
             } catch (err) {
                 showOutput('Failed to save SMB configuration: ' + err.message);
             }
