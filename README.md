@@ -1,13 +1,24 @@
 # LinNAS v1.0 - expect bugs ;)
 
-A lightweight (<15mb), high-performance web-based server management control panel for **Debian Linux** written in Golang, listening on port **8080**.
+A lightweight, high-performance web-based server management control panel for **Debian Linux** written in Golang.
+Typically used with a Debian net install ISO, bare minimum install, just SSH server and standard utilities. You can use it in a GUI based server too, but GUI and remote access is redundant with LinNAS.
 
-Featuring a modular, decoupled plugin architecture, **LinNAS** enables users to manage files, media, 3D models, Samba network shares, local drives, ISO/VHD/VeraCrypt mounts, network interfaces, firewall rules, and system telemetry—all through a clean, router-style dark interface.
+LinNAS is less than 15mb (a whole GUI install which can run into Gigs). To use it as a light OS GUI, basically you set up your spare pc to boot into LinNAs on startup and configure it on the netowrk. Then you login in to the LinNAS PC via your regular PC's browser on port 8080, similar to how you access your router; 192.168.1.10:8080 
+
+From there you have a modular, decoupled plugin architecture, that enables users to manage files, media, 3D models, Samba network shares, local drives, ISO/VHD/VeraCrypt mounts, network interfaces, firewall rules, and system telemetry—all through a clean, router-style dark interface. There is also a 'Virtual Desktop' plugin included where it can make it look like a whole OS GUI you remote in to, press f11 to go full screen for the full effect.
 
 ---
-<img width="960" height="540" alt="linnas-drives" src="https://github.com/user-attachments/assets/d31d7f1a-6427-407f-8b99-38150b0c830c" />
-<img width="960" height="540" alt="linnas-vdesktop" src="https://github.com/user-attachments/assets/1784a73c-3c94-41f2-92c9-ff2c68002463" />
+
+Packages:
 <img width="960" height="540" alt="linnas-packages" src="https://github.com/user-attachments/assets/6739eafa-181a-49fb-975a-62b7aba3c11c" />
+
+Drives:
+<img width="960" height="540" alt="linnas-drives" src="https://github.com/user-attachments/assets/d31d7f1a-6427-407f-8b99-38150b0c830c" />
+
+Virtual desktop:
+<img width="960" height="540" alt="linnas-vdesktop" src="https://github.com/user-attachments/assets/1784a73c-3c94-41f2-92c9-ff2c68002463" />
+
+File manager:
 <img width="960" height="540" alt="linnas-fm" src="https://github.com/user-attachments/assets/3f8ae981-9c37-4cd1-acf2-42d8be8e3b4d" />
 
 ---
