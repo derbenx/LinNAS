@@ -1,6 +1,6 @@
-# LinNAS v1.0
+# LinNAS v1.0 - expect bugs ;)
 
-A lightweight, high-performance web-based server management control panel for **Debian Linux** written in Golang, listening on port **8080**.
+A lightweight (<15mb), high-performance web-based server management control panel for **Debian Linux** written in Golang, listening on port **8080**.
 
 Featuring a modular, decoupled plugin architecture, **LinNAS** enables users to manage files, media, 3D models, Samba network shares, local drives, ISO/VHD/VeraCrypt mounts, network interfaces, firewall rules, and system telemetry—all through a clean, router-style dark interface.
 
