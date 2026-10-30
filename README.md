@@ -3,9 +3,9 @@
 A lightweight, high-performance web-based server management control panel for **Debian Linux** written in Golang.
 Typically used with a Debian net install ISO, bare minimum install, just SSH server and standard utilities. You can use it in a GUI based server too, but GUI and remote access is redundant with LinNAS.
 
-LinNAS is less than 15mb (a whole GUI install which can run into Gigs). To use it as a light OS GUI, basically you set up your spare pc to boot into LinNAs on startup and configure it on the netowrk. Then you login in to the LinNAS PC via your regular PC's browser on port 8080, similar to how you access your router; 192.168.1.10:8080 
+LinNAS is less than 15mb whereas a whole GUI install which can run into Gigs. To use it as a light OS GUI, basically you set up your spare pc to boot into LinNAS on startup and configure it on the network. Then you login in to the LinNAS PC via your regular PC's browser on port 8080, similar to how you access your router, using whatever IP was setup or DHCP assigned. ex; http://192.168.1.10:8080 
 
-From there you have a modular, decoupled plugin architecture, that enables users to manage files, media, 3D models, Samba network shares, local drives, ISO/VHD/VeraCrypt mounts, network interfaces, firewall rules, and system telemetry—all through a clean, router-style dark interface. There is also a 'Virtual Desktop' plugin included where it can make it look like a whole OS GUI you remote in to, press f11 to go full screen for the full effect.
+From there you have a modular, decoupled plugin architecture, that enables you to manage files, media, 3D models, Samba network shares, local drives, ISO/VHD/VeraCrypt mounts, network interfaces, firewall rules, and system telemetry—all through a clean, router-style dark interface. There is also a 'Virtual Desktop' plugin included where it can make it look like a whole desktop GUI you remote in to, press f11 to go full screen for the full effect. The virtual desktop lets you open file browser windows to access your files, play audio, video, open 3D files.. etc.
 
 ---
 
