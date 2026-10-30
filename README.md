@@ -5,7 +5,12 @@ A lightweight (<15mb), high-performance web-based server management control pane
 Featuring a modular, decoupled plugin architecture, **LinNAS** enables users to manage files, media, 3D models, Samba network shares, local drives, ISO/VHD/VeraCrypt mounts, network interfaces, firewall rules, and system telemetry—all through a clean, router-style dark interface.
 
 ---
+<img width="960" height="540" alt="linnas-drives" src="https://github.com/user-attachments/assets/d31d7f1a-6427-407f-8b99-38150b0c830c" />
+<img width="960" height="540" alt="linnas-vdesktop" src="https://github.com/user-attachments/assets/1784a73c-3c94-41f2-92c9-ff2c68002463" />
+<img width="960" height="540" alt="linnas-packages" src="https://github.com/user-attachments/assets/6739eafa-181a-49fb-975a-62b7aba3c11c" />
+<img width="960" height="540" alt="linnas-fm" src="https://github.com/user-attachments/assets/3f8ae981-9c37-4cd1-acf2-42d8be8e3b4d" />
 
+---
 ## 🌟 Key Features
 
 - **Golang Core Web Server**: Runs on port `8080` with minimal memory footprint and zero external binary dependencies.
