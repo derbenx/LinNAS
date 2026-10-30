@@ -1,0 +1,19 @@
+2026/10/27 02:21:41 Starting Debian Server Manager on http://localhost:8080 (Running as Root: false)
+2026/10/27 02:22:24 [EXEC] Plugin: status, CmdKey: sys_info_cmd, Cmd: echo '===HOST==='; hostname; uname -r; echo '===CPU==='; lscpu | grep -E 'Model name|CPU\(s\):'; echo '===LOAD==='; cat /proc/loadavg; echo '===MEM==='; free -m; echo '===UPTIME==='; uptime; echo '===NET==='; ip -brief addr
+2026/10/27 02:22:50 [EXEC] Plugin: status, CmdKey: disk_space_cmd, Cmd: df -h -x tmpfs -x devtmpfs -x squashfs
+2026/10/27 02:23:26 [EXEC] Plugin: status, CmdKey: sys_info_cmd, Cmd: echo '===HOST==='; hostname; uname -r; echo '===CPU==='; lscpu | grep -E 'Model name|CPU\(s\):'; echo '===LOAD==='; cat /proc/loadavg; echo '===MEM==='; free -m; echo '===UPTIME==='; uptime; echo '===NET==='; ip -brief addr
+2026/10/27 02:23:26 [EXEC] Plugin: status, CmdKey: disk_space_cmd, Cmd: df -h -x tmpfs -x devtmpfs -x squashfs
+2026/10/27 02:23:26 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/sda
+2026/10/27 02:23:26 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/sdd
+2026/10/27 02:23:26 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/sde
+2026/10/27 02:23:26 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/sdc
+2026/10/27 02:23:26 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/sdb
+2026/10/27 02:23:26 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/nvme0n1
+2026/10/27 02:24:53 [EXEC] Plugin: status, CmdKey: sys_info_cmd, Cmd: echo '===HOST==='; hostname; uname -r; echo '===CPU==='; lscpu | grep -E 'Model name|CPU\(s\):'; echo '===LOAD==='; cat /proc/loadavg; echo '===MEM==='; free -m; echo '===UPTIME==='; uptime; echo '===NET==='; ip -brief addr
+2026/10/27 02:24:53 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/sda
+2026/10/27 02:24:53 [EXEC] Plugin: status, CmdKey: disk_space_cmd, Cmd: df -h -x tmpfs -x devtmpfs -x squashfs
+2026/10/27 02:24:53 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/sdb
+2026/10/27 02:24:53 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/sdd
+2026/10/27 02:24:53 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/sdc
+2026/10/27 02:24:53 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/sde
+2026/10/27 02:24:53 [EXEC-SUDO] Plugin: status, CmdKey: smart_health_sudo, Cmd: smartctl -H /dev/nvme0n1

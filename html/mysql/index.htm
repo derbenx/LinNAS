@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MySQL / MariaDB Config</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus { border-color: #58a6ff; outline: none; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <h2>MySQL Database</h2>
+    <p class="subtitle">Create database user credentials, configure listening settings, and access the SQL Web Client interface.</p>
+
+    <!-- Section 1: SQL Web Client Launcher -->
+    <div class="section">
+        <div class="section-title">SQL Web Management Interface</div>
+        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Open the Web SQL Manager (phpMyAdmin / Web Admin) in a new browser tab:</p>
+        <button class="btn btn-secondary" onclick="openSqlWebClient()">🌐 Open SQL Web Config Console</button>
+    </div>
+
+    <!-- Section 2: Create DB User -->
+    <div class="section">
+        <div class="section-title">Create Database User</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Database Username</label>
+                <input type="text" id="dbUser" placeholder="dbuser">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="dbPass" placeholder="••••••••">
+            </div>
+        </div>
+        <button class="btn" onclick="createDbUser()">Create Database User</button>
+        <button class="btn btn-secondary" style="margin-left: 0.5rem;" onclick="restartMysql()">Restart Database Service</button>
+    </div>
+
+    <div id="outputBox" class="output-box"></div>
+
+    <script>
+        function openSqlWebClient() {
+            window.open(`http://${window.location.hostname}/phpmyadmin/`, '_blank');
+        }
+
+        async function createDbUser() {
+            const username = document.getElementById('dbUser').value.trim();
+            const password = document.getElementById('dbPass').value;
+
+            if (!username || !password) {
+                showOutput('Please provide both Username and Password.');
+                return;
+            }
+
+            showOutput(`Creating database user '${username}'...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'mysql',
+                        cmd_key: 'create_db_user_sudo',
+                        args: { username: username, password: password }
+                    })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('dbPass').value = '';
+                    showOutput(`Successfully created database user '${username}'.\n` + data.output);
+                } else {
+                    showOutput(`Failed to create database user: ${data.error}\n${data.output}`);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function restartMysql() {
+            showOutput('Restarting MySQL / MariaDB daemon service...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'mysql',
+                        cmd_key: 'restart_mysql_sudo',
+                        args: {}
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? 'Database service restarted successfully.\n' + data.output : 'Restart failed: ' + data.error);
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            const box = document.getElementById('outputBox');
+            box.style.display = 'block';
+            box.innerText = text;
+        }
+    </script>
+</body>
+</html>

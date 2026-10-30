@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Physical Drives - LinNAS</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #b62324; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
+        th { color: #8b949e; font-weight: 600; background: #1f242d; }
+
+        tr.disk-parent-row td {
+            padding: 0.3rem 0.75rem;
+            background: #11151c;
+            color: #8b949e;
+            font-size: 0.8rem;
+            border-bottom: 1px solid #21262d;
+        }
+
+        .sticky-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 2px solid #58a6ff;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+        }
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #58a6ff;
+            font-size: 0.95rem;
+        }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>Physical Drives</h2>
+    <p class="subtitle">Detect physical storage devices, mount partitions into your server filesystem, and configure persistent boot entries in <code>/etc/fstab</code>.</p>
+
+    <div class="section">
+        <div class="section-title">
+            <span>Physical Disk Devices & Partitions</span>
+            <button class="btn btn-secondary" onclick="loadDriveList()">🔄 Refresh Drives List</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Device</th>
+                    <th>Type</th>
+                    <th>FileSystem</th>
+                    <th>Label / Volume ID</th>
+                    <th>Size</th>
+                    <th>UUID</th>
+                    <th>Mount Point</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="drivesTableBody">
+                <tr><td colspan="8" style="text-align: center; color: #8b949e;">Detecting storage devices...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-danger" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
+
+    <script>
+        async function loadDriveList() {
+            const tbody = document.getElementById('drivesTableBody');
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #8b949e;">Scanning disks...</td></tr>';
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'drives', cmd_key: 'list_drives_cmd', args: {} })
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    tbody.innerHTML = `<tr><td colspan="8" style="color:#f85149;">Failed to scan disks: ${data.error}</td></tr>`;
+                    return;
+                }
+
+                const parsed = JSON.parse(data.output);
+                tbody.innerHTML = '';
+
+                if (!parsed.blockdevices || parsed.blockdevices.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #8b949e;">No block devices found.</td></tr>';
+                    return;
+                }
+
+                parsed.blockdevices.forEach(dev => {
+                    renderDeviceRow(dev, tbody, '');
+                });
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="8" style="color:#f85149;">Error scanning drives: ${err.message}</td></tr>`;
+            }
+        }
+
+        function renderDeviceRow(dev, tbody, indent) {
+            const tr = document.createElement('tr');
+            const devName = dev.name ? '/dev/' + dev.name : '-';
+            const hasChildren = dev.children && dev.children.length > 0;
+            const type = dev.type || '-';
+
+            const isParentDisk = (type === 'disk' && hasChildren);
+            const isExtendedContainer = hasChildren && type === 'part';
+            const isSwap = dev.fstype === 'swap';
+
+            let fstype = dev.fstype || '-';
+            let mount = dev.mountpoint || dev.mountpoints?.join(', ') || '-';
+
+            if (isParentDisk) {
+                tr.className = 'disk-parent-row';
+                fstype = '-';
+                mount = '';
+            } else if (isExtendedContainer) {
+                fstype = 'Extended Container';
+                mount = '';
+            } else if (isSwap) {
+                mount = '[SWAP]';
+            }
+
+            const label = dev.label || '-';
+            const uuid = dev.uuid || '';
+            const size = dev.size || '-';
+            const isTinyContainer = (size === '1K' || size === '0B' || size === '1024');
+
+            let actionBtn = '';
+            if (!isParentDisk && !isExtendedContainer && !isSwap && !isTinyContainer) {
+                if (dev.type === 'part' || (dev.type === 'disk' && !hasChildren)) {
+                    if (dev.mountpoint) {
+                        actionBtn = `<button class="btn btn-danger" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="unmountPartition('${dev.mountpoint}', '${uuid}')">Unmount</button>`;
+                    } else {
+                        const cleanName = dev.label ? dev.label.replace(/[^a-zA-Z0-9_]/g, '_') : dev.name;
+                        actionBtn = `<button class="btn" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="mountPartitionPrompt('${devName}', '${cleanName}', '${uuid}', '${fstype}')">Mount</button>`;
+                    }
+                }
+            }
+
+            const mountDisplay = (mount && mount !== '-') ? `<span style="color:#7ee787;">${mount}</span>` : (isParentDisk || isExtendedContainer ? '' : 'Unmounted');
+
+            tr.innerHTML = `
+                <td><strong>${indent}${devName}</strong></td>
+                <td>${type}</td>
+                <td>${fstype}</td>
+                <td><strong style="color: #58a6ff;">${label}</strong></td>
+                <td>${size}</td>
+                <td><small style="color: #8b949e; font-family: monospace;">${uuid || 'N/A'}</small></td>
+                <td>${mountDisplay}</td>
+                <td>${actionBtn}</td>
+            `;
+            tbody.appendChild(tr);
+
+            if (hasChildren) {
+                dev.children.forEach(child => renderDeviceRow(child, tbody, '└─ '));
+            }
+        }
+
+        async function mountPartitionPrompt(device, defaultName, uuid, fstype) {
+            const defaultPath = `/mnt/${defaultName || device.replace('/dev/', '')}`;
+            const target = prompt(`Enter target mount point folder for ${device}:`, defaultPath);
+            if (!target) return;
+
+            const autoFstab = confirm(`Auto-mount this drive at server boot via UUID in /etc/fstab?\n\nUUID: ${uuid || 'N/A'}\nMount Point: ${target}`);
+
+            showOutput(`Mounting ${device} to ${target}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drives',
+                        cmd_key: 'mount_disk_sudo',
+                        args: { device, mountpoint: target }
+                    })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    let msg = `Successfully mounted ${device} to ${target}`;
+                    if (autoFstab && uuid) {
+                        await fetch('/api/plugin/exec', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                plugin: 'drives',
+                                cmd_key: 'fstab_add_sudo',
+                                args: { uuid, mountpoint: target, fstype: fstype || 'auto' }
+                            })
+                        });
+                        msg += ` and added boot entry to /etc/fstab (UUID=${uuid}).`;
+                    }
+                    showOutput(msg);
+                } else {
+                    showOutput(`Mount error: ${data.error}\n${data.output}`);
+                }
+                loadDriveList();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function unmountPartition(mountpoint, uuid) {
+            showOutput(`Unmounting ${mountpoint}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drives',
+                        cmd_key: 'unmount_disk_sudo',
+                        args: { mountpoint }
+                    })
+                });
+                const data = await res.json();
+                const outStr = (data.output || '') + ' ' + (data.error || '');
+                const isNotMounted = outStr.toLowerCase().includes('not mounted') || outStr.toLowerCase().includes('no such file') || outStr.toLowerCase().includes('not found') || outStr.toLowerCase().includes('not target');
+
+                if (data.success || isNotMounted) {
+                    if (uuid) {
+                        await fetch('/api/plugin/exec', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                plugin: 'drives',
+                                cmd_key: 'fstab_remove_sudo',
+                                args: { uuid }
+                            })
+                        });
+                    }
+                    showOutput(`Unmounted / removed ${mountpoint} and cleaned /etc/fstab.`);
+                } else {
+                    showOutput(`Unmount error: ${data.error}\n${data.output}`);
+                }
+                loadDriveList();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
+            const box = document.getElementById('outputBox');
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        window.onload = loadDriveList;
+    </script>
+</body>
+</html>

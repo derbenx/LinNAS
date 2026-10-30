@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DNS & AdBlock Config</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .install-card { background: #161b22; border: 1px solid #d29922; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; display: none; }
+        .install-title { font-size: 1.1rem; font-weight: bold; color: #f2cc60; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 8px; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+
+        .status-badge { padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+        .status-running { background: #238636; color: #fff; }
+        .status-stopped { background: #da3633; color: #fff; }
+        .status-missing { background: #d29922; color: #000; }
+        .status-unknown { background: #6e7681; color: #fff; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input, .form-group textarea { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus, .form-group textarea:focus { border-color: #58a6ff; outline: none; }
+
+        textarea { height: 160px; font-family: monospace; resize: vertical; }
+
+        .btn-row { display: flex; gap: 0.8rem; margin-top: 1rem; flex-wrap: wrap; }
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+
+        /* Floating Bottom Console Drawer */
+        .sticky-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 2px solid #58a6ff;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+        }
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #58a6ff;
+            font-size: 0.95rem;
+        }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>DNS & AdBlock</h2>
+    <p class="subtitle">Configure upstream DNS resolvers and import network-wide AdBlock domain blocklists.</p>
+
+    <!-- Missing Software Prompt (Debian Netinstall) -->
+    <div id="installPromptCard" class="install-card">
+        <div class="install-title">
+            <span>⚠️ Package 'dnsmasq' Not Installed</span>
+        </div>
+        <p style="color: #c9d1d9; font-size: 0.9rem; margin-bottom: 1rem;">
+            Debian netinstall minimal installations do not include the <code>dnsmasq</code> DNS service package by default. Click the button below to install <code>dnsmasq</code> via APT.
+        </p>
+        <button class="btn" onclick="installDnsmasqPackage()">Install dnsmasq Package via APT</button>
+    </div>
+
+    <!-- Status Overview -->
+    <div class="section">
+        <div class="section-title">
+            <span>Service Status</span>
+            <span id="serviceBadge" class="status-badge status-unknown">Checking Status...</span>
+        </div>
+        <p id="statusDesc" style="font-size: 0.9rem; color: #8b949e;">Querying system service state...</p>
+    </div>
+
+    <!-- Upstream Forwarders -->
+    <div class="section">
+        <div class="section-title">Upstream DNS Forwarding</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Primary Upstream DNS IP</label>
+                <input type="text" id="primaryDns" value="1.1.1.1">
+            </div>
+            <div class="form-group">
+                <label>Secondary Upstream DNS IP</label>
+                <input type="text" id="secondaryDns" value="8.8.8.8">
+            </div>
+        </div>
+    </div>
+
+    <!-- AdBlock Converter & Domain Rules -->
+    <div class="section">
+        <div class="section-title">AdBlock List Importer & Domain Rules</div>
+        <div class="form-group">
+            <label>Raw AdBlock Input (Paste Hosts file, AdBlock ||domain^ rules, or raw domain lists):</label>
+            <textarea id="rawInput" placeholder="0.0.0.0 ads.example.com&#10;||tracker.doubleclick.net^&#10;analytics.telemetry.io"></textarea>
+        </div>
+        <div class="btn-row">
+            <button class="btn btn-secondary" onclick="convertList()">Convert to dnsmasq Rules</button>
+        </div>
+
+        <br>
+        <div class="form-group">
+            <label>Converted dnsmasq Rules:</label>
+            <textarea id="blockRules" placeholder="address=/ads.example.com/0.0.0.0"></textarea>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn" onclick="saveDNSConfig()">Save & Apply DNS Rules</button>
+            <button class="btn btn-secondary" onclick="restartService()">Apply & Restart DNS Service</button>
+            <button class="btn btn-secondary" onclick="checkServiceStatus()">Refresh Status</button>
+        </div>
+    </div>
+
+    <!-- Floating Output Console Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-danger" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
+
+    <script>
+        async function loadDNSConfig() {
+            try {
+                const res = await fetch('/api/plugin/data?plugin=dns');
+                const data = await res.json();
+
+                document.getElementById('primaryDns').value = data.primary_dns || '1.1.1.1';
+                document.getElementById('secondaryDns').value = data.secondary_dns || '8.8.8.8';
+                document.getElementById('blockRules').value = data.block_rules || '';
+
+                await checkServiceStatus();
+            } catch (err) {
+                showOutput('Failed to load DNS settings: ' + err.message);
+            }
+        }
+
+        async function checkServiceStatus() {
+            const badge = document.getElementById('serviceBadge');
+            const statusDesc = document.getElementById('statusDesc');
+            const promptCard = document.getElementById('installPromptCard');
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'dns',
+                        cmd_key: 'status_dns_cmd',
+                        args: {}
+                    })
+                });
+
+                const data = await res.json();
+                const output = data.output || '';
+
+                if (output.includes('could not be found') || output.includes('not-found') || output.includes('no such file')) {
+                    badge.innerText = 'Package Not Installed';
+                    badge.className = 'status-badge status-missing';
+                    statusDesc.innerText = 'The dnsmasq service package is not installed on this server.';
+                    promptCard.style.display = 'block';
+                    showOutput('dnsmasq service unit is missing. Click "Install dnsmasq Package via APT" to install it.');
+                } else if (data.success || output.includes('active (running)')) {
+                    promptCard.style.display = 'none';
+                    badge.innerText = 'Service Running';
+                    badge.className = 'status-badge status-running';
+                    statusDesc.innerText = 'DNS server (dnsmasq) is currently active and forwarding domain queries.';
+                } else {
+                    promptCard.style.display = 'none';
+                    badge.innerText = 'Service Stopped';
+                    badge.className = 'status-badge status-stopped';
+                    statusDesc.innerText = 'DNS server (dnsmasq) is installed but currently stopped.';
+                    if (output) {
+                        showOutput('DNS Service Logs / Status Output:\n' + output);
+                    }
+                }
+            } catch (err) {
+                badge.innerText = 'Status Error';
+                badge.className = 'status-badge status-stopped';
+                statusDesc.innerText = 'Error querying DNS status: ' + err.message;
+            }
+        }
+
+        async function installDnsmasqPackage() {
+            showOutput('Installing dnsmasq package via APT... Please wait...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'dns', cmd_key: 'install_sudo', args: {} })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    showOutput('dnsmasq installed successfully!\n' + data.output);
+                    document.getElementById('installPromptCard').style.display = 'none';
+                    if (window.parent) {
+                        window.parent.postMessage('reload_plugins', '*');
+                    }
+                    await checkServiceStatus();
+                } else {
+                    showOutput('Package installation failed: ' + data.error + '\n' + data.output);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function convertList() {
+            const input = document.getElementById('rawInput').value;
+            if (!input.trim()) {
+                showOutput('Please paste raw blocklist content to convert.');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/dns/convert', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: input
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('blockRules').value = data.result;
+                    showOutput(`Successfully converted ${data.count} domain rules.`);
+                } else {
+                    showOutput('Conversion failed.');
+                }
+            } catch (err) {
+                showOutput('Conversion error: ' + err.message);
+            }
+        }
+
+        async function saveDNSConfig() {
+            const config = {
+                primary_dns: document.getElementById('primaryDns').value.trim(),
+                secondary_dns: document.getElementById('secondaryDns').value.trim(),
+                block_rules: document.getElementById('blockRules').value.trim()
+            };
+
+            try {
+                const res = await fetch('/api/plugin/data?plugin=dns', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showOutput('DNS configuration saved and written to /etc/dnsmasq.d/99-server-manager-dns.conf.');
+                    await restartService();
+                } else {
+                    showOutput('Failed to save DNS config.');
+                }
+            } catch (err) {
+                showOutput('Save error: ' + err.message);
+            }
+        }
+
+        async function restartService() {
+            showOutput('Restarting dnsmasq service...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'dns', cmd_key: 'restart_dns_sudo', args: {} })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    showOutput('DNS service restarted successfully.\n' + data.output);
+                } else {
+                    showOutput('Service restart error: ' + data.error + '\n' + data.output);
+                }
+                await checkServiceStatus();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
+            const box = document.getElementById('outputBox');
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        window.onload = loadDNSConfig;
+    </script>
+</body>
+</html>

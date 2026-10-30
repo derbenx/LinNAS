@@ -1,0 +1,7 @@
+{
+  "id": "console",
+  "name": "Terminal Console",
+  "description": "Execute shell commands with real-time streaming output directly from the web browser",
+  "category": "System",
+  "default": true
+}

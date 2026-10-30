@@ -1,0 +1,7 @@
+{
+  "id": "desktop",
+  "name": "Virtual Desktop",
+  "description": "OS-like virtual desktop interface combining multi-window file management, media tools, drag-and-drop file transfers, and window management",
+  "category": "Tools",
+  "default": true
+}

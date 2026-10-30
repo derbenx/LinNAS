@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinNAS</title>
+    <script src="/js/crypto.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { display: flex; height: 100vh; background: #0d1117; color: #c9d1d9; overflow: hidden; }
+
+        /* Sidebar Styling */
+        #sidebar { width: 260px; min-width: 60px; max-width: 500px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; position: relative; }
+        #sidebar.is-resizing { transition: none !important; }
+        #sidebar.collapsed { width: 60px !important; min-width: 60px !important; }
+        #sidebar.collapsed .sidebar-title-text,
+        #sidebar.collapsed .plugin-category,
+        #sidebar.collapsed .user-status span,
+        #sidebar.collapsed .nav-item span.nav-text { display: none !important; }
+        #sidebar.collapsed .nav-item { justify-content: center; padding: 0.6rem 0; }
+        #sidebar.collapsed .sidebar-header { justify-content: center; padding: 0.8rem 0; }
+        #sidebar.collapsed #rootBadge { display: none; }
+
+        .sidebar-header { padding: 1rem 1.2rem; font-size: 1.1rem; font-weight: bold; color: #58a6ff; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; white-space: nowrap; overflow: hidden; }
+        .collapse-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 0.2rem 0.5rem; cursor: pointer; font-size: 0.75rem; }
+        .collapse-btn:hover { background: #30363d; color: #fff; }
+
+        .resizer { width: 6px; background: transparent; position: absolute; right: -3px; top: 0; bottom: 0; cursor: col-resize; z-index: 100; transition: background 0.2s; }
+        .resizer:hover, .resizer.resizing { background: #58a6ff; }
+
+        .plugin-category { padding: 0.5rem 1rem 0.15rem 1rem; font-size: 0.72rem; font-weight: bold; text-transform: uppercase; color: #8b949e; letter-spacing: 0.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nav-list { list-style: none; overflow-y: auto; flex: 1; }
+        .nav-item { padding: 0.45rem 1.2rem; cursor: pointer; color: #c9d1d9; font-size: 0.95rem; display: flex; align-items: center; gap: 10px; border-left: 3px solid transparent; transition: all 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .nav-icon { flex-shrink: 0; font-size: 1.05rem; display: inline-block; }
+        .nav-item:hover { background: #1f242d; color: #fff; }
+        .nav-item.active { background: #1f242d; color: #58a6ff; border-left-color: #58a6ff; font-weight: 600; }
+
+        .bright-green-btn { padding: 0.5rem 1rem; background: #238636; color: white; border: 1px solid #2ea043; border-radius: 6px; font-weight: bold; cursor: pointer; text-decoration: none; font-size: 0.85rem; box-shadow: 0 0 8px rgba(46,160,67,0.4); }
+        .bright-green-btn:hover { background: #2ea043; }
+
+        .user-status { padding: 0.8rem; border-top: 1px solid #30363d; font-size: 0.8rem; color: #8b949e; display: flex; justify-content: space-between; align-items: center; background: #0d1117; flex-wrap: wrap; gap: 0.5rem; overflow: hidden; }
+        .logout-btn { color: #f85149; cursor: pointer; border: none; background: none; font-size: 0.8rem; font-weight: bold; }
+        .pass-btn { color: #58a6ff; cursor: pointer; border: none; background: none; font-size: 0.8rem; font-weight: bold; display: none; }
+
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 200; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 90%; max-width: 400px; margin: 15% auto; padding: 1.5rem; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; }
+        .btn:hover { background: #2ea043; }
+
+        /* Main Content Frame */
+        #content-area { flex: 1; display: flex; flex-direction: column; background: #0d1117; position: relative; }
+        #plugin-frame { width: 100%; height: 100%; border: none; }
+
+        /* Global Persistent Audio Player Bar */
+        #globalAudioBar {
+            display: none;
+            background: #161b22;
+            border-top: 1px solid #30363d;
+            padding: 0.6rem 1.2rem;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            z-index: 150;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.5);
+        }
+        .global-audio-info { display: flex; align-items: center; gap: 10px; max-width: 35%; min-width: 0; }
+        .global-audio-title { font-size: 0.85rem; font-weight: bold; color: #58a6ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .global-audio-controls { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: center; }
+        .global-audio-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 0.3rem 0.6rem; cursor: pointer; font-size: 0.8rem; }
+        .global-audio-btn:hover { background: #30363d; color: #fff; }
+        .global-audio-scrubber { flex: 1; max-width: 250px; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #8b949e; font-family: monospace; }
+        .global-audio-scrubber input[type=range] { flex: 1; accent-color: #238636; cursor: pointer; }
+
+        .badge-root { background: #238636; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
+        .badge-user { background: #d29922; color: black; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <span class="sidebar-title-text">LinNAS</span>
+            <span id="rootBadge" class="badge-user">User</span>
+            <button class="collapse-btn" id="collapseBtn" onclick="toggleSidebarCollapse()" title="Collapse / Expand Sidebar">◀</button>
+        </div>
+        <div id="navList" class="nav-list"></div>
+        <div class="user-status">
+            <span id="userInfo">Logged In</span>
+            <div>
+                <button id="authBtn" class="logout-btn" onclick="toggleAuth()">Logout</button>
+            </div>
+        </div>
+        <div class="resizer" id="sidebarResizer"></div>
+    </div>
+
+    <div id="content-area">
+        <iframe id="plugin-frame" src="/status/index.htm" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true"></iframe>
+
+        <!-- Persistent Global Audio Bar -->
+        <div id="globalAudioBar">
+            <div class="global-audio-info">
+                <span>🎵</span>
+                <span id="globalAudioTitle" class="global-audio-title">No Audio Playing</span>
+            </div>
+            <div class="global-audio-controls">
+                <button class="global-audio-btn" onclick="globalAudioPrev()">◀◀</button>
+                <button id="globalAudioPlayBtn" class="global-audio-btn" onclick="toggleGlobalAudioPlay()">▶</button>
+                <button class="global-audio-btn" onclick="globalAudioNext()">▶▶</button>
+                <div class="global-audio-scrubber">
+                    <span id="globalAudioCurrentTime">00:00</span>
+                    <input type="range" id="globalAudioSeeker" value="0" min="0" max="100" oninput="seekGlobalAudio(this.value)">
+                    <span id="globalAudioDuration">00:00</span>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button class="global-audio-btn" onclick="openGlobalAudioPlayerPlugin()">🔊 Open Player</button>
+                <button class="global-audio-btn" style="color: #f85149;" onclick="closeGlobalAudioBar()">✕</button>
+            </div>
+        </div>
+        <audio id="globalAudioPlayer" style="display: none;"></audio>
+    </div>
+
+    <!-- Startup Debug Log Popover Modal -->
+    <div id="startupIssuesModal" class="modal">
+        <div class="modal-content" style="max-width: 680px;">
+            <div class="modal-header">
+                <span>⚠️ Startup & Autostart Debug Log</span>
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeStartupIssuesModal()">✕</button>
+            </div>
+            <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 0.8rem;">
+                The following diagnostic events were recorded during server startup / autostart boot:
+            </p>
+            <textarea id="startupLogTextarea" readonly style="width: 100%; height: 220px; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #7ee787; font-family: monospace; font-size: 0.85rem; padding: 0.8rem; outline: none; margin-bottom: 1rem; resize: vertical;"></textarea>
+            <div style="display: flex; gap: 0.8rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="clearStartupIssuesLog()">Clear Logs</button>
+                <button class="btn" onclick="closeStartupIssuesModal()">Dismiss</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let installedPlugins = [];
+        let isLoggedIn = false;
+
+        async function checkAuth() {
+            try {
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+                isLoggedIn = data.logged_in || !data.auth_enabled;
+
+                const badge = document.getElementById('rootBadge');
+                const authBtn = document.getElementById('authBtn');
+                const userInfo = document.getElementById('userInfo');
+
+                const passBtn = document.getElementById('changePassBtn');
+                if (isLoggedIn) {
+                    badge.innerText = data.is_root ? 'Root Mode' : 'Sudo / User';
+                    badge.className = data.is_root ? 'badge-root' : 'badge-user';
+                    userInfo.innerText = 'Authenticated';
+                    authBtn.innerText = 'Logout';
+                    authBtn.className = 'logout-btn';
+                    if (passBtn) passBtn.style.display = 'inline';
+                } else {
+                    badge.innerText = 'Public View';
+                    badge.className = 'badge-user';
+                    userInfo.innerText = 'Read-Only Mode';
+                    authBtn.innerText = '🔑 Login';
+                    authBtn.className = 'bright-green-btn';
+                    if (passBtn) passBtn.style.display = 'none';
+                }
+                renderNavigation();
+            } catch (err) {
+                console.error('Auth check error:', err);
+            }
+        }
+
+        async function loadPlugins() {
+            try {
+                const res = await fetch('/api/plugins');
+                installedPlugins = await res.json();
+                renderNavigation();
+            } catch (err) {
+                console.error('Failed to load plugins:', err);
+            }
+        }
+
+        window.loadPlugins = loadPlugins;
+
+        window.addEventListener('message', function(event) {
+            if (event.data === 'reload_plugins') {
+                loadPlugins();
+            } else if (typeof event.data === 'string' && event.data.startsWith('open_plugin:')) {
+                const pluginId = event.data.split(':')[1];
+                openPlugin(pluginId);
+            }
+        });
+
+        function renderNavigation() {
+            const nav = document.getElementById('navList');
+            nav.innerHTML = '';
+
+            const activeItem = document.querySelector('.nav-item.active')?.dataset?.id || 'status';
+
+            // Add Default System Status & Overview
+            const statusItem = document.createElement('div');
+            statusItem.className = `nav-item ${activeItem === 'status' ? 'active' : ''}`;
+            statusItem.dataset.id = 'status';
+            statusItem.title = 'Server Status & Health';
+            statusItem.innerHTML = '<span class="nav-icon">🖥️</span> <span class="nav-text">Server Status & Health</span>';
+            statusItem.onclick = () => openPlugin('status', statusItem);
+            nav.appendChild(statusItem);
+
+            // When logged out, only show the Server Status option in sidebar
+            if (!isLoggedIn) {
+                return;
+            }
+
+            // Group Plugins by Category
+            const categories = {};
+            installedPlugins.forEach(p => {
+                if (p.id === 'status') return; // Handled at top
+                if (p.enabled !== false && (p.default || p.installed)) {
+                    const cat = p.category || 'Tools';
+                    if (!categories[cat]) categories[cat] = [];
+                    categories[cat].push(p);
+                }
+            });
+
+            const categoryOrder = ['System', 'Tools', 'Network', 'Storage'];
+            const sortedCategories = Object.keys(categories).sort((a, b) => {
+                let idxA = categoryOrder.indexOf(a);
+                let idxB = categoryOrder.indexOf(b);
+                if (idxA === -1) idxA = 99;
+                if (idxB === -1) idxB = 99;
+                return idxA - idxB;
+            });
+
+            for (const catName of sortedCategories) {
+                const plugins = categories[catName];
+                const catHeader = document.createElement('div');
+                catHeader.className = 'plugin-category';
+                catHeader.innerText = catName;
+                nav.appendChild(catHeader);
+
+                plugins.forEach(p => {
+                    const item = document.createElement('div');
+                    item.className = `nav-item ${activeItem === p.id ? 'active' : ''}`;
+                    item.dataset.id = p.id;
+                    item.title = p.name;
+                    item.innerHTML = `<span class="nav-icon">${getPluginIcon(p.id)}</span> <span class="nav-text">${p.name}</span>`;
+                    item.onclick = () => openPlugin(p.id, item);
+                    nav.appendChild(item);
+                });
+            }
+        }
+
+        /* Sidebar Collapse and Resizing Logic */
+        let isSidebarCollapsed = false;
+        let lastSidebarWidth = 260;
+
+        function toggleSidebarCollapse() {
+            const sidebar = document.getElementById('sidebar');
+            const collapseBtn = document.getElementById('collapseBtn');
+            isSidebarCollapsed = !isSidebarCollapsed;
+
+            if (isSidebarCollapsed) {
+                lastSidebarWidth = sidebar.offsetWidth > 100 ? sidebar.offsetWidth : 260;
+                sidebar.classList.add('collapsed');
+                collapseBtn.innerText = '▶';
+            } else {
+                sidebar.classList.remove('collapsed');
+                sidebar.style.width = lastSidebarWidth + 'px';
+                collapseBtn.innerText = '◀';
+            }
+        }
+
+        function initSidebarResizer() {
+            const sidebar = document.getElementById('sidebar');
+            const resizer = document.getElementById('sidebarResizer');
+            const collapseBtn = document.getElementById('collapseBtn');
+            const frame = document.getElementById('plugin-frame');
+            let isResizing = false;
+
+            resizer.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                isResizing = true;
+                sidebar.classList.add('is-resizing');
+                resizer.classList.add('resizing');
+                if (frame) frame.style.pointerEvents = 'none';
+                document.body.style.cursor = 'col-resize';
+                document.body.style.userSelect = 'none';
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (!isResizing) return;
+                let newWidth = e.clientX;
+                if (newWidth < 100) {
+                    if (!isSidebarCollapsed) {
+                        isSidebarCollapsed = true;
+                        sidebar.classList.add('collapsed');
+                        collapseBtn.innerText = '▶';
+                    }
+                    sidebar.style.width = '60px';
+                } else if (newWidth <= 500) {
+                    if (isSidebarCollapsed) {
+                        isSidebarCollapsed = false;
+                        sidebar.classList.remove('collapsed');
+                        collapseBtn.innerText = '◀';
+                    }
+                    sidebar.style.width = newWidth + 'px';
+                    lastSidebarWidth = newWidth;
+                }
+            });
+
+            window.addEventListener('mouseup', () => {
+                if (isResizing) {
+                    isResizing = false;
+                    sidebar.classList.remove('is-resizing');
+                    resizer.classList.remove('resizing');
+                    if (frame) frame.style.pointerEvents = 'auto';
+                    document.body.style.cursor = '';
+                    document.body.style.userSelect = '';
+                }
+            });
+        }
+
+        function getPluginIcon(id) {
+            const icons = {
+                'status': '🖥️',
+                'desktop': '🖥️',
+                'apt': '📦',
+                'smb': '📁',
+                'veracrypt': '🔒',
+                'drive_mount': '💾',
+                'dns': '🛡️',
+                'dhcp': '🌐',
+                'lan': '🔌',
+                'wifi': '📶',
+                'filemanager': '📂',
+                'audioplayer': '🎵',
+                'imageviewer': '🖼️',
+                'videoplayer': '🎬',
+                'modelviewer': '🧊',
+                'editor': '📝',
+                'ping': '📡',
+                'apache': '🌐',
+                'mysql': '🗄️',
+                'php': '🐘'
+            };
+            return icons[id] || '⚙️';
+        }
+
+        /* Global Persistent Audio Engine */
+        let globalPlaylist = [];
+        let globalPlaylistIndex = -1;
+        let globalAudioCurrentDir = '';
+
+        function playGlobalAudioQueue(playlist, startIndex, dirPath) {
+            if (!playlist || playlist.length === 0) return;
+            globalPlaylist = playlist;
+            globalPlaylistIndex = startIndex || 0;
+            if (dirPath) globalAudioCurrentDir = dirPath;
+            loadAndPlayGlobalTrack();
+        }
+
+        window.playGlobalAudioQueue = playGlobalAudioQueue;
+
+        function loadAndPlayGlobalTrack() {
+            if (globalPlaylistIndex < 0 || globalPlaylistIndex >= globalPlaylist.length) return;
+            const track = globalPlaylist[globalPlaylistIndex];
+            const player = document.getElementById('globalAudioPlayer');
+            const bar = document.getElementById('globalAudioBar');
+            const titleEl = document.getElementById('globalAudioTitle');
+
+            player.src = `/api/fs/raw?path=${encodeURIComponent(track.path)}`;
+            titleEl.innerText = track.name || track.path.split('/').pop();
+            bar.style.display = 'flex';
+
+            player.play().then(() => {
+                document.getElementById('globalAudioPlayBtn').innerText = '⏸';
+            }).catch(() => {
+                document.getElementById('globalAudioPlayBtn').innerText = '▶';
+            });
+        }
+
+        function toggleGlobalAudioPlay() {
+            const player = document.getElementById('globalAudioPlayer');
+            const btn = document.getElementById('globalAudioPlayBtn');
+            if (player.paused) {
+                player.play();
+                btn.innerText = '⏸';
+            } else {
+                player.pause();
+                btn.innerText = '▶';
+            }
+        }
+
+        function globalAudioPrev() {
+            if (globalPlaylist.length === 0) return;
+            globalPlaylistIndex = (globalPlaylistIndex - 1 + globalPlaylist.length) % globalPlaylist.length;
+            loadAndPlayGlobalTrack();
+        }
+
+        function globalAudioNext() {
+            if (globalPlaylist.length === 0) return;
+            globalPlaylistIndex = (globalPlaylistIndex + 1) % globalPlaylist.length;
+            loadAndPlayGlobalTrack();
+        }
+
+        function seekGlobalAudio(val) {
+            const player = document.getElementById('globalAudioPlayer');
+            if (player.duration) {
+                player.currentTime = (val / 100) * player.duration;
+            }
+        }
+
+        function openGlobalAudioPlayerPlugin() {
+            loadPluginView('audioplayer', { dir: globalAudioCurrentDir });
+        }
+
+        function closeGlobalAudioBar() {
+            const player = document.getElementById('globalAudioPlayer');
+            player.pause();
+            document.getElementById('globalAudioBar').style.display = 'none';
+        }
+
+        document.getElementById('globalAudioPlayer').addEventListener('timeupdate', function() {
+            const player = document.getElementById('globalAudioPlayer');
+            if (player.duration) {
+                const seeker = document.getElementById('globalAudioSeeker');
+                seeker.value = (player.currentTime / player.duration) * 100;
+                document.getElementById('globalAudioCurrentTime').innerText = formatAudioTime(player.currentTime);
+                document.getElementById('globalAudioDuration').innerText = formatAudioTime(player.duration);
+            }
+        });
+
+        document.getElementById('globalAudioPlayer').addEventListener('ended', function() {
+            globalAudioNext();
+        });
+
+        function formatAudioTime(seconds) {
+            if (isNaN(seconds) || seconds < 0) return '00:00';
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        const lastPluginState = {
+            filemanager: '',
+            editor: '',
+            audioplayer: '',
+            imageviewer: '',
+            videoplayer: '',
+            modelviewer: ''
+        };
+
+        function loadPluginView(pluginId, params) {
+            let basePluginId = pluginId;
+            let queryParts = [];
+
+            if (params) {
+                for (const [k, v] of Object.entries(params)) {
+                    if (v) queryParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`);
+                }
+            }
+
+            let queryStr = queryParts.length > 0 ? '?' + queryParts.join('&') : '';
+            openPlugin(basePluginId + queryStr);
+        }
+
+        window.loadPluginView = loadPluginView;
+
+        function openPlugin(pluginIdStr, el) {
+            let basePluginId = pluginIdStr;
+            let queryStr = '';
+            if (pluginIdStr.includes('?')) {
+                const parts = pluginIdStr.split('?');
+                basePluginId = parts[0];
+                queryStr = '?' + parts[1];
+            }
+
+            if (!isLoggedIn && basePluginId !== 'status') {
+                window.location.href = '/login.htm';
+                return;
+            }
+
+            // Restore/save memory for File Manager, File Editor, Audio Player, Image Viewer, Video Player, Model Viewer
+            if (['filemanager', 'editor', 'audioplayer', 'imageviewer', 'videoplayer', 'modelviewer'].includes(basePluginId)) {
+                if (queryStr) {
+                    lastPluginState[basePluginId] = queryStr;
+                } else if (lastPluginState[basePluginId]) {
+                    queryStr = lastPluginState[basePluginId];
+                }
+            }
+
+            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            if (!el) {
+                el = document.querySelector(`[data-id="${basePluginId}"]`);
+            }
+            if (el) el.classList.add('active');
+
+            const frame = document.getElementById('plugin-frame');
+            frame.removeAttribute('srcdoc');
+            frame.src = `/${basePluginId}/index.htm${queryStr}`;
+        }
+
+        async function toggleAuth() {
+            if (isLoggedIn) {
+                await fetch('/api/logout', { method: 'POST' });
+                window.location.reload();
+            } else {
+                window.location.href = '/login.htm';
+            }
+        }
+
+        function openPassModal() {
+            document.getElementById('passModal').style.display = 'block';
+            document.getElementById('passMsg').innerText = '';
+        }
+
+        function closePassModal() {
+            document.getElementById('passModal').style.display = 'none';
+        }
+
+        async function submitPasswordChange() {
+            const current_password = document.getElementById('currPass').value;
+            const new_password = document.getElementById('newPass').value;
+            const confirm_password = document.getElementById('confirmPass').value;
+            const msg = document.getElementById('passMsg');
+
+            if (!current_password || !new_password) {
+                msg.style.color = '#f85149';
+                msg.innerText = 'Please enter both current and new password.';
+                return;
+            }
+
+            if (new_password !== confirm_password) {
+                msg.style.color = '#f85149';
+                msg.innerText = 'New password and confirmation do not match.';
+                return;
+            }
+
+            try {
+                const encBody = await encryptPayload({ current_password, new_password });
+                const res = await fetch('/api/auth/password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    msg.style.color = '#7ee787';
+                    msg.innerText = 'Password saved to linnas.data successfully!';
+                    setTimeout(closePassModal, 1500);
+                } else {
+                    msg.style.color = '#f85149';
+                    msg.innerText = 'Error: ' + data.error;
+                }
+            } catch (err) {
+                msg.style.color = '#f85149';
+                msg.innerText = 'Network error: ' + err.message;
+            }
+        }
+
+        async function checkStartupIssues() {
+            try {
+                const res = await fetch('/api/startup/issues');
+                const data = await res.json();
+                if (data.has_issues && data.debug_enabled && data.log) {
+                    document.getElementById('startupLogTextarea').value = data.log;
+                    document.getElementById('startupIssuesModal').style.display = 'block';
+                }
+            } catch (err) {
+                console.error('Failed to check startup issues:', err);
+            }
+        }
+
+        function closeStartupIssuesModal() {
+            document.getElementById('startupIssuesModal').style.display = 'none';
+        }
+
+        async function clearStartupIssuesLog() {
+            try {
+                await fetch('/api/startup/clear', { method: 'POST' });
+                closeStartupIssuesModal();
+            } catch (err) {}
+        }
+
+        window.onload = async () => {
+            initSidebarResizer();
+            await checkAuth();
+            await loadPlugins();
+            if (isLoggedIn) {
+                await checkStartupIssues();
+            }
+        };
+    </script>
+</body>
+</html>

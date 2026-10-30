@@ -1,0 +1,18 @@
+{
+  "id": "ntp",
+  "name": "NTP Server",
+  "description": "Configure system time synchronization, local NTP server daemon, upstream pool servers, and force clock sync",
+  "category": "Network Services",
+  "default": false,
+  "apt_package": "chrony",
+  "check_cmd": "which chronyd",
+  "install_sudo": "apt-get update && apt-get install -y chrony",
+  "remove_sudo": "apt-get remove -y chrony",
+  "commands": {
+    "get_time_info_cmd": "date && echo '===TZ===' && cat /etc/timezone 2>/dev/null || timedatectl | grep 'Time zone'",
+    "get_ntp_status_cmd": "chronyc tracking 2>/dev/null || ntpq -p 2>/dev/null || timedatectl status",
+    "get_ntp_sources_cmd": "chronyc sources -v 2>/dev/null || ntpq -p 2>/dev/null",
+    "sync_time_sudo": "chronyc makestep 2>/dev/null || systemctl restart chrony || service chrony restart",
+    "restart_ntp_sudo": "systemctl restart chrony || service chrony restart"
+  }
+}

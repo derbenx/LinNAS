@@ -1,0 +1,3 @@
+<p><strong>Fastfetch System Information</strong></p>
+<p>Displays Debian system summary, OS release, kernel version, uptime, shell, memory usage, and ASCII distribution logo.</p>
+<p>Parses ANSI escape sequences into full terminal CSS color rendering with live uncached output.</p>

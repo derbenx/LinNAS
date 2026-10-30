@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Apache Web Server Config</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus { border-color: #58a6ff; outline: none; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <h2>Apache Server</h2>
+    <p class="subtitle">Configure listening port, default document root, and web server settings for Apache.</p>
+
+    <div class="section">
+        <div class="section-title">Server Settings</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>HTTP Port</label>
+                <input type="text" id="httpPort" placeholder="80">
+            </div>
+            <div class="form-group">
+                <label>Document Root Directory</label>
+                <input type="text" id="docRoot" placeholder="/var/www/html">
+            </div>
+            <div class="form-group">
+                <label>Server Admin Email</label>
+                <input type="text" id="serverAdmin" placeholder="webmaster@localhost">
+            </div>
+        </div>
+        <button class="btn" onclick="saveApacheConfig()">Save Settings</button>
+        <button class="btn btn-secondary" style="margin-left: 0.5rem;" onclick="restartApache()">Restart Apache Service</button>
+    </div>
+
+    <div id="outputBox" class="output-box"></div>
+
+    <script>
+        async function loadConfig() {
+            try {
+                const res = await fetch('/api/plugin/data?plugin=apache');
+                const data = await res.json();
+                document.getElementById('httpPort').value = data.http_port || '80';
+                document.getElementById('docRoot').value = data.doc_root || '/var/www/html';
+                document.getElementById('serverAdmin').value = data.server_admin || 'webmaster@localhost';
+            } catch (err) {
+                showOutput('Failed to load Apache config: ' + err.message);
+            }
+        }
+
+        async function saveApacheConfig() {
+            const config = {
+                http_port: document.getElementById('httpPort').value.trim(),
+                doc_root: document.getElementById('docRoot').value.trim(),
+                server_admin: document.getElementById('serverAdmin').value.trim()
+            };
+
+            try {
+                await fetch('/api/plugin/data?plugin=apache', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                showOutput('Apache settings saved. Click "Restart Apache Service" to apply changes.');
+            } catch (err) {
+                showOutput('Failed to save settings: ' + err.message);
+            }
+        }
+
+        async function restartApache() {
+            showOutput('Restarting Apache web server...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'apache',
+                        cmd_key: 'restart_apache_sudo',
+                        args: {}
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? 'Apache service restarted successfully.\n' + data.output : 'Restart failed: ' + data.error);
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            const box = document.getElementById('outputBox');
+            box.style.display = 'block';
+            box.innerText = text;
+        }
+
+        window.onload = loadConfig;
+    </script>
+</body>
+</html>

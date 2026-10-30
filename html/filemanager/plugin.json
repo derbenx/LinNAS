@@ -1,0 +1,7 @@
+{
+  "id": "filemanager",
+  "name": "File Manager",
+  "description": "Browse, upload, rename, delete, cut, copy, paste files and folders with context menu and drag-and-drop support",
+  "category": "Tools",
+  "default": true
+}

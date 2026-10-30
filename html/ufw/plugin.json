@@ -1,0 +1,20 @@
+{
+  "id": "ufw",
+  "name": "UFW Firewall",
+  "description": "Configure Uncomplicated Firewall (UFW) rules, allow/deny network ports, and toggle quick presets",
+  "category": "Network",
+  "default": false,
+  "apt_package": "ufw",
+  "check_cmd": "which ufw",
+  "install_sudo": "apt-get update && apt-get install -y ufw",
+  "remove_sudo": "apt-get remove -y ufw",
+  "commands": {
+    "get_status_sudo": "ufw status verbose",
+    "get_rules_sudo": "ufw status numbered",
+    "enable_ufw_sudo": "echo y | ufw enable",
+    "disable_ufw_sudo": "ufw disable",
+    "allow_port_sudo": "ufw allow {port}/{proto}",
+    "allow_subnet_port_sudo": "ufw allow from {subnet} to any port {port} proto {proto}",
+    "delete_rule_sudo": "echo y | ufw delete {rule_num}"
+  }
+}

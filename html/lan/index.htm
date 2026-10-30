@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LAN Network Config</title>
+    <script src="/js/crypto.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .form-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin-bottom: 1.2rem; background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; flex: 1; min-width: 180px; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input, .form-group select { padding: 0.6rem; background: #161b22; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus, .form-group select:focus { border-color: #58a6ff; outline: none; }
+
+        .btn-row { display: flex; gap: 0.8rem; margin-top: 1rem; flex-wrap: wrap; }
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+
+        .no-hardware-box { background: #21262d; border: 1px solid #d29922; border-radius: 6px; padding: 1.2rem; color: #e3b341; margin-bottom: 1.5rem; display: none; }
+        .no-hardware-box h3 { margin-bottom: 0.5rem; font-size: 1rem; }
+        .no-hardware-box p { font-size: 0.85rem; color: #c9d1d9; line-height: 1.4; }
+
+        /* Floating Bottom Console Drawer */
+        .sticky-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 2px solid #58a6ff;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+        }
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #58a6ff;
+            font-size: 0.95rem;
+        }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>LAN Config</h2>
+    <p class="subtitle">Configure Ethernet interface addressing and DNS server resolvers with independent DHCP or Manual modes and field overrides.</p>
+
+    <div id="hardwareWarning" class="no-hardware-box">
+        <h3>⚠️ No Ethernet LAN Hardware Detected</h3>
+        <p>No active wired network interfaces were found on this machine. To resolve this issue:</p>
+        <p>1. Check that an Ethernet network cable or PCI adapter is firmly attached.<br>
+           2. Verify missing driver packages using <code>lspci -k</code> or <code>lshw -C network</code>.<br>
+           3. Install driver firmware via Debian APT (e.g., <code>apt install firmware-realtek</code> or <code>firmware-linux-nonfree</code>).</p>
+    </div>
+
+
+    <div class="section" id="configSection">
+        <div class="section-title">Ethernet Interface Configuration</div>
+
+        <!-- Interface Selector -->
+        <div class="form-row">
+            <div class="form-group" style="max-width: 320px;">
+                <label>Network Interface</label>
+                <select id="ifaceSelect" onchange="onIfaceSelect()"></select>
+            </div>
+        </div>
+
+        <!-- Network Addressing & DNS Mode Row -->
+        <div class="form-row">
+            <div class="form-group" style="max-width: 240px;">
+                <label>IP & DNS Assignment Mode</label>
+                <select id="ipModeSelect" onchange="toggleIpModeFields()">
+                    <option value="dhcp">DHCP (Automatic IP & DNS)</option>
+                    <option value="manual">Manual (Static IP & Custom DNS)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>IPv4 Address</label>
+                <input type="text" id="ipAddr" placeholder="192.168.1.50">
+            </div>
+            <div class="form-group">
+                <label>Subnet Mask / CIDR (e.g. 24 or 255.255.255.0)</label>
+                <input type="text" id="cidrMask" placeholder="24 or 255.255.255.0">
+            </div>
+        </div>
+
+        <!-- Custom DNS Row -->
+        <div class="form-row" id="dnsRow">
+            <div class="form-group">
+                <label>Primary DNS Server (DNS1)</label>
+                <input type="text" id="dns1" placeholder="1.1.1.1">
+            </div>
+            <div class="form-group">
+                <label>Secondary DNS Server (DNS2)</label>
+                <input type="text" id="dns2" placeholder="8.8.8.8">
+            </div>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn" onclick="applyLanConfig()">Apply Settings</button>
+            <button class="btn btn-secondary" onclick="renewDhcpLease()">Renew DHCP Lease</button>
+            <button class="btn btn-secondary" onclick="onIfaceSelect()">Refresh Details</button>
+        </div>
+    </div>
+
+    <!-- Floating Output Console Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-danger" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
+
+    <script>
+        let lanInterfaces = [];
+
+        async function loadSystemHostname() {
+            try {
+                const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'get_hostname_cmd', args: {} });
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    document.getElementById('sysHostname').value = data.output.trim();
+                }
+            } catch (err) {
+                console.error('Failed to load hostname:', err);
+            }
+        }
+
+        async function saveSystemHostname() {
+            const hostname = document.getElementById('sysHostname').value.trim();
+            if (!hostname) {
+                showOutput('Please enter a valid hostname.');
+                return;
+            }
+
+            showOutput(`Setting system hostname to '${hostname}'...`);
+            try {
+                const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'set_hostname_sudo', args: { hostname } });
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                showOutput(data.success ? `System hostname successfully updated to '${hostname}'.` : `Failed to set hostname: ${data.error}\n${data.output}`);
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function detectLanInterfaces() {
+            try {
+                const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'list_interfaces_cmd', args: {} });
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    let links = [];
+                    try {
+                        const raw = data.output.trim();
+                        const jsonStart = raw.indexOf('[');
+                        const jsonEnd = raw.lastIndexOf(']');
+                        const cleanJson = (jsonStart !== -1 && jsonEnd !== -1) ? raw.substring(jsonStart, jsonEnd + 1) : raw;
+                        links = JSON.parse(cleanJson);
+                    } catch (e) {
+                        console.error('Failed to parse list_interfaces_cmd output:', e);
+                    }
+                    lanInterfaces = links.filter(l => l.ifname && l.ifname !== 'lo' && !l.ifname.startsWith('wl'));
+
+                    if (lanInterfaces.length === 0) {
+                        document.getElementById('hardwareWarning').style.display = 'block';
+                        document.getElementById('configSection').style.display = 'none';
+                    } else {
+                        document.getElementById('hardwareWarning').style.display = 'none';
+                        document.getElementById('configSection').style.display = 'block';
+                        populateIfaceSelect();
+                    }
+                }
+            } catch (err) {
+                showOutput('Failed to scan LAN interfaces: ' + err.message);
+            }
+        }
+
+        function populateIfaceSelect() {
+            const select = document.getElementById('ifaceSelect');
+            select.innerHTML = '';
+            lanInterfaces.forEach(l => {
+                const opt = document.createElement('option');
+                opt.value = l.ifname;
+                opt.innerText = `${l.ifname} (${l.operstate || 'unknown'})`;
+                select.appendChild(opt);
+            });
+            onIfaceSelect();
+        }
+
+        function parseNetmaskToCidr(mask) {
+            mask = mask.trim();
+            if (/^\d+$/.test(mask)) return parseInt(mask, 10);
+            const parts = mask.split('.');
+            if (parts.length === 4) {
+                let bits = 0;
+                for (let p of parts) {
+                    const num = parseInt(p, 10);
+                    bits += (num >>> 0).toString(2).replace(/0/g, '').length;
+                }
+                return bits;
+            }
+            return 24;
+        }
+
+        async function onIfaceSelect() {
+            const iface = document.getElementById('ifaceSelect').value;
+            if (!iface) return;
+
+            // Clear previous fields to default/blank hints
+            document.getElementById('ipAddr').value = '';
+            document.getElementById('cidrMask').value = '';
+            document.getElementById('dns1').value = '';
+            document.getElementById('dns2').value = '';
+
+            // Query IP Details
+            try {
+                const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'get_ip_cmd', args: { iface: iface } });
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    let addrInfo = [];
+                    try {
+                        const raw = data.output.trim();
+                        const jsonStart = raw.indexOf('[');
+                        const jsonEnd = raw.lastIndexOf(']');
+                        const cleanJson = (jsonStart !== -1 && jsonEnd !== -1) ? raw.substring(jsonStart, jsonEnd + 1) : raw;
+                        addrInfo = JSON.parse(cleanJson);
+                    } catch (e) {
+                        console.error('Failed to parse get_ip_cmd output:', e);
+                    }
+                    if (addrInfo[0] && addrInfo[0].addr_info) {
+                        const ipv4 = addrInfo[0].addr_info.find(a => a.family === 'inet');
+                        if (ipv4) {
+                            document.getElementById('ipAddr').value = ipv4.local || '';
+                            document.getElementById('cidrMask').value = ipv4.prefixlen || '24';
+
+                            // Check dynamic flag to accurately set IP Mode dropdown
+                            if (ipv4.dynamic) {
+                                document.getElementById('ipModeSelect').value = 'dhcp';
+                            } else {
+                                document.getElementById('ipModeSelect').value = 'manual';
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Error getting IP:', err);
+            }
+
+            // Query DNS Details
+            try {
+                const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'get_dns_cmd', args: {} });
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    const dnsList = data.output.trim().split('\n').filter(Boolean);
+                    if (dnsList[0]) document.getElementById('dns1').value = dnsList[0].trim();
+                    if (dnsList[1]) document.getElementById('dns2').value = dnsList[1].trim();
+                }
+            } catch (err) {
+                console.error('Error getting DNS:', err);
+            }
+        }
+
+        function toggleIpModeFields() {
+            const mode = document.getElementById('ipModeSelect').value;
+            const isManual = (mode === 'manual');
+            document.getElementById('ipAddr').readOnly = !isManual;
+            document.getElementById('cidrMask').readOnly = !isManual;
+            document.getElementById('dns1').readOnly = !isManual;
+            document.getElementById('dns2').readOnly = !isManual;
+        }
+
+        async function applyLanConfig() {
+            const iface = document.getElementById('ifaceSelect').value;
+            const ipMode = document.getElementById('ipModeSelect').value;
+
+            const ip = document.getElementById('ipAddr').value.trim();
+            const maskInput = document.getElementById('cidrMask').value.trim();
+            const cidr = parseNetmaskToCidr(maskInput || '24');
+            const dns1 = document.getElementById('dns1').value.trim();
+            const dns2 = document.getElementById('dns2').value.trim();
+
+            showOutput(`Applying configuration settings to ${iface}...`);
+
+            try {
+                if (ipMode === 'manual') {
+                    if (!ip || !cidr) {
+                        showOutput('Please fill in IPv4 Address and Subnet CIDR Mask.');
+                        return;
+                    }
+                    const encBody = await encryptPayload({
+                        plugin: 'lan',
+                        cmd_key: 'set_ip_sudo',
+                        args: { iface, ip: ip, cidr: cidr.toString() }
+                    });
+                    const ipRes = await fetch('/api/plugin/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: encBody
+                    });
+                    const ipData = await ipRes.json();
+                    if (!ipData.success) {
+                        showOutput(`IP assignment failed: ${ipData.error}\n${ipData.output}`);
+                        return;
+                    }
+
+                    if (dns1) {
+                        const dnsEnc = await encryptPayload({
+                            plugin: 'lan',
+                            cmd_key: 'set_dns_sudo',
+                            args: { dns1, dns2 }
+                        });
+                        await fetch('/api/plugin/exec', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: dnsEnc
+                        });
+                    }
+                    showOutput(`Successfully updated settings on ${iface}: IP=${ip}/${cidr}${dns1 ? ', DNS1=' + dns1 : ''}${dns2 ? ', DNS2=' + dns2 : ''}.`);
+                } else {
+                    const encBody = await encryptPayload({
+                        plugin: 'lan',
+                        cmd_key: 'restore_dhcp_dns_sudo',
+                        args: { iface }
+                    });
+                    await fetch('/api/plugin/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: encBody
+                    });
+                    await renewDhcpLease();
+                    showOutput(`Successfully applied DHCP settings on ${iface}. Active leased values loaded.`);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function renewDhcpLease() {
+            const iface = document.getElementById('ifaceSelect').value;
+            showOutput(`Renewing DHCP lease on ${iface}...`);
+            try {
+                const encBody = await encryptPayload({
+                    plugin: 'lan',
+                    cmd_key: 'dhcp_renew_sudo',
+                    args: { iface }
+                });
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                showOutput(data.success ? `DHCP lease renewed on ${iface}.\n` + data.output : `DHCP renewal warning: ${data.error}\n${data.output}`);
+                await onIfaceSelect();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
+            const box = document.getElementById('outputBox');
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        window.onload = () => {
+            loadSystemHostname();
+            detectLanInterfaces();
+        };
+    </script>
+</body>
+</html>

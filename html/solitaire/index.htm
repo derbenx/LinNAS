@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Classic Solitaire - LinNAS</title>
+    <link rel="stylesheet" href="css/sol.css">
+    <script src="js/cards.js"></script>
+    <script src="js/main.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 1.5rem; text-align: center; }
+        h2 { color: #58a6ff; margin-bottom: 0.5rem; }
+        .toolbar { display: flex; gap: 0.8rem; justify-content: center; align-items: center; margin-bottom: 1rem; }
+        .btn { padding: 0.5rem 1rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; font-size: 0.88rem; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #30363d; color: white; }
+
+        #solsetup { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.2rem; max-width: 500px; margin: 0 auto 1.5rem auto; text-align: left; }
+        #solsetup h3 { color: #58a6ff; margin-bottom: 0.8rem; }
+        #tabl { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        #tabl td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #21262d; }
+        select { padding: 0.3rem; background: #0d1117; border: 1px solid #30363d; color: #fff; border-radius: 4px; }
+
+        #game { display: flex; justify-content: center; position: relative; margin-top: 1rem; min-height: 500px; }
+        canvas { border-radius: 6px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+    </style>
+</head>
+<body>
+    <h2>🃏 Classic Solitaire</h2>
+
+    <div class="toolbar">
+        <button id="solstart" class="btn">🃏 New Game</button>
+        <button id="soltogsetup" class="btn btn-secondary">⚙️ Settings Toggle</button>
+    </div>
+
+    <div id="solsetup" style="display: none;">
+        <h3>Solitaire Settings</h3>
+        <table id="tabl">
+            <tr><td><b>Option</b></td><td><b>Setting</b></td><td><b>Description</b></td></tr>
+            <tr>
+                <td>Drawn cards:</td>
+                <td>
+                    <select id="soldrw">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3" selected>3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                    </select>
+                </td>
+                <td>Cards drawn per turn</td>
+            </tr>
+            <tr>
+                <td>Colour 1:</td>
+                <td>
+                    <select id="co1">
+                        <option value="red">red</option>
+                        <option value="orange">orange</option>
+                        <option value="yellow">yellow</option>
+                        <option value="green">green</option>
+                        <option value="blue">blue</option>
+                        <option value="violet">violet</option>
+                        <option value="lime" selected>lime</option>
+                        <option value="cyan">cyan</option>
+                        <option value="pink">pink</option>
+                    </select>
+                </td>
+                <td>Card back primary color</td>
+            </tr>
+            <tr>
+                <td>Colour 2:</td>
+                <td>
+                    <select id="co2">
+                        <option value="red">red</option>
+                        <option value="orange">orange</option>
+                        <option value="yellow">yellow</option>
+                        <option value="green" selected>green</option>
+                        <option value="blue">blue</option>
+                        <option value="violet">violet</option>
+                        <option value="lime">lime</option>
+                        <option value="cyan">cyan</option>
+                        <option value="pink">pink</option>
+                    </select>
+                </td>
+                <td>Card back secondary color</td>
+            </tr>
+            <tr>
+                <td>Free play:</td>
+                <td>
+                    <select id="solfre">
+                        <option value="0">yes</option>
+                        <option value="1" selected>no</option>
+                    </select>
+                </td>
+                <td>Allow placing cards freely</td>
+            </tr>
+        </table>
+    </div>
+
+    <div id="game">
+        <canvas id="can"></canvas>
+        <canvas id="spr"></canvas>
+    </div>
+</body>
+</html>

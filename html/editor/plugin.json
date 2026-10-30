@@ -1,0 +1,12 @@
+{
+  "id": "editor",
+  "name": "File Editor",
+  "description": "View and edit files with size safety limits and root warnings",
+  "category": "Tools",
+  "default": true,
+  "commands": {
+    "check_file_cmd": "wc -c < \"{filepath}\"",
+    "read_file_cmd": "cat \"{filepath}\"",
+    "save_file_sudo": "cat << 'EOF' > \"{filepath}\"\n{content}\nEOF"
+  }
+}

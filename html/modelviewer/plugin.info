@@ -1,0 +1,35 @@
+<p><strong>3D Model Viewer</strong></p>
+<p>Render and inspect 3D model files (.stl, .obj, .gltf, .glb, .3mf) using Three.js with orbit camera controls, lighting, wireframe toggle, and folder navigation.</p>
+<div style="margin-top: 0.8rem;">
+    <p><strong>Mouse & Keyboard Navigation:</strong></p>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 0.4rem; font-size: 0.85rem;">
+        <thead>
+            <tr style="border-bottom: 1px solid #30363d; text-align: left; color: #58a6ff;">
+                <th style="padding: 4px;">Control</th>
+                <th style="padding: 4px;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;">Left Click + Drag</td>
+                <td style="padding: 4px;">Orbit / Rotate View</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;">Right Click + Drag</td>
+                <td style="padding: 4px;">Pan Camera</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;">Scroll Wheel</td>
+                <td style="padding: 4px;">Zoom In / Zoom Out</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">W</kbd></td>
+                <td style="padding: 4px;">Toggle Wireframe Rendering Mode</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">R</kbd></td>
+                <td style="padding: 4px;">Reset Camera View & Center Model</td>
+            </tr>
+        </tbody>
+    </table>
+</div>

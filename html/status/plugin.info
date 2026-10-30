@@ -1,0 +1,3 @@
+<p><strong>Server Status & Power Management</strong></p>
+<p>Monitors system hostname, kernel version, CPU cores, RAM memory utilization, system uptime, and CPU load averages.</p>
+<p>In authenticated mode, displays disk space availability, SMART drive diagnostics, managed system services, and power control scheduling (Power Off / Reboot).</p>

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LinNAS v1.0 Help & Documentation</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
+
+        .header-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+        h2 { font-size: 1.6rem; color: #58a6ff; margin-bottom: 0.3rem; }
+        p.subtitle { color: #8b949e; font-size: 0.9rem; }
+        .version-badge { background: #238636; color: white; padding: 0.4rem 0.8rem; border-radius: 6px; font-weight: bold; font-size: 0.9rem; }
+
+        .search-box { width: 100%; max-width: 400px; padding: 0.6rem 1rem; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #fff; font-size: 0.9rem; outline: none; }
+        .search-box:focus { border-color: #58a6ff; }
+
+        .cat-section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; margin-bottom: 1.2rem; overflow: hidden; }
+        .cat-header { padding: 1rem 1.2rem; background: #1f242d; color: #f0f6fc; font-weight: bold; font-size: 1.05rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; }
+        .cat-header:hover { background: #262c36; }
+        .cat-body { padding: 1.2rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+
+        .plugin-card { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 1rem; display: flex; flex-direction: column; justify-content: space-between; }
+        .plugin-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+        .plugin-title { font-weight: bold; color: #58a6ff; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+        .plugin-info-content { font-size: 0.85rem; color: #c9d1d9; line-height: 1.4; margin-top: 0.5rem; border-top: 1px solid #21262d; padding-top: 0.5rem; }
+
+        .btn { padding: 0.4rem 0.8rem; background: #238636; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.8rem; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #30363d; color: white; }
+
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 10% auto; padding: 1.5rem; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
+    </style>
+</head>
+<body>
+    <div class="header-card">
+        <div>
+            <h2>Help Guide</h2>
+            <p class="subtitle">Comprehensive user guide, search, and dynamic plugin help documentation.</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <input type="text" id="searchBox" class="search-box" placeholder="🔍 Search help docs..." oninput="filterHelp(this.value)">
+            <span class="version-badge">LinNAS v1.0</span>
+        </div>
+    </div>
+
+    <div id="helpContainer">
+        <p style="color: #8b949e; text-align: center; padding: 2rem;">Loading plugin documentation...</p>
+    </div>
+
+    <!-- Plugin Info Popup Modal -->
+    <div id="infoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="modalTitle">ℹ️ Plugin Documentation</span>
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeInfoModal()">✕</button>
+            </div>
+            <div id="modalBody" style="font-size: 0.9rem; line-height: 1.5; color: #c9d1d9;">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        let allPlugins = [];
+        let helpData = {}; // pluginId -> htmlContent
+
+        const categoryOrder = ['System', 'Tools', 'Network', 'Storage'];
+
+        async function loadHelpDocs() {
+            try {
+                const res = await fetch('/api/plugins');
+                allPlugins = await res.json();
+
+                // Fetch plugin.info for each plugin
+                for (const p of allPlugins) {
+                    try {
+                        const infoRes = await fetch(`/${p.id}/plugin.info`);
+                        if (infoRes.ok) {
+                            helpData[p.id] = await infoRes.text();
+                        } else {
+                            helpData[p.id] = `<p>${p.description}</p>`;
+                        }
+                    } catch (e) {
+                        helpData[p.id] = `<p>${p.description}</p>`;
+                    }
+                }
+
+                renderHelpDocs();
+            } catch (err) {
+                document.getElementById('helpContainer').innerHTML = `<p style="color:#f85149;">Failed to load help documentation: ${err.message}</p>`;
+            }
+        }
+
+        function renderHelpDocs(filter = '') {
+            const container = document.getElementById('helpContainer');
+            container.innerHTML = '';
+            filter = filter.toLowerCase().trim();
+
+            const categories = {};
+
+            allPlugins.forEach(p => {
+                const cat = p.category || 'Tools';
+                const infoText = (helpData[p.id] || '').toLowerCase();
+                const matchesFilter = !filter || p.id.toLowerCase().includes(filter) || p.name.toLowerCase().includes(filter) || p.description.toLowerCase().includes(filter) || infoText.includes(filter) || cat.toLowerCase().includes(filter) || (p.id === 'ufw' && ('firewall'.includes(filter) || 'ufw'.includes(filter)));
+
+                if (matchesFilter) {
+                    if (!categories[cat]) categories[cat] = [];
+                    categories[cat].push(p);
+                }
+            });
+
+            const sortedCatNames = Object.keys(categories).sort((a, b) => {
+                let idxA = categoryOrder.indexOf(a);
+                let idxB = categoryOrder.indexOf(b);
+                if (idxA === -1) idxA = 99;
+                if (idxB === -1) idxB = 99;
+                return idxA - idxB;
+            });
+
+            if (sortedCatNames.length === 0) {
+                container.innerHTML = `<p style="color: #8b949e; text-align: center; padding: 2rem;">No documentation matching '${filter}' found.</p>`;
+                return;
+            }
+
+            sortedCatNames.forEach(catName => {
+                const plugins = categories[catName];
+                const catSection = document.createElement('div');
+                catSection.className = 'cat-section';
+
+                const catHeader = document.createElement('div');
+                catHeader.className = 'cat-header';
+                catHeader.innerHTML = `<span>${getCategoryIcon(catName)} ${catName} (${plugins.length} modules)</span><span>▼</span>`;
+
+                const catBody = document.createElement('div');
+                catBody.className = 'cat-body';
+
+                catHeader.onclick = () => {
+                    const isHidden = catBody.style.display === 'none';
+                    catBody.style.display = isHidden ? 'grid' : 'none';
+                    catHeader.querySelector('span:last-child').innerText = isHidden ? '▼' : '▶';
+                };
+
+                plugins.forEach(p => {
+                    const card = document.createElement('div');
+                    card.className = 'plugin-card';
+
+                    const htmlContent = helpData[p.id] || `<p>${p.description}</p>`;
+
+                    card.innerHTML = `
+                        <div>
+                            <div class="plugin-card-header">
+                                <span class="plugin-title">${getPluginIcon(p.id)} ${p.name}</span>
+                            </div>
+                            <div style="font-size: 0.85rem; color: #8b949e; margin-bottom: 0.5rem;">${p.description}</div>
+                            <div class="plugin-info-content">${htmlContent}</div>
+                        </div>
+                    `;
+                    catBody.appendChild(card);
+                });
+
+                catSection.appendChild(catHeader);
+                catSection.appendChild(catBody);
+                container.appendChild(catSection);
+            });
+        }
+
+        function filterHelp(query) {
+            renderHelpDocs(query);
+        }
+
+        function openModalInfo(pluginId, pluginName) {
+            document.getElementById('modalTitle').innerText = `ℹ️ ${pluginName} Help`;
+            document.getElementById('modalBody').innerHTML = helpData[pluginId] || 'No documentation found.';
+            document.getElementById('infoModal').style.display = 'block';
+        }
+
+        function closeInfoModal() {
+            document.getElementById('infoModal').style.display = 'none';
+        }
+
+        function getCategoryIcon(cat) {
+            const icons = { 'System': '⚙️', 'Tools': '🛠️', 'Network': '🌐', 'Storage': '💾' };
+            return icons[cat] || '📁';
+        }
+
+        function getPluginIcon(id) {
+            const icons = {
+                'status': '🖥️', 'apt': '📦', 'smb': '📁', 'veracrypt': '🔒', 'drive_mount': '💾',
+                'dns': '🛡️', 'dhcp': '🌐', 'lan': '🔌', 'wifi': '📶', 'filemanager': '📂',
+                'audioplayer': '🎵', 'imageviewer': '🖼️', 'videoplayer': '🎬', 'modelviewer': '🧊',
+                'editor': '📝', 'ping': '📡', 'apache': '🌐', 'mysql': '🗄️', 'php': '🐘', 'help': '❓'
+            };
+            return icons[id] || '⚙️';
+        }
+
+        window.onload = loadHelpDocs;
+    </script>
+</body>
+</html>

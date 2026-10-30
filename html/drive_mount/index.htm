@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Mount Virtual Disk Image (ISO/VHD/IMG) - LinNAS</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .notice-banner { background: #162235; border: 1px solid #388bfd; border-radius: 6px; padding: 0.9rem 1.2rem; color: #79c0ff; margin-bottom: 1.5rem; font-size: 0.88rem; display: flex; align-items: center; gap: 10px; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus { border-color: #58a6ff; outline: none; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #b62324; }
+
+        .path-input-group { display: flex; gap: 0.5rem; }
+        .path-input-group input { flex: 1; }
+
+        .sticky-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 2px solid #58a6ff;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+        }
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #58a6ff;
+            font-size: 0.95rem;
+        }
+
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 10% auto; padding: 1.5rem; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
+        .modal-actions { display: flex; gap: 0.5rem; align-items: center; }
+        .file-list { max-height: 300px; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; }
+        .file-item { padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #21262d; font-family: monospace; }
+        .file-item:hover { background: #1f242d; color: #58a6ff; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>Mount Virtual Disk Image (ISO/VHD/IMG)</h2>
+    <p class="subtitle">Mount ISO optical disc images, VHD/VHDX virtual disk files, IMG/RAW disk dumps, and qcow2 images directly into your server filesystem.</p>
+
+    <div class="notice-banner">
+        <span style="font-size: 1.2rem;">ℹ️</span>
+        <div>
+            <strong>Boot & Reboot Persistence Notice:</strong> Virtual disk image loop mounts and their temporary SMB network shares <strong>do not automatically remount or re-share on server reboot</strong>. If the server restarts, you must manually select and mount the virtual disk image again.
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Mount Virtual Disk Image</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Virtual Image File Path (.iso, .vhd, .vhdx, .img, .raw, .qcow2)</label>
+                <div class="path-input-group">
+                    <input type="text" id="imgPath" placeholder="/var/downloads/debian.iso">
+                    <button class="btn btn-secondary" onclick="openFileBrowser()">Browse Image...</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Target Mount Point Folder</label>
+                <input type="text" id="imgMount" placeholder="/mnt/debian_iso">
+            </div>
+        </div>
+        <div class="form-group" style="margin-top: 0.8rem;">
+            <label>Restrict Optional Auto-Share to SMB User</label>
+            <select id="smbUserSelect">
+                <option value="">-- Do Not Share via SMB --</option>
+            </select>
+        </div>
+        <br>
+        <button class="btn" onclick="mountImage()">Mount Virtual Image File</button>
+    </div>
+
+    <div id="fileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="modalPath">/</span>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;" onclick="createNewFolder()">+ Create Folder</button>
+                    <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeModal()">✕</button>
+                </div>
+            </div>
+            <div id="fileList" class="file-list"></div>
+        </div>
+    </div>
+
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-danger" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
+
+    <script>
+        let smbUsers = [];
+        const SUPPORTED_EXTS = ['iso', 'vhd', 'vhdx', 'img', 'raw', 'qcow2'];
+
+        async function loadSmbUsers() {
+            const select = document.getElementById('smbUserSelect');
+            try {
+                const res = await fetch('/api/plugin/data?plugin=smb');
+                const data = await res.json();
+                smbUsers = data.users || [];
+
+                select.innerHTML = '<option value="">-- Do Not Share via SMB --</option>';
+                if (smbUsers.length === 0) {
+                    const opt = document.createElement('option');
+                    opt.value = "";
+                    opt.innerText = "No SMB Users Found (Create User in SMB Plugin First)";
+                    opt.disabled = true;
+                    select.appendChild(opt);
+                } else {
+                    smbUsers.forEach(u => {
+                        const opt = document.createElement('option');
+                        opt.value = u;
+                        opt.innerText = `Share with User: ${u}`;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to load SMB users:', err);
+            }
+        }
+
+        async function mountImage() {
+            const filepath = document.getElementById('imgPath').value.trim();
+            const mountpoint = document.getElementById('imgMount').value.trim();
+            const smbUser = document.getElementById('smbUserSelect').value;
+
+            if (!filepath || !mountpoint) {
+                showOutput('Please enter image file path and target mount point.');
+                return;
+            }
+
+            const ext = filepath.split('.').pop().toLowerCase();
+            const cmdKey = (ext === 'iso') ? 'mount_iso_sudo' : 'mount_vhd_sudo';
+
+            showOutput(`Mounting virtual image ${filepath}...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drive_mount',
+                        cmd_key: cmdKey,
+                        args: { filepath, mountpoint }
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showOutput(`Virtual image mounted successfully to ${mountpoint}`);
+                    if (smbUser) {
+                        const shareName = filepath.split('/').pop().replace(/[^a-zA-Z0-9_]/g, '_');
+                        await addSmbShare(mountpoint, shareName, smbUser);
+                    }
+                } else {
+                    showOutput(`Mount failed: ${data.error}\n${data.output}`);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function addSmbShare(path, name, user) {
+            try {
+                const res = await fetch('/api/plugin/data?plugin=smb');
+                const data = await res.json();
+                const shares = data.shares || [];
+                shares.push({
+                    name: name,
+                    path: path,
+                    comment: 'Mounted image share',
+                    read_only: false,
+                    enabled: true,
+                    valid_users: [user]
+                });
+
+                await fetch('/api/plugin/data?plugin=smb', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ shares: shares, users: data.users || [] })
+                });
+                showOutput(`Auto-added restricted SMB share '${name}' for path ${path} assigned to user '${user}'.`);
+            } catch (err) {
+                console.error('Failed to add SMB share:', err);
+            }
+        }
+
+        let currentBrowserPath = '/';
+
+        async function openFileBrowser(path) {
+            currentBrowserPath = path || currentBrowserPath;
+            document.getElementById('modalPath').innerText = currentBrowserPath;
+            document.getElementById('fileModal').style.display = 'block';
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentBrowserPath)}`);
+                const data = await res.json();
+                const container = document.getElementById('fileList');
+                container.innerHTML = '';
+
+                if (data.parent && data.parent !== currentBrowserPath) {
+                    const upDiv = document.createElement('div');
+                    upDiv.className = 'file-item';
+                    upDiv.innerText = '📁 .. (Parent Directory)';
+                    upDiv.onclick = () => openFileBrowser(data.parent);
+                    container.appendChild(upDiv);
+                }
+
+                if (data.items) {
+                    data.items.forEach(item => {
+                        const ext = item.name.split('.').pop().toLowerCase();
+                        if (item.is_dir || SUPPORTED_EXTS.includes(ext)) {
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = 'file-item';
+                            itemDiv.innerText = (item.is_dir ? '📁 ' : '💿 ') + item.name;
+                            itemDiv.onclick = () => {
+                                if (item.is_dir) {
+                                    openFileBrowser(item.path);
+                                } else {
+                                    selectFile(item.path);
+                                }
+                            };
+                            container.appendChild(itemDiv);
+                        }
+                    });
+                }
+            } catch (err) {
+                showOutput('Directory listing error: ' + err.message);
+            }
+        }
+
+        async function createNewFolder() {
+            const folderName = prompt(`Create new folder inside ${currentBrowserPath}:`);
+            if (!folderName) return;
+
+            const cleanFolder = folderName.trim().replace(/[^a-zA-Z0-9_\-]/g, '_');
+            const targetPath = (currentBrowserPath === '/' ? '' : currentBrowserPath) + '/' + cleanFolder;
+
+            try {
+                const res = await fetch('/api/fs/mkdir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: targetPath })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    openFileBrowser(currentBrowserPath);
+                } else {
+                    showOutput('Failed to create folder: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Failed to create folder: ' + err.message);
+            }
+        }
+
+        function selectFile(path) {
+            document.getElementById('imgPath').value = path;
+            const filename = path.split('/').pop().split('.')[0].replace(/[^a-zA-Z0-9_]/g, '_');
+            if (filename) {
+                document.getElementById('imgMount').value = `/mnt/${filename}`;
+            }
+            closeModal();
+        }
+
+        function closeModal() {
+            document.getElementById('fileModal').style.display = 'none';
+        }
+
+        function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
+            const box = document.getElementById('outputBox');
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        window.onload = async () => {
+            await loadSmbUsers();
+        };
+    </script>
+</body>
+</html>

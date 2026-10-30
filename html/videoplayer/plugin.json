@@ -1,0 +1,7 @@
+{
+  "id": "videoplayer",
+  "name": "Video Player",
+  "description": "Stream and play MP4, WebM, OGG, and HTML5 video files",
+  "category": "Tools",
+  "default": true
+}

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PHP Config & Version Manager</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus { border-color: #58a6ff; outline: none; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; width: fit-content; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <h2>PHP Engine</h2>
+    <p class="subtitle">Install target PHP version, configure memory execution limits, and file upload parameters.</p>
+
+    <!-- Section 1: Version Installer Prompt -->
+    <div class="section">
+        <div class="section-title">Install / Switch PHP Version</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Select Target PHP Version to Install</label>
+                <select id="phpVersionSelect">
+                    <option value="">Default Debian PHP Version</option>
+                    <option value="8.3">PHP 8.3</option>
+                    <option value="8.2">PHP 8.2</option>
+                    <option value="8.1">PHP 8.1</option>
+                </select>
+            </div>
+        </div>
+        <button class="btn" onclick="installPhpVersion()">Install / Switch PHP Engine</button>
+    </div>
+
+    <!-- Section 2: PHP.ini Directives -->
+    <div class="section">
+        <div class="section-title">php.ini Runtime Directives</div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Memory Limit (e.g. 256M, 512M)</label>
+                <input type="text" id="memoryLimit" placeholder="256M">
+            </div>
+            <div class="form-group">
+                <label>Upload Max Filesize (e.g. 64M, 128M)</label>
+                <input type="text" id="uploadMax" placeholder="64M">
+            </div>
+            <div class="form-group">
+                <label>Max Execution Time (seconds)</label>
+                <input type="text" id="maxExecTime" placeholder="60">
+            </div>
+        </div>
+        <button class="btn" onclick="savePhpConfig()">Save Directives</button>
+        <button class="btn btn-secondary" style="margin-left: 0.5rem;" onclick="restartPhp()">Restart Web Server / FPM</button>
+    </div>
+
+    <div id="outputBox" class="output-box"></div>
+
+    <script>
+        async function loadPhpConfig() {
+            try {
+                const res = await fetch('/api/plugin/data?plugin=php');
+                const data = await res.json();
+                document.getElementById('memoryLimit').value = data.memory_limit || '256M';
+                document.getElementById('uploadMax').value = data.upload_max || '64M';
+                document.getElementById('maxExecTime').value = data.max_exec_time || '60';
+            } catch (err) {
+                showOutput('Failed to load PHP settings: ' + err.message);
+            }
+        }
+
+        async function installPhpVersion() {
+            const ver = document.getElementById('phpVersionSelect').value;
+            const verStr = ver ? ver : '';
+            showOutput(`Installing / switching PHP package ${ver ? 'v' + ver : 'default'}... Please wait.`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'php',
+                        cmd_key: 'install_sudo',
+                        args: { version: verStr }
+                    })
+                });
+
+                const data = await res.json();
+                showOutput(data.success ? `PHP successfully installed/switched.\n` + data.output : `Installation failed: ${data.error}\n${data.output}`);
+            } catch (err) {
+                showOutput('Installation error: ' + err.message);
+            }
+        }
+
+        async function savePhpConfig() {
+            const config = {
+                memory_limit: document.getElementById('memoryLimit').value.trim(),
+                upload_max: document.getElementById('uploadMax').value.trim(),
+                max_exec_time: document.getElementById('maxExecTime').value.trim()
+            };
+
+            try {
+                await fetch('/api/plugin/data?plugin=php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                showOutput('PHP configuration directives saved. Restart web server to apply changes.');
+            } catch (err) {
+                showOutput('Failed to save settings: ' + err.message);
+            }
+        }
+
+        async function restartPhp() {
+            showOutput('Restarting Apache / PHP service...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'php',
+                        cmd_key: 'restart_php_sudo',
+                        args: {}
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? 'Web server & PHP runtime restarted successfully.\n' + data.output : 'Restart failed: ' + data.error);
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            const box = document.getElementById('outputBox');
+            box.style.display = 'block';
+            box.innerText = text;
+        }
+
+        window.onload = loadPhpConfig;
+    </script>
+</body>
+</html>

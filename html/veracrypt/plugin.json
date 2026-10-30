@@ -1,0 +1,15 @@
+{
+  "id": "veracrypt",
+  "name": "VeraCrypt & TrueCrypt",
+  "description": "Mount and dismount encrypted VeraCrypt and TrueCrypt volume containers using tcplay",
+  "category": "Storage",
+  "default": false,
+  "apt_package": "tcplay",
+  "check_cmd": "which tcplay",
+  "install_sudo": "apt-get update && apt-get install -y tcplay dmsetup",
+  "remove_sudo": "apt-get remove -y tcplay",
+  "commands": {
+    "mount_volume_sudo": "mkdir -p \"{mount_point}\" && LOOPDEV=$(losetup -f --show \"{volume_path}\") && echo \"{password}\" | tcplay -m \"{map_name}\" -d $LOOPDEV && mount /dev/mapper/\"{map_name}\" \"{mount_point}\"",
+    "dismount_volume_sudo": "umount \"{mount_point}\" && dmsetup remove \"{map_name}\""
+  }
+}

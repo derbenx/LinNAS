@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>APT Plugin Package Manager</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .plugin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.2rem; }
+        .plugin-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; display: flex; flex-direction: column; justify-content: space-between; }
+        .plugin-title { font-size: 1.1rem; font-weight: bold; color: #f0f6fc; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+        .plugin-desc { font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem; flex: 1; }
+        .plugin-status { font-size: 0.8rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 4px; }
+        .status-installed { background: #238636; color: white; }
+        .status-uninstalled { background: #30363d; color: #8b949e; }
+
+        .btn { padding: 0.5rem 1rem; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; font-size: 0.85rem; width: fit-content; }
+        .btn-install { background: #238636; color: white; }
+        .btn-install:hover { background: #2ea043; }
+        .btn-remove { background: #da3633; color: white; }
+        .btn-remove:hover { background: #b62324; }
+        .btn-disabled { background: #30363d; color: #6e7681; cursor: not-allowed; }
+        .btn-info { background: #21262d; border: 1px solid #30363d; color: #58a6ff; }
+        .btn-info:hover { background: #30363d; color: #79c0ff; }
+
+        /* Info Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 90%; max-width: 600px; margin: 10% auto; padding: 1.5rem; position: relative; max-height: 80vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; padding-bottom: 0.8rem; margin-bottom: 1rem; }
+        .modal-title { font-size: 1.1rem; font-weight: bold; color: #58a6ff; }
+        .close-btn { background: none; border: none; color: #8b949e; font-size: 1.5rem; cursor: pointer; }
+        .close-btn:hover { color: #f0f6fc; }
+
+        /* Sticky Bottom Progress & Console Banner */
+        .sticky-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 2px solid #58a6ff;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+        }
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #58a6ff;
+            font-size: 0.95rem;
+        }
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #58a6ff;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 130px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>Package Installer</h2>
+    <p class="subtitle">Install or remove software packages and plugin modules on this Debian server.</p>
+
+    <div id="pluginGrid" class="plugin-grid">
+        <p style="color: #8b949e;">Scanning installed plugin packages...</p>
+    </div>
+
+    <!-- Plugin Info Modal -->
+    <div id="infoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="infoTitle">Plugin Info</span>
+                <button class="close-btn" onclick="closeInfoModal()">&times;</button>
+            </div>
+            <div id="infoBody" style="font-size: 0.9rem; line-height: 1.5; color: #c9d1d9;">Loading plugin info...</div>
+        </div>
+    </div>
+
+    <!-- Floating Output & Progress Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span><span id="spinIcon" class="spinner"></span><span id="consoleTitle">Executing Operation...</span></span>
+            <button class="btn btn-remove" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
+
+    <script>
+        let featureToggles = {};
+
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings/get');
+                const data = await res.json();
+                featureToggles = data.feature_toggles || {};
+            } catch (err) {
+                console.error('Failed to load feature settings:', err);
+            }
+        }
+
+        async function toggleFeature(feature, enabled) {
+            try {
+                const res = await fetch('/api/settings/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ feature, enabled })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    featureToggles = data.feature_toggles || {};
+                    await loadAptPlugins();
+                    if (window.parent) {
+                        window.parent.postMessage('reload_plugins', '*');
+                        if (typeof window.parent.loadPlugins === 'function') {
+                            window.parent.loadPlugins();
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to toggle feature:', err);
+            }
+        }
+
+        async function loadAptPlugins() {
+            try {
+                await loadSettings();
+                const res = await fetch('/api/plugins');
+                const plugins = await res.json();
+                renderPlugins(plugins);
+            } catch (err) {
+                document.getElementById('pluginGrid').innerHTML = `<p style="color:#f85149;">Failed to load plugins: ${err.message}</p>`;
+            }
+        }
+
+        function renderPlugins(plugins) {
+            const grid = document.getElementById('pluginGrid');
+            grid.innerHTML = '';
+
+            plugins.forEach(p => {
+                if (p.id === 'apt') return; // Hide APT card inside APT manager
+
+                const card = document.createElement('div');
+                card.className = 'plugin-card';
+
+                const isDefault = p.default;
+                const isInstalled = p.installed;
+
+                let actionBtn = '';
+                if (isDefault) {
+                    actionBtn = `<button class="btn btn-disabled">Core System Module</button>`;
+                } else if (isInstalled) {
+                    actionBtn = `<button class="btn btn-remove" onclick="executeAptCmd('${p.id}', 'remove_cmd', '${p.name}')">Uninstall Package</button>`;
+                } else {
+                    actionBtn = `<button class="btn btn-install" onclick="executeAptCmd('${p.id}', 'install_cmd', '${p.name}')">Install Package</button>`;
+                }
+
+                // Check if hidden in sidebar
+                const isHidden = featureToggles[p.id] === false;
+
+                const toggleCheckbox = `
+                    <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: #8b949e; cursor: pointer; margin-top: 0.8rem;">
+                        <input type="checkbox" ${isHidden ? 'checked' : ''} onchange="toggleFeature('${p.id}', !this.checked)">
+                        <span>Hide / disable in navigation menu</span>
+                    </label>
+                `;
+
+                card.innerHTML = `
+                    <div>
+                        <div class="plugin-title">
+                            <span>${p.name} <button class="btn btn-info" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; margin-left: 6px;" onclick="showPluginInfo('${p.id}', '${p.name}')">ℹ️ Info</button></span>
+                            <span class="plugin-status ${isInstalled ? 'status-installed' : 'status-uninstalled'}">
+                                ${isInstalled ? 'Installed' : 'Not Installed'}
+                            </span>
+                        </div>
+                        <div class="plugin-desc">${p.description}</div>
+                    </div>
+                    <div>
+                        ${actionBtn}
+                        ${toggleCheckbox}
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        async function executeAptCmd(pluginId, cmdKey, pluginName) {
+            const isInstall = cmdKey.includes('install');
+            const opName = isInstall ? 'Installing' : 'Uninstalling';
+
+            showConsole(`[START] ${opName} ${pluginName}... Please wait...\n`, true);
+            const box = document.getElementById('outputBox');
+
+            try {
+                const response = await fetch('/api/plugin/exec/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: pluginId, cmd_key: cmdKey, args: {} })
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    updateConsole(`Operation failed: ${response.statusText}\n${errText}`, false);
+                    return;
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    box.innerText += chunk;
+                    box.scrollTop = box.scrollHeight;
+                }
+
+                updateConsole(box.innerText + `\n\n[FINISHED] ${opName} ${pluginName} completed.`, false);
+                await loadAptPlugins();
+
+                if (window.parent) {
+                    window.parent.postMessage('reload_plugins', '*');
+                    if (typeof window.parent.loadPlugins === 'function') {
+                        window.parent.loadPlugins();
+                    }
+                }
+            } catch (err) {
+                updateConsole('Execution error: ' + err.message, false);
+            }
+        }
+
+        function showConsole(initialText, isRunning) {
+            const consoleDrawer = document.getElementById('stickyConsole');
+            const titleEl = document.getElementById('consoleTitle');
+            const spinner = document.getElementById('spinIcon');
+            const box = document.getElementById('outputBox');
+
+            consoleDrawer.style.display = 'block';
+            titleEl.innerText = isRunning ? 'APT Execution in Progress...' : 'Operation Finished';
+            spinner.style.display = isRunning ? 'inline-block' : 'none';
+            box.innerText = initialText;
+
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function updateConsole(text, isRunning) {
+            const titleEl = document.getElementById('consoleTitle');
+            const spinner = document.getElementById('spinIcon');
+            const box = document.getElementById('outputBox');
+
+            titleEl.innerText = isRunning ? 'APT Execution in Progress...' : 'Operation Finished';
+            spinner.style.display = isRunning ? 'inline-block' : 'none';
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        async function showPluginInfo(pluginId, pluginName) {
+            document.getElementById('infoTitle').innerText = `${pluginName} Documentation`;
+            const body = document.getElementById('infoBody');
+            body.innerHTML = 'Loading documentation...';
+            document.getElementById('infoModal').style.display = 'block';
+
+            try {
+                const res = await fetch(`/${pluginId}/plugin.info`);
+                if (res.ok) {
+                    const text = await res.text();
+                    body.innerHTML = text;
+                } else {
+                    body.innerHTML = 'No plugin.info documentation available.';
+                }
+            } catch (err) {
+                body.innerHTML = 'Failed to load plugin documentation.';
+            }
+        }
+
+        function closeInfoModal() {
+            document.getElementById('infoModal').style.display = 'none';
+        }
+
+        async function restoreDefaultPlugins() {
+            if (!confirm('Are you sure you want to restore all default plugins from the embedded application binary? Custom plugin edits may be overwritten.')) return;
+            showConsole('[START] Restoring default plugins from embedded binary...\n', true);
+            try {
+                const res = await fetch('/api/plugins/restore', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    updateConsole(`[FINISHED] ${data.message}`, false);
+                    await loadAptPlugins();
+                    if (window.parent) {
+                        window.parent.postMessage('reload_plugins', '*');
+                        if (typeof window.parent.loadPlugins === 'function') {
+                            window.parent.loadPlugins();
+                        }
+                    }
+                } else {
+                    updateConsole('Failed to restore plugins: ' + data.error, false);
+                }
+            } catch (err) {
+                updateConsole('Restore error: ' + err.message, false);
+            }
+        }
+
+        window.onload = loadAptPlugins;
+    </script>
+</body>
+</html>

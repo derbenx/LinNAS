@@ -1,0 +1,15 @@
+{
+  "id": "apache",
+  "name": "Apache Server",
+  "description": "Configure Apache HTTP server listening port, document root, and virtual hosts",
+  "category": "Web Services",
+  "default": false,
+  "apt_package": "apache2",
+  "check_cmd": "which apache2",
+  "install_sudo": "apt-get update && apt-get install -y apache2",
+  "remove_sudo": "apt-get remove -y apache2",
+  "commands": {
+    "restart_apache_sudo": "systemctl restart apache2 || service apache2 restart",
+    "status_apache_cmd": "systemctl status apache2 || service apache2 status"
+  }
+}

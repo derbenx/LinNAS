@@ -1,0 +1,51 @@
+<p><strong>Video Player</strong></p>
+<p>Stream HTML5 video files (.mp4, .webm, .mkv, .mov) with HTTP Range request seeking (HTTP 206) and keyboard controls.</p>
+<div style="margin-top: 0.8rem;">
+    <p><strong>Keyboard Shortcuts:</strong></p>
+    <table style="width: 100%; border-collapse: collapse; margin-top: 0.4rem; font-size: 0.85rem;">
+        <thead>
+            <tr style="border-bottom: 1px solid #30363d; text-align: left; color: #58a6ff;">
+                <th style="padding: 4px;">Key</th>
+                <th style="padding: 4px;">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px;">Space</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px;">K</kbd></td>
+                <td style="padding: 4px;">Play / Pause</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px;">Left Arrow</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px;">Right Arrow</kbd></td>
+                <td style="padding: 4px;">Seek Back 5s / Seek Forward 5s</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px;">J</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px;">L</kbd></td>
+                <td style="padding: 4px;">Seek Back 15s / Seek Forward 15s</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">,</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">.</kbd></td>
+                <td style="padding: 4px;">Frame Step Back / Frame Step Forward</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">Up Arrow</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">Down Arrow</kbd></td>
+                <td style="padding: 4px;">Volume Up 10% / Volume Down 10%</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">M</kbd></td>
+                <td style="padding: 4px;">Toggle Mute</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">F</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">F11</kbd></td>
+                <td style="padding: 4px;">Toggle Fullscreen</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">Home</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">End</kbd></td>
+                <td style="padding: 4px;">Jump to Beginning / Jump to End</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #21262d;">
+                <td style="padding: 4px;"><kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">Page Up</kbd> / <kbd style="background:#21262d; border:1px solid #30363d; padding:2px 6px; border-radius:4px">Page Down</kbd></td>
+                <td style="padding: 4px;">Previous Track / Next Track in Directory</td>
+            </tr>
+        </tbody>
+    </table>
+</div>

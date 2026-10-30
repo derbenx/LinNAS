@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>System File Editor</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .warning-banner { background: #381e1d; border: 1px solid #f85149; border-radius: 6px; padding: 1rem; color: #ff7b72; margin-bottom: 1.5rem; font-size: 0.9rem; display: flex; align-items: center; gap: 10px; }
+        .warning-title { font-weight: bold; font-size: 1rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
+
+        .quick-links { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+        .quick-btn { padding: 0.4rem 0.8rem; background: #21262d; border: 1px solid #30363d; border-radius: 4px; color: #58a6ff; font-size: 0.85rem; cursor: pointer; transition: background 0.2s; }
+        .quick-btn:hover { background: #30363d; color: #79c0ff; }
+
+        .path-input-group { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .path-input-group input { flex: 1; padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .path-input-group input:focus { border-color: #58a6ff; outline: none; }
+
+        .editor-area { width: 100%; height: 380px; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #7ee787; font-family: monospace; font-size: 0.9rem; padding: 1rem; resize: vertical; outline: none; }
+        .editor-area:focus { border-color: #58a6ff; }
+
+        .btn-row { display: flex; gap: 0.8rem; margin-top: 1rem; align-items: center; }
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+
+        /* Floating Bottom Console Drawer */
+        .sticky-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 2px solid #58a6ff;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+        }
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #58a6ff;
+            font-size: 0.95rem;
+        }
+
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 10% auto; padding: 1.5rem; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
+        .file-list { max-height: 300px; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; }
+        .file-item { padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #21262d; font-family: monospace; }
+        .file-item:hover { background: #1f242d; color: #58a6ff; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.3rem;">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <h2>File Editor</h2>
+            <button class="btn btn-secondary" style="padding: 0.3rem 0.8rem; font-size: 0.85rem;" onclick="goBackToFileManager()">⬅️ Back to File Manager</button>
+        </div>
+        <span id="adminWarningBadge" style="background: #381e1d; border: 1px solid #f85149; color: #ff7b72; padding: 0.3rem 0.8rem; border-radius: 6px; font-size: 0.8rem; font-weight: bold; display: none;">
+            ⚠️ Admin / Root Privilege Mode
+        </span>
+    </div>
+    <p class="subtitle">Inspect and modify files on your LinNAS server.</p>
+
+    <div class="section">
+        <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <span>File Editor & Presets</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <label style="font-size: 0.85rem; color: #8b949e;">Quick presets:</label>
+                <select id="presetSelect" style="padding: 0.4rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #58a6ff; font-size: 0.85rem;" onchange="onPresetChange(this.value)">
+                    <option value="">-- Select File Preset --</option>
+                    <option value="/etc/fstab">/etc/fstab (FileSystem Mounts)</option>
+                    <option value="/etc/samba/smb.conf">/etc/samba/smb.conf (SMB Shares)</option>
+                    <option value="/etc/dnsmasq.conf">/etc/dnsmasq.conf (DNS / DHCP Server)</option>
+                    <option value="/etc/network/interfaces">/etc/network/interfaces (LAN Network)</option>
+                    <option value="/etc/hosts">/etc/hosts (System Hostnames)</option>
+                    <option value="/etc/chrony/chrony.conf">/etc/chrony/chrony.conf (NTP Time Server)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="path-input-group">
+            <input type="text" id="filePath" placeholder="/etc/fstab">
+            <button class="btn btn-secondary" onclick="openFileBrowser()">Browse File...</button>
+            <button class="btn btn-secondary" onclick="loadFile()">Load File</button>
+        </div>
+
+        <textarea id="editorContent" class="editor-area" placeholder="Click 'Load File' or select a preset file above to view and edit file content..."></textarea>
+
+        <div class="btn-row">
+            <button class="btn" onclick="saveFile()">Save Changes (Sudo / Root)</button>
+            <span id="fileInfo" style="font-size: 0.85rem; color: #8b949e;"></span>
+        </div>
+    </div>
+
+    <!-- File Browser Modal -->
+    <div id="fileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="modalPath">/</span>
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeModal()">✕</button>
+            </div>
+            <div id="fileList" class="file-list"></div>
+        </div>
+    </div>
+
+    <!-- Floating Output Console Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
+
+    <script>
+        const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB safety limit
+
+        function onPresetChange(path) {
+            if (!path) return;
+            document.getElementById('filePath').value = path;
+            loadFile();
+        }
+
+        async function loadFile() {
+            const filepath = document.getElementById('filePath').value.trim();
+            const editor = document.getElementById('editorContent');
+            const info = document.getElementById('fileInfo');
+
+            if (!filepath) {
+                editor.value = '';
+                info.innerText = '';
+                showOutput('Please specify a file path to load.');
+                return;
+            }
+
+            showOutput(`Checking file size for ${filepath}...`);
+
+            try {
+                // Check file size safety
+                const checkRes = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'editor', cmd_key: 'check_file_cmd', args: { filepath } })
+                });
+                const checkData = await checkRes.json();
+
+                if (!checkData.success) {
+                    editor.value = '';
+                    info.innerText = 'Failed to load file';
+                    showOutput('Failed to inspect file size: ' + (checkData.error || 'Check authorization or file existence.') + (checkData.output ? '\n' + checkData.output : ''));
+                    return;
+                }
+
+                const outputStr = checkData.output ? checkData.output.trim() : '0';
+                const size = parseInt(outputStr, 10) || 0;
+
+                if (size > MAX_FILE_SIZE) {
+                    editor.value = '';
+                    info.innerText = 'File too large (> 2 MB)';
+                    showOutput(`ERROR: File size is ${formatBytes(size)}, which exceeds the maximum editor limit (2 MB). File loading aborted to prevent browser crash.`);
+                    return;
+                }
+
+                showOutput(`Loading ${filepath} (${formatBytes(size)})...`);
+
+                const readRes = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'editor', cmd_key: 'read_file_cmd', args: { filepath } })
+                });
+
+                const readData = await readRes.json();
+                if (readData.success) {
+                    editor.value = readData.output !== undefined ? readData.output : '';
+                    info.innerText = `Loaded ${filepath} (${formatBytes(size)})`;
+                    showOutput(`Loaded ${filepath} successfully.`);
+                } else {
+                    editor.value = '';
+                    info.innerText = 'Failed to read file';
+                    showOutput('Failed to read file: ' + (readData.error || 'Unauthorized or read failure.') + (readData.output ? '\n' + readData.output : ''));
+                }
+            } catch (err) {
+                editor.value = '';
+                info.innerText = 'Execution error';
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function saveFile() {
+            const filepath = document.getElementById('filePath').value.trim();
+            const content = document.getElementById('editorContent').value;
+
+            if (!filepath) {
+                showOutput('Please specify a file path before saving.');
+                return;
+            }
+
+            if (!confirm(`Save changes to ${filepath}? This operation overwrites system configuration files with elevated privileges.`)) {
+                return;
+            }
+
+            showOutput(`Saving ${filepath}...`);
+
+            try {
+                const res = await fetch('/api/file/write', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filepath, content })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    showOutput(`Successfully saved ${filepath}.`);
+                    document.getElementById('fileInfo').innerText = `Saved ${filepath} at ${new Date().toLocaleTimeString()}`;
+                } else {
+                    showOutput('Save failed: ' + data.error + (data.output ? '\n' + data.output : ''));
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        /* File Browser Modal */
+        let currentBrowserPath = '/etc';
+
+        async function openFileBrowser(path) {
+            currentBrowserPath = path || currentBrowserPath;
+            document.getElementById('modalPath').innerText = currentBrowserPath;
+            document.getElementById('fileModal').style.display = 'block';
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentBrowserPath)}`);
+                const data = await res.json();
+                const container = document.getElementById('fileList');
+                container.innerHTML = '';
+
+                if (data.parent && data.parent !== currentBrowserPath) {
+                    const upDiv = document.createElement('div');
+                    upDiv.className = 'file-item';
+                    upDiv.innerText = '📁 .. (Parent Directory)';
+                    upDiv.onclick = () => openFileBrowser(data.parent);
+                    container.appendChild(upDiv);
+                }
+
+                if (data.items) {
+                    data.items.forEach(item => {
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'file-item';
+                        itemDiv.innerText = (item.is_dir ? '📁 ' : '📄 ') + item.name;
+                        itemDiv.onclick = () => {
+                            if (item.is_dir) {
+                                openFileBrowser(item.path);
+                            } else {
+                                selectFile(item.path);
+                            }
+                        };
+                        container.appendChild(itemDiv);
+                    });
+                }
+            } catch (err) {
+                showOutput('Directory listing error: ' + err.message);
+            }
+        }
+
+        function selectFile(path) {
+            document.getElementById('filePath').value = path;
+            closeModal();
+            loadFile();
+        }
+
+        function closeModal() {
+            document.getElementById('fileModal').style.display = 'none';
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
+            const box = document.getElementById('outputBox');
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function goBackToFileManager() {
+            const currentFile = document.getElementById('filePath').value.trim();
+            let parentDir = '/';
+            if (currentFile) {
+                const parts = currentFile.split('/').filter(Boolean);
+                if (parts.length > 1) {
+                    parentDir = '/' + parts.slice(0, -1).join('/');
+                }
+            }
+            if (window.parent && typeof window.parent.loadPluginView === 'function') {
+                window.parent.loadPluginView('filemanager', { dir: parentDir });
+            } else {
+                window.location.href = `/filemanager/index.htm?dir=${encodeURIComponent(parentDir)}`;
+            }
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        async function checkAuthStatus() {
+            try {
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+                if (data.is_root) {
+                    const badge = document.getElementById('adminWarningBadge');
+                    if (badge) badge.style.display = 'inline-block';
+                }
+            } catch (e) {}
+        }
+
+        window.onload = async () => {
+            await checkAuthStatus();
+            const urlParams = new URLSearchParams(window.location.search);
+            const targetFile = urlParams.get('file');
+            if (targetFile) {
+                document.getElementById('filePath').value = targetFile;
+            } else {
+                document.getElementById('filePath').value = '/etc/fstab';
+            }
+            loadFile();
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Server Status & Power Management</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; }
+        p.subtitle { color: #8b949e; font-size: 0.9rem; }
+
+        .bright-login-btn { padding: 0.7rem 1.5rem; background: #238636; color: #ffffff; font-weight: bold; border: 2px solid #2ea043; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 0.95rem; box-shadow: 0 0 10px rgba(46,160,67,0.4); transition: transform 0.2s, background 0.2s; }
+        .bright-login-btn:hover { background: #2ea043; transform: scale(1.03); }
+
+        .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem; margin-bottom: 1.5rem; }
+        .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.2rem; }
+        .stat-card h4 { color: #8b949e; font-size: 0.85rem; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .stat-value { font-size: 1.3rem; font-weight: bold; color: #f0f6fc; word-break: break-all; }
+        .stat-sub { font-size: 0.8rem; color: #7ee787; margin-top: 0.3rem; }
+
+        .conky-section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .conky-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; }
+        .conky-box { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 1rem; font-family: monospace; font-size: 0.85rem; }
+        .conky-title { color: #58a6ff; font-weight: bold; margin-bottom: 0.5rem; text-transform: uppercase; border-bottom: 1px solid #21262d; padding-bottom: 0.3rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 0.8rem; font-size: 0.9rem; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
+        th { color: #8b949e; font-weight: 600; background: #1f242d; }
+
+        .badge-passed { background: #238636; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+        .badge-warning { background: #d29922; color: black; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+        .badge-active { background: #238636; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
+        .badge-inactive { background: #da3633; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
+
+        .form-inline { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
+        .form-inline input, .form-inline select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #b62324; }
+
+        .auth-only { display: none; }
+
+        /* Floating Bottom Console Drawer */
+        .sticky-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #161b22;
+            border-top: 2px solid #58a6ff;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+            padding: 1rem 1.5rem;
+            display: none;
+            z-index: 1000;
+        }
+        .console-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #58a6ff;
+            font-size: 0.95rem;
+        }
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <div class="header-bar">
+        <div>
+            <h2>Server Status</h2>
+            <p class="subtitle">Real-time system health, SMART drive diagnostics, disk space, and service status.</p>
+        </div>
+        <div id="loginHeader">
+            <button id="mainLoginBtn" class="bright-login-btn" onclick="redirectToLogin()">🔑 LOGIN TO MANAGE SERVER</button>
+        </div>
+    </div>
+
+    <!-- CPU / Memory / Uptime Stats Cards -->
+    <div class="grid-cards">
+        <div class="stat-card">
+            <h4>Host & Kernel</h4>
+            <div id="hostVal" class="stat-value">checking...</div>
+            <div id="kernelSub" class="stat-sub">Linux Kernel</div>
+        </div>
+        <div class="stat-card">
+            <h4>Processor / Cores</h4>
+            <div id="cpuVal" class="stat-value">checking...</div>
+            <div id="cpuSub" class="stat-sub">checking...</div>
+        </div>
+        <div class="stat-card">
+            <h4>Free Memory (RAM)</h4>
+            <div id="ramVal" class="stat-value">checking...</div>
+            <div id="ramSub" class="stat-sub">checking...</div>
+        </div>
+        <div class="stat-card">
+            <h4>System Uptime</h4>
+            <div id="uptimeVal" class="stat-value">checking...</div>
+            <div id="uptimeSub" class="stat-sub">Server Online</div>
+        </div>
+    </div>
+
+    <!-- Conky-style System Information Summary -->
+    <div class="conky-section">
+        <div class="section-title">System Load & Memory Summary</div>
+        <div class="conky-grid">
+            <div class="conky-box">
+                <div class="conky-title">⚡ CPU Load & Swap</div>
+                <div><strong>System Load (1m 5m 15m):</strong></div>
+                <div id="loadAvgVal" style="color: #7ee787; margin-bottom: 0.5rem;">checking...</div>
+                <div><strong>Swap Memory Usage:</strong></div>
+                <div id="swapVal" style="color: #e3b341;">checking...</div>
+            </div>
+            <div class="conky-box auth-only" id="netIpBox">
+                <div class="conky-title">🌐 Active Network IP Addresses</div>
+                <div id="netIpList" style="color: #58a6ff;">checking...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Drive Space Table (Authenticated Only) -->
+    <div class="section auth-only">
+        <div class="section-title">Disk Space Available</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Filesystem</th>
+                    <th>Size</th>
+                    <th>Used</th>
+                    <th>Available</th>
+                    <th>Use %</th>
+                    <th>Mounted On</th>
+                </tr>
+            </thead>
+            <tbody id="dfTableBody">
+                <tr><td colspan="6" style="text-align: center; color: #8b949e;">checking...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SMART Drive Health (Authenticated Only) -->
+    <div class="section auth-only">
+        <div class="section-title">SMART Drive Health Monitor</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Drive Device</th>
+                    <th>Type</th>
+                    <th>SMART Health Status</th>
+                    <th>Details / Diagnostics</th>
+                </tr>
+            </thead>
+            <tbody id="smartTableBody">
+                <tr><td colspan="4" style="text-align: center; color: #8b949e;">checking...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Services Status (Authenticated Only) -->
+    <div class="section auth-only" id="servicesSection">
+        <div class="section-title">Installed System Services Status</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Service Name</th>
+                    <th>Status</th>
+                    <th>Description</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="servicesTableBody">
+                <tr><td colspan="4" style="text-align: center; color: #8b949e;">checking...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+
+    <!-- Floating Output Console Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-danger" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
+
+    <script>
+        let isLoggedIn = false;
+
+        async function checkAuthState() {
+            try {
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+                isLoggedIn = data.logged_in || !data.auth_enabled;
+
+                const loginBtn = document.getElementById('loginHeader');
+                if (isLoggedIn) {
+                    loginBtn.style.display = 'none';
+                    document.querySelectorAll('.auth-only').forEach(el => el.style.display = 'block');
+                } else {
+                    loginBtn.style.display = 'block';
+                    document.querySelectorAll('.auth-only').forEach(el => el.style.display = 'none');
+                }
+            } catch (err) {
+                console.error('Auth state check error:', err);
+            }
+        }
+
+        function redirectToLogin() {
+            if (window.parent && window.parent !== window) {
+                window.parent.location.href = '/login.htm';
+            } else {
+                window.location.href = '/login.htm';
+            }
+        }
+
+        function checkBootServiceStatusLazy() {
+            if (!isLoggedIn) return;
+            const badge = document.getElementById('bootServiceBadge');
+            fetch('/api/plugin/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin: 'status', cmd_key: 'boot_service_status_cmd', args: {} })
+            }).then(res => res.json()).then(data => {
+                const output = data.output || '';
+                const isEnabled = data.success || output.includes('enabled');
+                if (isEnabled) {
+                    badge.innerText = 'Enabled on Boot';
+                    badge.className = 'badge-active';
+                } else {
+                    badge.innerText = 'Disabled';
+                    badge.className = 'badge-inactive';
+                }
+            }).catch(() => {
+                badge.innerText = 'Disabled';
+                badge.className = 'badge-inactive';
+            });
+        }
+
+        async function toggleBootService(enable) {
+            if (!isLoggedIn) return;
+            const cmdKey = enable ? 'enable_boot_service_sudo' : 'disable_boot_service_sudo';
+            showOutput(`${enable ? 'Enabling' : 'Disabling'} application boot service...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'status', cmd_key: cmdKey, args: {} })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Successfully ${enable ? 'enabled' : 'disabled'} application autostart on boot.\n` + (data.output || '') : `Operation failed: ${data.error}\n${data.output}`);
+                checkBootServiceStatusLazy();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function loadSystemStatsLazy() {
+            fetch('/api/plugin/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin: 'status', cmd_key: 'sys_info_cmd', args: {} })
+            }).then(res => res.json()).then(data => {
+                if (data.success) parseSysInfo(data.output);
+            }).catch(err => console.error('Sys info load error:', err));
+        }
+
+        function parseSysInfo(output) {
+            let hostName = 'DebianServer';
+            let kernelVer = 'Linux';
+            let cpuModel = 'Standard Processor';
+            let cpuCores = '1 Core';
+            let ramFree = 'N/A';
+            let ramTotal = 'N/A';
+            let uptimeText = 'N/A';
+            let loadAvg = 'N/A';
+            let swapText = 'N/A';
+            let netIps = [];
+
+            const parts = output.split('===');
+            for (let i = 0; i < parts.length; i++) {
+                const tag = parts[i].trim();
+                const content = (i + 1 < parts.length) ? parts[i + 1].trim() : '';
+
+                if (tag === 'HOST') {
+                    const lines = content.split('\n');
+                    if (lines[0]) hostName = lines[0].trim();
+                    if (lines[1]) kernelVer = lines[1].trim();
+                } else if (tag === 'CPU') {
+                    const lines = content.split('\n');
+                    lines.forEach(l => {
+                        if (l.includes('Model name:')) cpuModel = l.split(':')[1].trim();
+                        if (l.includes('CPU(s):')) {
+                            let rawCores = l.split(':')[1].trim();
+                            if (rawCores.includes('-')) {
+                                const rangeParts = rawCores.split('-');
+                                const start = parseInt(rangeParts[0], 10);
+                                const end = parseInt(rangeParts[1], 10);
+                                if (!isNaN(start) && !isNaN(end)) {
+                                    rawCores = (end - start + 1).toString();
+                                }
+                            }
+                            cpuCores = rawCores + (rawCores === '1' ? ' Core' : ' Cores');
+                        }
+                    });
+                } else if (tag === 'LOAD') {
+                    if (content) {
+                        const lp = content.split(/\s+/);
+                        if (lp.length >= 3) {
+                            loadAvg = `${lp[0]} ${lp[1]} ${lp[2]}`;
+                        } else {
+                            loadAvg = content;
+                        }
+                    }
+                } else if (tag === 'MEM') {
+                    const lines = content.split('\n');
+                    lines.forEach(l => {
+                        if (l.startsWith('Mem:')) {
+                            const p = l.split(/\s+/);
+                            if (p.length >= 4) {
+                                ramTotal = p[1] + ' MB Total';
+                                ramFree = p[3] + ' MB Free';
+                            }
+                        } else if (l.startsWith('Swap:')) {
+                            const p = l.split(/\s+/);
+                            if (p.length >= 3) {
+                                swapText = `${p[2]} MB Used / ${p[1]} MB Total`;
+                            }
+                        }
+                    });
+                } else if (tag === 'UPTIME') {
+                    if (content.includes('up ')) {
+                        uptimeText = content.split('up ')[1].split(',')[0].trim();
+                    } else if (content) {
+                        uptimeText = content;
+                    }
+                } else if (tag === 'NET') {
+                    const lines = content.split('\n');
+                    lines.forEach(l => {
+                        if (l.trim()) netIps.push(l.trim());
+                    });
+                }
+            }
+
+            document.getElementById('hostVal').innerText = hostName;
+            document.getElementById('kernelSub').innerText = kernelVer;
+            document.getElementById('cpuVal').innerText = cpuCores;
+            document.getElementById('cpuSub').innerText = cpuModel;
+            document.getElementById('ramVal').innerText = ramFree;
+            document.getElementById('ramSub').innerText = ramTotal;
+            document.getElementById('uptimeVal').innerText = uptimeText;
+
+            document.getElementById('loadAvgVal').innerText = loadAvg;
+            document.getElementById('swapVal').innerText = swapText;
+            document.getElementById('netIpList').innerHTML = netIps.length ? netIps.map(ip => `<div>• ${ip}</div>`).join('') : '<div>• 127.0.0.1/8</div>';
+        }
+
+        function loadDiskSpaceLazy() {
+            fetch('/api/plugin/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin: 'status', cmd_key: 'disk_space_cmd', args: {} })
+            }).then(res => res.json()).then(data => {
+                if (data.success) renderDfTable(data.output);
+            }).catch(err => console.error('Disk space load error:', err));
+        }
+
+        function renderDfTable(output) {
+            const tbody = document.getElementById('dfTableBody');
+            tbody.innerHTML = '';
+            const lines = output.trim().split('\n');
+            if (lines.length <= 1) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #8b949e;">No mounts found.</td></tr>';
+                return;
+            }
+
+            for (let i = 1; i < lines.length; i++) {
+                const parts = lines[i].split(/\s+/);
+                if (parts.length >= 6) {
+                    const pctStr = parts[4].replace('%', '');
+                    const pctNum = parseInt(pctStr, 10) || 0;
+
+                    let barColor = '#238636'; // Green
+                    if (pctNum >= 90) {
+                        barColor = '#da3633'; // Red
+                    } else if (pctNum >= 80) {
+                        barColor = '#d29922'; // Yellow
+                    }
+
+                    const progressBarHtml = `
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="flex: 1; background: #21262d; border-radius: 4px; height: 10px; overflow: hidden; min-width: 60px;">
+                                <div style="width: ${pctNum}%; background: ${barColor}; height: 100%; border-radius: 4px; transition: width 0.3s;"></div>
+                            </div>
+                            <span style="font-size: 0.85rem; font-weight: bold; width: 40px; text-align: right;">${parts[4]}</span>
+                        </div>
+                    `;
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><strong>${parts[0]}</strong></td>
+                        <td>${parts[1]}</td>
+                        <td>${parts[2]}</td>
+                        <td><span style="color:#7ee787;">${parts[3]}</span></td>
+                        <td style="min-width: 140px;">${progressBarHtml}</td>
+                        <td>${parts[5]}</td>
+                    `;
+                    tbody.appendChild(tr);
+                }
+            }
+        }
+
+        function loadSmartHealthLazy() {
+            const drives = ['sda', 'sdb', 'sdc', 'sdd', 'sde', 'nvme0n1'];
+            const tbody = document.getElementById('smartTableBody');
+
+            let foundDrive = false;
+            drives.forEach(drive => {
+                fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'status', cmd_key: 'smart_health_sudo', args: { drive } })
+                }).then(res => res.json()).then(data => {
+                    if (data.success && !data.output.includes('No such device') && !data.output.includes('Unable to detect')) {
+                        if (!foundDrive) {
+                            tbody.innerHTML = '';
+                            foundDrive = true;
+                        }
+
+                        const tr = document.createElement('tr');
+                        const isPassed = data.output.includes('PASSED') || data.output.includes('OK');
+                        const badgeClass = isPassed ? 'badge-passed' : 'badge-warning';
+                        const badgeText = isPassed ? 'PASSED / HEALTHY' : 'NOTICE / UNCHECKED';
+
+                        tr.innerHTML = `
+                            <td><strong>/dev/${drive}</strong></td>
+                            <td>SATA / NVMe Drive</td>
+                            <td><span class="${badgeClass}">${badgeText}</span></td>
+                            <td>
+                                <button class="btn btn-secondary" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;" onclick="viewSmartDetails('${drive}')">View SMART Attributes</button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    }
+                }).catch(() => {});
+            });
+
+            setTimeout(() => {
+                if (!foundDrive && tbody.children.length === 1 && tbody.innerText.includes('checking...')) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: #8b949e; padding: 1.2rem;">
+                                <div>N/A (No SMART storage drives detected or <code>smartmontools</code> package is missing)</div>
+                                ${isLoggedIn ? `<button class="btn btn-secondary" style="margin-top: 0.8rem; font-size: 0.85rem;" onclick="installSmartTools()">📦 Install smartmontools Package</button>` : ''}
+                            </td>
+                        </tr>`;
+                }
+            }, 3000);
+        }
+
+        async function installSmartTools() {
+            if (!isLoggedIn) return;
+            showOutput('Installing smartmontools via APT package manager...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'status', cmd_key: 'install_sudo', args: {} })
+                });
+                const data = await res.json();
+                showOutput(data.success ? 'smartmontools package installed successfully!\n' + (data.output || '') : 'Installation failed: ' + data.error);
+                loadSmartHealthLazy();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function viewSmartDetails(drive) {
+            showOutput(`Querying SMART attributes for /dev/${drive}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'status', cmd_key: 'smart_info_sudo', args: { drive } })
+                });
+                const data = await res.json();
+                showOutput(`SMART Attributes for /dev/${drive}:\n\n` + (data.output || data.error));
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        const managedServices = [
+            { id: 'smbd', name: 'Samba File Server (SMB)', desc: 'Network file share service' },
+            { id: 'dnsmasq', name: 'DNS & DHCP Server (dnsmasq)', desc: 'DNS forwarding and DHCP pool leases' },
+            { id: 'apache2', name: 'Apache Web Server', desc: 'HTTP web server daemon' },
+            { id: 'mysql', name: 'MySQL / MariaDB', desc: 'Relational database server' },
+            { id: 'ssh', name: 'SSH Remote Console', desc: 'Secure shell remote terminal access' }
+        ];
+
+        function loadServicesStatusLazy() {
+            if (!isLoggedIn) return;
+            const tbody = document.getElementById('servicesTableBody');
+            tbody.innerHTML = '';
+
+            let foundService = false;
+            managedServices.forEach(s => {
+                fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'status', cmd_key: 'service_status_cmd', args: { service: s.id } })
+                }).then(res => res.json()).then(data => {
+                    const output = data.output || '';
+                    if (!output.includes('Unit ' + s.id + '.service could not be found') && !output.includes('not-found') && !output.includes('no such file')) {
+                        foundService = true;
+                        const isRunning = data.success || output.includes('active (running)');
+
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td><strong>${s.name}</strong> (${s.id})</td>
+                            <td><span class="${isRunning ? 'badge-active' : 'badge-inactive'}">${isRunning ? 'Active / Running' : 'Stopped / Inactive'}</span></td>
+                            <td>${s.desc}</td>
+                            <td>
+                                <button class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.75rem;" onclick="controlService('${s.id}', 'start')">Start</button>
+                                <button class="btn btn-danger" style="padding:0.2rem 0.5rem; font-size:0.75rem;" onclick="controlService('${s.id}', 'stop')">Stop</button>
+                                <button class="btn" style="padding:0.2rem 0.5rem; font-size:0.75rem;" onclick="controlService('${s.id}', 'restart')">Restart</button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    }
+                }).catch(err => console.error('Service status check error:', err));
+            });
+
+            setTimeout(() => {
+                if (!foundService && tbody.children.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #8b949e;">N/A (No managed system services currently installed).</td></tr>';
+                }
+            }, 3000);
+        }
+
+        async function controlService(service, action) {
+            if (!isLoggedIn) return;
+            showOutput(`Executing ${action} on ${service}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'status', cmd_key: 'service_control_sudo', args: { service, action } })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Service '${service}' ${action} executed successfully.\n` + data.output : `Failed: ${data.error}\n${data.output}`);
+                loadServicesStatusLazy();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function poweroffNow() {
+            if (!isLoggedIn) return;
+            if (!confirm('Are you sure you want to INSTANTLY POWER OFF the server?')) return;
+            showOutput('Initiating instant server power off...');
+            await fetch('/api/plugin/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin: 'status', cmd_key: 'poweroff_sudo', args: {} })
+            });
+        }
+
+        async function rebootNow() {
+            if (!isLoggedIn) return;
+            if (!confirm('Are you sure you want to REBOOT the server?')) return;
+            showOutput('Initiating server reboot...');
+            await fetch('/api/plugin/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin: 'status', cmd_key: 'reboot_sudo', args: {} })
+            });
+        }
+
+        async function schedulePowerAction() {
+            if (!isLoggedIn) return;
+            const action = document.getElementById('schedAction').value;
+            const minutes = document.getElementById('schedMinutes').value || 30;
+            const cmdKey = (action === 'reboot') ? 'schedule_reboot_sudo' : 'schedule_poweroff_sudo';
+
+            showOutput(`Scheduling ${action} in ${minutes} minutes...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'status', cmd_key: cmdKey, args: { minutes: minutes.toString() } })
+                });
+                const data = await res.json();
+                showOutput(`Scheduled ${action} in ${minutes} minutes.\n` + (data.output || ''));
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function cancelScheduledPower() {
+            if (!isLoggedIn) return;
+            showOutput('Canceling scheduled power off or reboot tasks...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'status', cmd_key: 'cancel_shutdown_sudo', args: {} })
+                });
+                const data = await res.json();
+                showOutput('Cancelled power tasks.\n' + (data.output || ''));
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
+            const box = document.getElementById('outputBox');
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        window.onload = async () => {
+            await checkAuthState();
+            checkBootServiceStatusLazy();
+            loadSystemStatsLazy();
+            loadDiskSpaceLazy();
+            loadSmartHealthLazy();
+            loadServicesStatusLazy();
+        };
+    </script>
+</body>
+</html>

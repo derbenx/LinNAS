@@ -1,0 +1,7 @@
+{
+  "id": "circles",
+  "name": "Circles Game",
+  "description": "Rotate concentric rings to align patterns and solve color circle puzzles",
+  "category": "Games",
+  "default": true
+}

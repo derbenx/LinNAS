@@ -1,0 +1,12 @@
+{
+  "id": "wifi",
+  "name": "Wi-Fi Config",
+  "description": "Scan Wi-Fi access points, connect to wireless networks, and securely store network passwords",
+  "category": "Network",
+  "default": true,
+  "commands": {
+    "list_wifi_ifaces_cmd": "ip -j link show",
+    "scan_ap_sudo": "iwlist {iface} scan || nmcli dev wifi list",
+    "connect_wifi_sudo": "nmcli dev wifi connect \"{ssid}\" password \"{password}\""
+  }
+}

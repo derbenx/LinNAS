@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fastfetch System Summary</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .install-card { background: #161b22; border: 1px solid #d29922; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; display: none; }
+        .install-title { font-size: 1.1rem; font-weight: bold; color: #f2cc60; margin-bottom: 0.5rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+
+        .terminal-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1.2rem; font-family: 'Courier New', Courier, monospace; font-size: 0.9rem; color: #c9d1d9; line-height: 1.4; white-space: pre-wrap; word-break: break-all; min-height: 300px; max-height: 500px; overflow-y: auto; }
+        .ansi-black { color: #484f58; }
+        .ansi-red { color: #ff7b72; }
+        .ansi-green { color: #7ee787; }
+        .ansi-yellow { color: #f2cc60; }
+        .ansi-blue { color: #58a6ff; }
+        .ansi-magenta { color: #bc8cff; }
+        .ansi-cyan { color: #39c5cf; }
+        .ansi-white { color: #f0f6fc; }
+        .ansi-bold { font-weight: bold; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; margin-top: 1rem; display: none; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>Fastfetch</h2>
+    <p class="subtitle">Display Debian Linux OS version, kernel, architecture, uptime, memory, and package count.</p>
+
+    <!-- Missing Software Prompt -->
+    <div id="installPromptCard" class="install-card">
+        <div class="install-title">⚠️ Fastfetch Package Not Installed</div>
+        <p style="color: #c9d1d9; font-size: 0.9rem; margin-bottom: 1rem;">
+            The <code>fastfetch</code> system information tool is not installed on this server. Click below to install it via APT.
+        </p>
+        <button class="btn" onclick="installFastfetchPackage()">Install Fastfetch via APT</button>
+    </div>
+
+    <div class="section">
+        <div class="section-title">
+            <span>System Summary Output</span>
+            <button class="btn btn-secondary" style="padding: 0.3rem 0.8rem; font-size: 0.85rem;" onclick="loadFastfetch()">Refresh Info</button>
+        </div>
+        <div id="terminalOutput" class="terminal-box">Loading Fastfetch system summary...</div>
+    </div>
+
+    <div id="outputBox" class="output-box"></div>
+
+    <script>
+        function ansiToHtml(str) {
+            // Strip cursor positioning escape sequences e.g. \x1b[?25h, \x1b[2J, \x1b[1;1H, \x1b[s, \x1b[u, \x1b[?25l, \x1b[r
+            let cleanStr = str.replace(/\x1B\[[?0-9;]*[a-zA-Z]/g, function(match) {
+                if (match.endsWith('m')) return match; // Keep SGR color/style sequences
+                return '';
+            });
+
+            const ansiMap = {
+                '30': 'ansi-black', '31': 'ansi-red', '32': 'ansi-green', '33': 'ansi-yellow',
+                '34': 'ansi-blue', '35': 'ansi-magenta', '36': 'ansi-cyan', '37': 'ansi-white',
+                '90': 'ansi-black', '91': 'ansi-red', '92': 'ansi-green', '93': 'ansi-yellow',
+                '94': 'ansi-blue', '95': 'ansi-magenta', '96': 'ansi-cyan', '97': 'ansi-white',
+                '1': 'ansi-bold'
+            };
+
+            let openSpans = 0;
+            const html = cleanStr.replace(/\x1B\[([0-9;]*)m/g, function(match, p1) {
+                if (!p1 || p1 === '0') {
+                    let close = '';
+                    while (openSpans > 0) {
+                        close += '</span>';
+                        openSpans--;
+                    }
+                    return close;
+                }
+                const codes = p1.split(';');
+                let classes = [];
+                let inlineStyle = '';
+
+                for (let i = 0; i < codes.length; i++) {
+                    const c = codes[i];
+                    if (c === '0') {
+                        let close = '';
+                        while (openSpans > 0) {
+                            close += '</span>';
+                            openSpans--;
+                        }
+                        return close;
+                    }
+                    if (ansiMap[c]) {
+                        classes.push(ansiMap[c]);
+                    } else if (c === '38' && codes[i+1] === '5' && codes[i+2]) {
+                        // 256-color palette
+                        const colorIdx = parseInt(codes[i+2], 10);
+                        i += 2;
+                        inlineStyle = `color: hsl(${(colorIdx * 36) % 360}, 70%, 65%);`;
+                    } else if (c === '38' && codes[i+1] === '2' && codes[i+2] && codes[i+3] && codes[i+4]) {
+                        // 24-bit RGB
+                        const r = codes[i+2], g = codes[i+3], b = codes[i+4];
+                        i += 4;
+                        inlineStyle = `color: rgb(${r},${g},${b});`;
+                    }
+                }
+
+                if (classes.length > 0 || inlineStyle) {
+                    openSpans++;
+                    const styleAttr = inlineStyle ? ` style="${inlineStyle}"` : '';
+                    return `<span class="${classes.join(' ')}"${styleAttr}>`;
+                }
+                return '';
+            });
+
+            let trailingClose = '';
+            while (openSpans > 0) {
+                trailingClose += '</span>';
+                openSpans--;
+            }
+            return html + trailingClose;
+        }
+
+        async function loadFastfetch() {
+            const term = document.getElementById('terminalOutput');
+            const promptCard = document.getElementById('installPromptCard');
+            term.innerHTML = 'Loading live Fastfetch system summary...';
+
+            try {
+                const res = await fetch(`/api/plugin/exec?_=${Date.now()}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+                    body: JSON.stringify({
+                        plugin: 'fastfetch',
+                        cmd_key: 'fastfetch_cmd',
+                        args: {}
+                    })
+                });
+
+                const data = await res.json();
+                const output = (data.output || '').trim();
+
+                const isNotFound = output.toLowerCase().includes('command not found') ||
+                                  output.toLowerCase().includes('not found') ||
+                                  output.toLowerCase().includes('no such file or directory') ||
+                                  output.toLowerCase().includes('not installed');
+
+                if (output.length > 0 && !isNotFound) {
+                    promptCard.style.display = 'none';
+                    term.innerHTML = ansiToHtml(output);
+                } else {
+                    promptCard.style.display = 'block';
+                    term.innerText = 'Fastfetch package is not installed on this system.';
+                }
+            } catch (err) {
+                promptCard.style.display = 'block';
+                term.innerText = 'Failed to execute fastfetch: ' + err.message;
+            }
+        }
+
+        async function installFastfetchPackage() {
+            showOutput('[START] Installing fastfetch package via APT... Please wait...\n');
+            const box = document.getElementById('outputBox');
+            try {
+                const response = await fetch('/api/plugin/exec/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'fastfetch', cmd_key: 'install_sudo', args: {} })
+                });
+
+                if (!response.ok) {
+                    showOutput('Installation request failed: ' + response.statusText);
+                    return;
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    box.innerText += chunk;
+                    box.scrollTop = box.scrollHeight;
+                }
+
+                box.innerText += '\n\n[FINISHED] Installation completed successfully!';
+                document.getElementById('installPromptCard').style.display = 'none';
+                if (window.parent) {
+                    window.parent.postMessage('reload_plugins', '*');
+                }
+                await loadFastfetch();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            const box = document.getElementById('outputBox');
+            box.style.display = 'block';
+            box.innerText = text;
+        }
+
+        window.onload = loadFastfetch;
+    </script>
+</body>
+</html>

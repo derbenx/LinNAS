@@ -1,0 +1,15 @@
+{
+  "id": "php",
+  "name": "PHP Engine",
+  "description": "Install PHP runtime versions, FPM service, and php.ini directives",
+  "category": "Web Services",
+  "default": false,
+  "apt_package": "php",
+  "check_cmd": "which php",
+  "install_sudo": "apt-get update && apt-get install -y php php-fpm php-cli php-mysql php-mbstring php-xml",
+  "remove_sudo": "apt-get remove -y php*",
+  "commands": {
+    "install_ver_sudo": "apt-get update && apt-get install -y php{version} php{version}-fpm php{version}-cli php{version}-mysql",
+    "switch_version_sudo": "update-alternatives --set php /usr/bin/php{version}"
+  }
+}

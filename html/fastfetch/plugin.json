@@ -1,0 +1,14 @@
+{
+  "id": "fastfetch",
+  "name": "Fastfetch",
+  "description": "Display Debian system summary, OS version, kernel, uptime, packages, and ASCII art logo",
+  "category": "System",
+  "default": false,
+  "apt_package": "fastfetch",
+  "check_cmd": "export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/games; which fastfetch || dpkg-query -W -f='${Status}' fastfetch 2>/dev/null | grep -q 'installed'",
+  "install_sudo": "apt-get update && apt-get install -y fastfetch",
+  "remove_sudo": "apt-get purge -y fastfetch 2>/dev/null; true",
+  "commands": {
+    "fastfetch_cmd": "export PATH=$PATH:/usr/local/bin:/usr/bin:/bin:/usr/games; export TERM=xterm-256color; fastfetch --pipe false 2>&1 || fastfetch 2>&1"
+  }
+}

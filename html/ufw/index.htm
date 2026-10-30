@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>UFW Firewall Config</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+
+        .form-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin-bottom: 1.2rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; flex: 1; min-width: 180px; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #b62324; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
+        th { color: #8b949e; font-weight: 600; background: #1f242d; }
+
+        .badge-active { background: #238636; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
+        .badge-inactive { background: #da3633; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
+        .badge-protected { background: #d29922; color: black; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+
+        /* Floating Console Drawer */
+        .sticky-console { position: fixed; bottom: 0; left: 0; right: 0; background: #161b22; border-top: 2px solid #58a6ff; box-shadow: 0 -4px 20px rgba(0,0,0,0.5); padding: 1rem 1.5rem; display: none; z-index: 1000; }
+        .console-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-weight: bold; color: #58a6ff; font-size: 0.95rem; }
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>UFW Firewall</h2>
+    <p class="subtitle">Manage Uncomplicated Firewall (UFW) rules, allow service ports, and prevent lockouts with auto-protected server ports.</p>
+
+    <!-- UFW Status & Enable/Disable -->
+    <div class="section">
+        <div class="section-title">
+            <span>UFW Service Status</span>
+            <span id="ufwBadge" class="badge-inactive">checking...</span>
+        </div>
+        <div style="display: flex; gap: 0.8rem; margin-bottom: 1rem;">
+            <button class="btn" onclick="toggleUFW(true)">Enable Firewall (UFW)</button>
+            <button class="btn btn-danger" onclick="toggleUFW(false)">Disable Firewall (UFW)</button>
+            <button class="btn btn-secondary" onclick="loadUFWStatus()">Refresh Status & Rules</button>
+        </div>
+    </div>
+
+    <!-- Protected Server Port Rule -->
+    <div class="section">
+        <div class="section-title">Protected Application Web Port</div>
+        <div style="display: flex; align-items: center; justify-content: space-between; background: #0d1117; border: 1px solid #30363d; padding: 1rem; border-radius: 6px;">
+            <div>
+                <div><strong>LinNAS Web Port:</strong> <span id="currentPortVal" style="color: #58a6ff; font-weight: bold;">checking...</span></div>
+                <div style="font-size: 0.85rem; color: #8b949e; margin-top: 0.2rem;">This rule is auto-maintained and read-only to prevent web control panel lockout.</div>
+            </div>
+            <span class="badge-protected">PROTECTED READ-ONLY</span>
+        </div>
+    </div>
+
+    <!-- Quick Presets -->
+    <div class="section">
+        <div class="section-title">Quick Common Service Rules</div>
+        <div style="display: flex; flex-direction: column; gap: 0.8rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
+                <div><strong>HTTP & HTTPS Web Server (Ports 80, 443/tcp)</strong></div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" onclick="addQuickRule('80', 'tcp', 'any')">Allow 80 Anywhere</button>
+                    <button class="btn btn-secondary" onclick="addQuickRule('443', 'tcp', 'any')">Allow 443 Anywhere</button>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
+                <div><strong>Samba File Sharing (Ports 139, 445/tcp, 137, 138/udp)</strong></div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" onclick="addQuickRule('445', 'tcp', 'lan')">Allow SMB LAN Subnet</button>
+                    <button class="btn btn-secondary" onclick="addQuickRule('445', 'tcp', 'any')">Allow SMB Anywhere</button>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
+                <div><strong>NTP Time Synchronization (Port 123/udp)</strong></div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" onclick="addQuickRule('123', 'udp', 'lan')">Allow NTP LAN Subnet</button>
+                    <button class="btn btn-secondary" onclick="addQuickRule('123', 'udp', 'any')">Allow NTP Anywhere</button>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
+                <div><strong>SSH Remote Console (Port 22/tcp)</strong></div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" onclick="addQuickRule('22', 'tcp', 'lan')">Allow SSH LAN Subnet</button>
+                    <button class="btn btn-secondary" onclick="addQuickRule('22', 'tcp', 'any')">Allow SSH Anywhere</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Rule Addition Form -->
+    <div class="section">
+        <div class="section-title">Add Custom Firewall Rule</div>
+        <div class="form-row">
+            <div class="form-group" style="max-width: 140px;">
+                <label>Port Number</label>
+                <input type="number" id="customPort" placeholder="8080" min="1" max="65535">
+            </div>
+            <div class="form-group" style="max-width: 120px;">
+                <label>Protocol</label>
+                <select id="customProto">
+                    <option value="tcp">TCP</option>
+                    <option value="udp">UDP</option>
+                </select>
+            </div>
+            <div class="form-group" style="max-width: 220px;">
+                <label>Access Source</label>
+                <select id="customAccess">
+                    <option value="any">Anywhere (0.0.0.0/0)</option>
+                    <option value="lan">LAN Subnet Only (192.168.0.0/16)</option>
+                </select>
+            </div>
+            <button class="btn" onclick="addCustomRule()">Add Firewall Rule</button>
+        </div>
+    </div>
+
+    <!-- Active Rules Table -->
+    <div class="section">
+        <div class="section-title">Active UFW Firewall Rules</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Rule #</th>
+                    <th>To (Port / Proto)</th>
+                    <th>Action</th>
+                    <th>From (Source)</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="rulesTableBody">
+                <tr><td colspan="5" style="text-align: center; color: #8b949e;">Loading UFW rules...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Console Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-danger" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
+
+    <script>
+        let currentAppPort = 8080;
+
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings/get');
+                const data = await res.json();
+                if (data.port) {
+                    currentAppPort = data.port;
+                    document.getElementById('currentPortVal').innerText = `Port ${currentAppPort}/tcp`;
+                }
+            } catch (err) {
+                console.error('Failed to load settings:', err);
+            }
+        }
+
+        async function loadUFWStatus() {
+            await loadSettings();
+            const badge = document.getElementById('ufwBadge');
+            const tbody = document.getElementById('rulesTableBody');
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'ufw', cmd_key: 'get_status_sudo', args: {} })
+                });
+                const data = await res.json();
+                const output = data.output || '';
+
+                const isActive = output.includes('Status: active');
+                badge.innerText = isActive ? 'Active / Enabled' : 'Inactive / Disabled';
+                badge.className = isActive ? 'badge-active' : 'badge-inactive';
+
+                loadUFWNumberedRules();
+            } catch (err) {
+                console.error('Failed to load UFW status:', err);
+            }
+        }
+
+        async function loadUFWNumberedRules() {
+            const tbody = document.getElementById('rulesTableBody');
+            tbody.innerHTML = '';
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'ufw', cmd_key: 'get_rules_sudo', args: {} })
+                });
+                const data = await res.json();
+                const output = data.output || '';
+
+                const lines = output.split('\n');
+                let foundRules = false;
+
+                lines.forEach(line => {
+                    const match = line.match(/^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT|ALLOW IN|ALLOW OUT)\s+(.+)$/i);
+                    if (match) {
+                        foundRules = true;
+                        const ruleNum = match[1];
+                        const toPort = match[2].trim();
+                        const action = match[3].trim();
+                        const fromSrc = match[4].trim();
+
+                        const isAppPortRule = toPort.includes(currentAppPort.toString());
+
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td><strong>[${ruleNum}]</strong></td>
+                            <td>${toPort}</td>
+                            <td><span class="badge-active">${action}</span></td>
+                            <td>${fromSrc}</td>
+                            <td>
+                                ${isAppPortRule
+                                    ? `<span class="badge-protected">PROTECTED</span>`
+                                    : `<button class="btn btn-danger" style="padding:0.22rem 0.5rem; font-size:0.75rem;" onclick="deleteRule(${ruleNum})">Delete</button>`
+                                }
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    }
+                });
+
+                if (!foundRules) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #8b949e;">No active numbered rules configured in UFW.</td></tr>';
+                }
+            } catch (err) {
+                tbody.innerHTML = `<tr><td colspan="5" style="color:#f85149;">Failed to load rules: ${err.message}</td></tr>`;
+            }
+        }
+
+        async function toggleUFW(enable) {
+            const cmdKey = enable ? 'enable_ufw_sudo' : 'disable_ufw_sudo';
+            showOutput(`${enable ? 'Enabling' : 'Disabling'} UFW Firewall...`);
+
+            try {
+                // Ensure current server port is allowed before enabling firewall
+                if (enable) {
+                    await fetch('/api/plugin/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ plugin: 'ufw', cmd_key: 'allow_port_sudo', args: { port: currentAppPort.toString(), proto: 'tcp' } })
+                    });
+                }
+
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'ufw', cmd_key: cmdKey, args: {} })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `UFW firewall ${enable ? 'enabled' : 'disabled'}.\n` + (data.output || '') : 'Operation failed: ' + data.error);
+                loadUFWStatus();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function addQuickRule(port, proto, access) {
+            showOutput(`Adding UFW rule for port ${port}/${proto}...`);
+            try {
+                let cmdKey = 'allow_port_sudo';
+                let args = { port: port.toString(), proto: proto };
+
+                if (access === 'lan') {
+                    cmdKey = 'allow_subnet_port_sudo';
+                    args = { port: port.toString(), proto: proto, subnet: '192.168.0.0/16' };
+                }
+
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'ufw', cmd_key: cmdKey, args: args })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Rule for ${port}/${proto} added successfully.\n` + (data.output || '') : 'Failed: ' + data.error);
+                loadUFWStatus();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function addCustomRule() {
+            const port = document.getElementById('customPort').value.trim();
+            const proto = document.getElementById('customProto').value;
+            const access = document.getElementById('customAccess').value;
+
+            if (!port) {
+                showOutput('Please enter a valid port number.');
+                return;
+            }
+
+            await addQuickRule(port, proto, access);
+        }
+
+        async function deleteRule(ruleNum) {
+            showOutput(`Deleting UFW rule #${ruleNum}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'ufw', cmd_key: 'delete_rule_sudo', args: { rule_num: ruleNum.toString() } })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Rule #${ruleNum} deleted successfully.` : 'Delete failed: ' + data.error);
+                loadUFWStatus();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
+            const box = document.getElementById('outputBox');
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        window.onload = loadUFWStatus;
+    </script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+<p><strong>DHCP Server Pool Config</strong></p>
+<p>Manage dnsmasq DHCP address pools, interface bindings, IP allocation ranges, netmasks, gateways, and lease times.</p>

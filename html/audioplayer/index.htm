@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Audio Player - LinNAS</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 1.5rem; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+        .header-bar { display: flex; justify-content: space-between; align-items: center; background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 0.8rem 1.2rem; margin-bottom: 1rem; gap: 1rem; }
+        .title-group { display: flex; align-items: center; gap: 10px; max-width: 50%; min-width: 0; }
+        h2 { font-size: 1.3rem; color: #58a6ff; white-space: nowrap; }
+        .meta-info { font-size: 0.82rem; color: #8b949e; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .toolbar { display: flex; gap: 0.5rem; align-items: center; margin-left: auto; flex-shrink: 0; }
+        .btn { padding: 0.45rem 0.9rem; background: #238636; color: white; border: none; border-radius: 5px; font-weight: 600; cursor: pointer; font-size: 0.82rem; transition: background 0.2s; display: flex; align-items: center; gap: 5px; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #30363d; color: white; }
+
+        .player-stage { flex: 1; background: #161b22; border: 1px solid #30363d; border-radius: 8px; display: flex; flex-direction: column; padding: 1.2rem; overflow: hidden; }
+
+        .now-playing-card { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 1.2rem; }
+        .audio-icon { font-size: 2.5rem; color: #58a6ff; }
+        .now-playing-info { flex: 1; min-width: 0; }
+        .track-title { font-size: 1.1rem; font-weight: bold; color: #f0f6fc; margin-bottom: 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .track-path { font-size: 0.8rem; color: #8b949e; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .playlist-container { flex: 1; background: #0d1117; border: 1px solid #21262d; border-radius: 6px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        th, td { text-align: left; padding: 0.65rem 0.8rem; border-bottom: 1px solid #21262d; }
+        th { color: #8b949e; font-weight: 600; background: #161b22; position: sticky; top: 0; }
+        tr.track-row { cursor: pointer; transition: background 0.15s; }
+        tr.track-row:hover { background: #1f242d; }
+        tr.track-row.playing { background: #263850 !important; color: #79c0ff; font-weight: bold; }
+
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 10% auto; padding: 1.5rem; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
+        .file-list { max-height: 300px; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; }
+        .file-item { padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #21262d; font-family: monospace; font-size: 0.88rem; }
+        .file-item:hover { background: #1f242d; color: #58a6ff; }
+    </style>
+</head>
+<body>
+    <div class="header-bar">
+        <div class="title-group">
+            <button id="backBtn" class="btn btn-secondary" style="display: none;" onclick="goBackToFiles()">⬅ Back to Files</button>
+            <div>
+                <h2>🎵 Audio Player</h2>
+                <div id="folderMeta" class="meta-info">Directory: /</div>
+            </div>
+        </div>
+        <div class="toolbar">
+            <button class="btn btn-secondary" onclick="openFolderPicker()">📂 Browse Folder...</button>
+            <button class="btn" onclick="scanAndPlayFolder()">🎵 Grab All Audio in Folder</button>
+        </div>
+    </div>
+
+    <div class="player-stage">
+        <div class="now-playing-card">
+            <div class="audio-icon">🎶</div>
+            <div class="now-playing-info">
+                <div id="currentTrackTitle" class="track-title">No Audio Track Playing</div>
+                <div id="currentTrackPath" class="track-path">Click 'Grab All Audio in Folder' or select a track below</div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+            <span style="font-weight: bold; color: #58a6ff; font-size: 0.9rem;">Folder Audio Playlist Queue</span>
+            <span id="playlistCount" style="font-size: 0.82rem; color: #8b949e;">0 tracks</span>
+        </div>
+
+        <div class="playlist-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">#</th>
+                        <th>Track Title</th>
+                        <th style="width: 120px;">Size</th>
+                        <th style="width: 100px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="playlistTableBody">
+                    <tr><td colspan="4" style="text-align: center; color: #8b949e; padding: 2rem;">No audio tracks loaded. Select a folder to scan for audio files.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Folder Picker Modal -->
+    <div id="folderModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="modalPath">/</span>
+                <div>
+                    <button class="btn" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;" onclick="selectFolderFromModal()">Scan This Folder</button>
+                    <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeModal()">✕</button>
+                </div>
+            </div>
+            <div id="fileList" class="file-list"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentDir = '/';
+        let playlist = [];
+        let currentTrackIndex = -1;
+
+        async function initAudioPlayer() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const dir = urlParams.get('dir') || '/';
+            const file = urlParams.get('file');
+
+            currentDir = dir;
+            document.getElementById('folderMeta').innerText = `Directory: ${dir}`;
+            if (dir !== '/') document.getElementById('backBtn').style.display = 'flex';
+
+            await loadFolderPlaylist(dir, file);
+        }
+
+        async function loadFolderPlaylist(dirPath, autoPlayFile) {
+            currentDir = dirPath || currentDir;
+            document.getElementById('folderMeta').innerText = `Directory: ${currentDir}`;
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentDir)}`);
+                const data = await res.json();
+                if (data.items) {
+                    playlist = data.items.filter(i => !i.is_dir && isAudioFile(i.name)).map(i => ({
+                        name: i.name,
+                        path: i.path,
+                        size: i.size
+                    }));
+                    renderPlaylistTable();
+
+                    if (playlist.length > 0) {
+                        let startIndex = 0;
+                        if (autoPlayFile) {
+                            const foundIdx = playlist.findIndex(t => t.path === autoPlayFile);
+                            if (foundIdx !== -1) startIndex = foundIdx;
+                        }
+                        playTrackIndex(startIndex);
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to scan folder audio:', err);
+            }
+        }
+
+        function scanAndPlayFolder() {
+            loadFolderPlaylist(currentDir);
+        }
+
+        function renderPlaylistTable() {
+            const tbody = document.getElementById('playlistTableBody');
+            document.getElementById('playlistCount').innerText = `${playlist.length} tracks`;
+            tbody.innerHTML = '';
+
+            if (playlist.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #8b949e; padding: 2rem;">No audio tracks found in this folder.</td></tr>';
+                return;
+            }
+
+            playlist.forEach((track, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = `track-row ${idx === currentTrackIndex ? 'playing' : ''}`;
+                tr.innerHTML = `
+                    <td>${idx + 1}</td>
+                    <td><strong>${escapeHtml(track.name)}</strong></td>
+                    <td>${formatBytes(track.size)}</td>
+                    <td>
+                        <button class="btn" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="playTrackIndex(${idx})">▶ Play</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function playTrackIndex(index) {
+            if (index < 0 || index >= playlist.length) return;
+            currentTrackIndex = index;
+            const track = playlist[index];
+
+            document.getElementById('currentTrackTitle').innerText = track.name;
+            document.getElementById('currentTrackPath').innerText = track.path;
+            renderPlaylistTable();
+
+            // Send to parent global persistent audio engine
+            if (window.parent && typeof window.parent.playGlobalAudioQueue === 'function') {
+                window.parent.playGlobalAudioQueue(playlist, index, currentDir);
+            }
+        }
+
+        function goBackToFiles() {
+            if (window.parent) {
+                window.parent.postMessage(`open_plugin:filemanager?dir=${encodeURIComponent(currentDir || '/')}`, '*');
+            }
+            window.location.href = `/filemanager/index.htm?dir=${encodeURIComponent(currentDir || '/')}`;
+        }
+
+        /* Folder Picker Modal */
+        let currentBrowserPath = '/';
+
+        async function openFolderPicker(path) {
+            currentBrowserPath = path || currentDir || '/';
+            document.getElementById('modalPath').innerText = currentBrowserPath;
+            document.getElementById('folderModal').style.display = 'block';
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentBrowserPath)}`);
+                const data = await res.json();
+                const container = document.getElementById('fileList');
+                container.innerHTML = '';
+
+                if (data.parent && data.parent !== currentBrowserPath) {
+                    const upDiv = document.createElement('div');
+                    upDiv.className = 'file-item';
+                    upDiv.innerText = '📁 .. (Parent Directory)';
+                    upDiv.onclick = () => openFolderPicker(data.parent);
+                    container.appendChild(upDiv);
+                }
+
+                if (data.items) {
+                    data.items.forEach(item => {
+                        if (item.is_dir) {
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = 'file-item';
+                            itemDiv.innerText = '📁 ' + item.name;
+                            itemDiv.onclick = () => openFolderPicker(item.path);
+                            container.appendChild(itemDiv);
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error('Picker error:', err);
+            }
+        }
+
+        function selectFolderFromModal() {
+            closeModal();
+            loadFolderPlaylist(currentBrowserPath);
+        }
+
+        function closeModal() {
+            document.getElementById('folderModal').style.display = 'none';
+        }
+
+        function isAudioFile(filename) {
+            if (!filename || !filename.includes('.')) return false;
+            const ext = filename.split('.').pop().toLowerCase();
+            return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext);
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        window.onload = initAudioPlayer;
+    </script>
+</body>
+</html>

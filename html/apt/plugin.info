@@ -1,0 +1,3 @@
+<p><strong>APT Package & Module Manager</strong></p>
+<p>Install or purge APT package dependencies for all server plugins.</p>
+<p>Provides real-time chunked command streaming during installations and feature toggles to immediately show or hide plugins in the navigation menu.</p>

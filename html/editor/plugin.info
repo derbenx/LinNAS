@@ -1,0 +1,3 @@
+<p><strong>LinNAS File Editor</strong></p>
+<p>Inspect and edit system configuration files directly on the server with elevated privileges.</p>
+<p>Includes quick file presets (such as <code>/etc/fstab</code> and <code>/etc/samba/smb.conf</code>), file size safety checks, and a 'Back to File Manager' button.</p>

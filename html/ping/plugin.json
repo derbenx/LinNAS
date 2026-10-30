@@ -1,0 +1,15 @@
+{
+  "id": "ping",
+  "name": "Network Diagnostics",
+  "description": "Test network latency and trace route paths to remote hosts or IP addresses",
+  "category": "Network",
+  "default": true,
+  "apt_package": "iputils-ping",
+  "check_cmd": "which ping && which traceroute",
+  "install_sudo": "apt-get update && apt-get install -y iputils-ping traceroute",
+  "remove_sudo": "apt-get remove -y traceroute",
+  "commands": {
+    "ping_cmd": "ping -c {count} \"{host}\"",
+    "traceroute_cmd": "traceroute -m {max_hops} \"{host}\""
+  }
+}

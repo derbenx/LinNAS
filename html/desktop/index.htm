@@ -1,0 +1,2774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Virtual Desktop - LinNAS</title>
+    <script src="/js/crypto.js"></script>
+    <!-- Three.js + Loaders for 3D Viewer inside Virtual Desktop -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        @keyframes progressIndeterminate {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1117; color: #c9d1d9; user-select: none; }
+
+        body.is-fullscreen #topNav { display: none; }
+
+        /* Outer Container */
+        #desktopWrapper { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
+
+        /* Top Action Bar */
+        #topNav { height: 42px; background: #161b22; border-bottom: 1px solid #30363d; display: flex; align-items: center; justify-content: space-between; padding: 0 1rem; z-index: 500; }
+        .nav-title { font-size: 1rem; font-weight: bold; color: #58a6ff; display: flex; align-items: center; gap: 8px; }
+        .nav-controls { display: flex; gap: 0.5rem; align-items: center; }
+        .btn { padding: 0.35rem 0.8rem; background: #238636; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 5px; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #30363d; color: white; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #b62324; }
+
+        /* Main Desktop Workspace */
+        #desktopArea { flex: 1; position: relative; overflow: hidden; background: radial-gradient(circle at 50% 40%, #161f2e 0%, #0d1117 75%); }
+        #desktopArea::before { content: ''; position: absolute; inset: 0; background-image: radial-gradient(rgba(88, 166, 255, 0.08) 1px, transparent 1px); background-size: 24px 24px; pointer-events: none; }
+
+        /* LinNAS Watermark */
+        .desktop-watermark { position: absolute; bottom: 30px; right: 30px; font-size: 3.5rem; font-weight: 800; color: rgba(255,255,255,0.03); letter-spacing: 0.3rem; pointer-events: none; user-select: none; }
+
+        /* Desktop Icons Grid */
+        .desktop-icons { position: absolute; top: 20px; left: 20px; display: flex; flex-direction: column; flex-wrap: wrap; gap: 20px; max-height: calc(100% - 40px); z-index: 10; }
+        .desktop-icon { width: 90px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px; border-radius: 8px; cursor: pointer; transition: background 0.15s, transform 0.1s; text-align: center; }
+        .desktop-icon:hover { background: rgba(88, 166, 255, 0.15); border: 1px solid rgba(88, 166, 255, 0.3); }
+        .desktop-icon:active { transform: scale(0.95); }
+        .icon-symbol { font-size: 2.2rem; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+        .icon-label { font-size: 0.78rem; font-weight: 600; color: #f0f6fc; text-shadow: 0 1px 3px rgba(0,0,0,0.8); line-height: 1.1; word-break: break-word; }
+
+        /* Bottom Taskbar */
+        #taskbar { height: 44px; background: rgba(22, 27, 34, 0.95); backdrop-filter: blur(10px); border-top: 1px solid #30363d; display: flex; align-items: center; justify-content: space-between; padding: 0 0.5rem; z-index: 1000; position: relative; }
+
+        /* Start Button & Menu */
+        .start-btn { padding: 0.4rem 0.9rem; background: linear-gradient(135deg, #1f6feb 0%, #238636 100%); color: white; border: 1px solid #388bfd; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(31, 111, 235, 0.4); }
+        .start-btn:hover { filter: brightness(1.1); }
+
+        #startMenu { display: none; position: absolute; bottom: 50px; left: 10px; width: 280px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.7); z-index: 2000; padding: 0.5rem; }
+        .start-menu-header { padding: 0.6rem 0.8rem; border-bottom: 1px solid #30363d; font-weight: bold; color: #58a6ff; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
+        .start-item { padding: 0.55rem 0.8rem; display: flex; align-items: center; gap: 10px; cursor: pointer; border-radius: 4px; font-size: 0.85rem; color: #c9d1d9; margin-top: 2px; }
+        .start-item:hover { background: #1f242d; color: #58a6ff; }
+        .start-divider { height: 1px; background: #30363d; margin: 0.4rem 0; }
+
+        /* Taskbar Items */
+        .taskbar-items { display: flex; gap: 6px; flex: 1; margin: 0 1rem; overflow-x: auto; height: 100%; align-items: center; }
+        .taskbar-item { padding: 0.35rem 0.75rem; background: #21262d; border: 1px solid #30363d; border-radius: 5px; color: #c9d1d9; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 6px; max-width: 170px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: all 0.15s; }
+        .taskbar-item:hover { background: #30363d; color: #fff; }
+        .taskbar-item.active { background: #1f242d; border-color: #58a6ff; color: #58a6ff; font-weight: 600; box-shadow: inset 0 -2px 0 #58a6ff; }
+        .taskbar-item.minimized { opacity: 0.6; }
+
+        /* Taskbar System Tray */
+        .taskbar-tray { display: flex; align-items: center; gap: 12px; font-size: 0.8rem; color: #8b949e; padding-right: 0.5rem; }
+        .tray-clock { font-family: monospace; font-size: 0.85rem; color: #58a6ff; font-weight: bold; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: background 0.15s; }
+        .tray-clock:hover { background: #21262d; color: #79c0ff; }
+
+        /* Floating Desktop Window */
+        .desktop-window { position: absolute; background: #161b22; border: 1px solid #30363d; border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.8); display: flex; flex-direction: column; overflow: hidden; min-width: 320px; min-height: 220px; z-index: 100; transition: border-color 0.15s; pointer-events: auto; }
+        .desktop-window.active-window { border-color: #58a6ff; box-shadow: 0 12px 36px rgba(0,0,0,0.9), 0 0 10px rgba(88,166,255,0.2); }
+        .desktop-window.is-minimized { display: none !important; }
+        .desktop-window.is-maximized { top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0 !important; }
+
+        .window-header { height: 36px; background: #21262d; border-bottom: 1px solid #30363d; display: flex; align-items: center; justify-content: space-between; padding: 0 0.8rem; cursor: move; user-select: none; flex-shrink: 0; }
+        .window-title { font-size: 0.85rem; font-weight: bold; color: #f0f6fc; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .window-controls { display: flex; align-items: center; gap: 4px; }
+        .win-btn { width: 24px; height: 24px; border-radius: 4px; border: none; background: transparent; color: #8b949e; font-size: 0.75rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s, color 0.15s; }
+        .win-btn:hover { background: #30363d; color: #fff; }
+        .win-btn-close:hover { background: #da3633; color: #fff; }
+
+        .window-body { flex: 1; position: relative; overflow: auto; background: #0d1117; display: flex; flex-direction: column; }
+
+        /* Window Resizer Handle */
+        .window-resizer { position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; cursor: se-resize; z-index: 10; }
+        .window-resizer::after { content: ''; position: absolute; bottom: 3px; right: 3px; width: 6px; height: 6px; border-right: 2px solid #8b949e; border-bottom: 2px solid #8b949e; }
+
+        /* Context Menu Styles */
+        .context-menu { position: fixed; background: #161b22; border: 1px solid #30363d; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.8); padding: 0.3rem 0; z-index: 9000; display: none; min-width: 170px; }
+        .context-item { padding: 0.4rem 0.9rem; font-size: 0.83rem; color: #c9d1d9; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.12s; }
+        .context-item:hover { background: #1f242d; color: #58a6ff; }
+        .context-divider { height: 1px; background: #30363d; margin: 0.3rem 0; }
+
+        /* App UI Styles */
+        /* File Manager App */
+        .fm-toolbar { padding: 0.5rem; background: #161b22; border-bottom: 1px solid #30363d; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+        .fm-breadcrumbs { display: flex; align-items: center; gap: 4px; font-family: monospace; font-size: 0.8rem; color: #58a6ff; flex: 1; overflow-x: auto; white-space: nowrap; }
+        .fm-breadcrumb-item { cursor: pointer; padding: 2px 4px; border-radius: 3px; }
+        .fm-breadcrumb-item:hover { background: #30363d; color: #79c0ff; }
+        .fm-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+        .fm-table th, .fm-table td { padding: 0.45rem 0.6rem; text-align: left; border-bottom: 1px solid #21262d; }
+        .fm-table th { color: #8b949e; font-weight: 600; background: #0d1117; position: sticky; top: 0; z-index: 5; }
+        .fm-row { cursor: pointer; transition: background 0.1s; }
+        .fm-row:hover { background: #1f242d; }
+        .fm-row.selected { background: #263850 !important; color: #79c0ff; }
+        .fm-row.drag-over { background: rgba(88, 166, 255, 0.2) !important; border: 1px dashed #58a6ff; }
+
+        /* Drop Overlay Notice */
+        .drop-target-overlay { position: absolute; inset: 0; background: rgba(88, 166, 255, 0.15); border: 2px dashed #58a6ff; display: none; align-items: center; justify-content: center; color: #58a6ff; font-weight: bold; font-size: 1rem; pointer-events: none; z-index: 100; }
+        .drop-target-active .drop-target-overlay { display: flex; }
+
+        /* App Specific Layouts */
+        .app-media-container { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1rem; position: relative; background: #0d1117; }
+        .app-empty-state { text-align: center; color: #8b949e; font-size: 0.85rem; display: flex; flex-direction: column; align-items: center; gap: 0.8rem; }
+        .app-empty-icon { font-size: 3rem; }
+
+        /* Notice Popup Modal */
+        .notice-modal { display: none; position: fixed; z-index: 9999; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); align-items: center; justify-content: center; }
+        .notice-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 340px; padding: 1.2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.8); text-align: center; }
+        .notice-title { font-size: 1rem; font-weight: bold; color: #f85149; margin-bottom: 0.6rem; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .notice-body { font-size: 0.85rem; color: #c9d1d9; margin-bottom: 1rem; line-height: 1.4; }
+
+        /* Chmod / Chown Modal */
+        .chmod-modal-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 380px; padding: 1.2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+
+        /* Modal Styles for File Picker */
+        .modal { display: none; position: fixed; z-index: 9500; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 8% auto; padding: 1.2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; font-weight: bold; color: #58a6ff; font-size: 0.95rem; }
+        .file-list { max-height: 320px; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; }
+        .file-item { padding: 0.45rem 0.6rem; cursor: pointer; border-bottom: 1px solid #21262d; font-family: monospace; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; }
+        .file-item:hover { background: #1f242d; color: #58a6ff; }
+
+        /* Fullscreen Screen Saver Canvas Overlay */
+        #screensaverOverlay { position: fixed; inset: 0; z-index: 99999; background: #000; display: none; }
+        #screensaverCanvas { display: block; width: 100vw; height: 100vh; border: 0; }
+    </style>
+</head>
+<body>
+    <div id="desktopWrapper">
+        <!-- Top Nav Header -->
+        <div id="topNav">
+            <div class="nav-title">
+                <span>🖥️</span>
+                <span>LinNAS Virtual Desktop</span>
+            </div>
+            <div class="nav-controls">
+                <span id="adminWarningBadge" style="background: #381e1d; border: 1px solid #f85149; color: #ff7b72; padding: 0.25rem 0.6rem; border-radius: 6px; font-size: 0.75rem; font-weight: bold; display: none; align-items: center; gap: 4px;">
+                    ⚠️ Admin / Root Privilege Mode
+                </span>
+                <button class="btn btn-secondary" onclick="toggleFullscreenDesktop()" title="Toggle Fullscreen Mode (F11)">
+                    <span>📺</span> <span>Fullscreen (F11)</span>
+                </button>
+                <button class="btn btn-secondary" onclick="openApp('filemanager')" title="Open File Manager">
+                    <span>📂</span> <span>File Manager</span>
+                </button>
+                <button class="btn btn-danger" style="padding: 0.3rem 0.6rem;" onclick="closeAllWindows()" title="Close All Desktop Windows">
+                    <span>✕</span> <span>Close All</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Desktop Canvas -->
+        <div id="desktopArea" onclick="onDesktopClick(event)" oncontextmenu="onDesktopContextMenu(event)">
+            <div class="desktop-watermark">LinNAS OS</div>
+
+            <!-- Desktop Icons Grid -->
+            <div class="desktop-icons">
+                <div class="desktop-icon" onclick="openApp('filemanager')">
+                    <div class="icon-symbol">📂</div>
+                    <div class="icon-label">File Manager</div>
+                </div>
+                <div class="desktop-icon" onclick="openApp('editor')">
+                    <div class="icon-symbol">📝</div>
+                    <div class="icon-label">Text Editor</div>
+                </div>
+                <div class="desktop-icon" onclick="openApp('audioplayer')">
+                    <div class="icon-symbol">🎵</div>
+                    <div class="icon-label">Audio Player</div>
+                </div>
+                <div class="desktop-icon" onclick="openApp('imageviewer')">
+                    <div class="icon-symbol">🖼️</div>
+                    <div class="icon-label">Image Viewer</div>
+                </div>
+                <div class="desktop-icon" onclick="openApp('videoplayer')">
+                    <div class="icon-symbol">🎬</div>
+                    <div class="icon-label">Video Player</div>
+                </div>
+                <div class="desktop-icon" onclick="openApp('modelviewer')">
+                    <div class="icon-symbol">🧊</div>
+                    <div class="icon-label">3D Viewer</div>
+                </div>
+            </div>
+
+            <!-- Opened Windows Container -->
+            <div id="windowsContainer" style="position: absolute; inset: 0; pointer-events: none; z-index: 200;"></div>
+        </div>
+
+        <!-- Bottom Taskbar -->
+        <div id="taskbar">
+            <!-- Start Button -->
+            <button class="start-btn" onclick="toggleStartMenu(event)">
+                <span>🚀</span> <span>NAS</span>
+            </button>
+
+            <!-- Start Menu Dropdown -->
+            <div id="startMenu" onclick="event.stopPropagation()">
+                <div class="start-menu-header">
+                    <span>⚙️</span> <span>LinNAS Applications</span>
+                </div>
+                <div class="start-item" onclick="openApp('filemanager'); hideStartMenu();">
+                    <span>📂</span> <span>File Manager</span>
+                </div>
+                <div class="start-item" onclick="openApp('editor'); hideStartMenu();">
+                    <span>📝</span> <span>Text Editor</span>
+                </div>
+                <div class="start-item" onclick="openApp('audioplayer'); hideStartMenu();">
+                    <span>🎵</span> <span>Audio Player</span>
+                </div>
+                <div class="start-item" onclick="openApp('imageviewer'); hideStartMenu();">
+                    <span>🖼️</span> <span>Image Viewer</span>
+                </div>
+                <div class="start-item" onclick="openApp('videoplayer'); hideStartMenu();">
+                    <span>🎬</span> <span>Video Player</span>
+                </div>
+                <div class="start-item" onclick="openApp('modelviewer'); hideStartMenu();">
+                    <span>🧊</span> <span>3D Viewer</span>
+                </div>
+                <div class="start-divider"></div>
+                <div class="start-item" onclick="openApp('screensaver'); hideStartMenu();">
+                    <span>🌌</span> <span>Screen Saver Settings</span>
+                </div>
+                <div class="start-item" id="startExitFsBtn" style="display: none; color: #ff7b72;" onclick="exitFullscreenDesktop(); hideStartMenu();">
+                    <span>📺</span> <span>Exit Fullscreen</span>
+                </div>
+            </div>
+
+            <!-- Taskbar Tabs -->
+            <div class="taskbar-items" id="taskbarItems"></div>
+
+            <!-- System Tray -->
+            <div class="taskbar-tray">
+                <span id="trayClock" class="tray-clock" onclick="toggleClockFormat()" title="Click to toggle 12h/24h format">00:00:00</span>
+                <span style="background: #21262d; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; color: #58a6ff;">LinNAS v1.0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- NAS File Picker Modal -->
+    <div id="pickerModal" class="modal" onclick="closePickerModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <span id="pickerModalPath">/</span>
+                <button class="win-btn" onclick="closePickerModal()">✕</button>
+            </div>
+            <div id="pickerFileList" class="file-list"></div>
+        </div>
+    </div>
+
+    <!-- File Transfer Progress Dialog -->
+    <div id="transferModal" class="notice-modal">
+        <div class="chmod-modal-card" onclick="event.stopPropagation()" style="max-width: 440px;">
+            <div style="display:flex; align-items:center; gap: 0.6rem; margin-bottom:0.8rem; font-weight:bold; color:#58a6ff;">
+                <span id="transferModalIcon" style="font-size:1.3rem;">📋</span>
+                <span id="transferModalTitle">File Transfer in Progress...</span>
+            </div>
+            <div style="font-size: 0.85rem; color: #c9d1d9; margin-bottom: 0.8rem;" id="transferModalDetail">
+                Transferring selected file(s)...
+            </div>
+            <div style="width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; height: 16px; overflow: hidden; position: relative; margin-bottom: 0.8rem;">
+                <div id="transferProgressBar" style="width: 100%; height: 100%; background: linear-gradient(90deg, #1f6beb, #388bfd); border-radius: 4px; transition: width 0.3s ease; background-size: 200% 100%; animation: progressIndeterminate 1.5s infinite linear;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: #8b949e;">
+                <span id="transferStatusText">Processing system file transfer...</span>
+                <span>Please wait</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen Saver Fullscreen Canvas Overlay -->
+    <div id="screensaverOverlay">
+        <canvas id="screensaverCanvas"></canvas>
+    </div>
+
+    <!-- Alert Modal Notice -->
+    <div id="noticeModal" class="notice-modal" onclick="closeNoticeModal()">
+        <div class="notice-card" onclick="event.stopPropagation()">
+            <div class="notice-title">
+                <span>⚠️</span> <span id="noticeTitle">Notice</span>
+            </div>
+            <div class="notice-body" id="noticeBody">Notice details here.</div>
+            <button class="btn" onclick="closeNoticeModal()">OK</button>
+        </div>
+    </div>
+
+    <!-- Custom Delete Modal -->
+    <div id="deleteModal" class="notice-modal" onclick="closeDeleteModal()">
+        <div class="notice-card" onclick="event.stopPropagation()" style="max-width: 420px; border-color: #f85149;">
+            <div class="notice-title" style="color: #f85149;">
+                <span>🗑️</span> <span>Confirm Deletion</span>
+            </div>
+            <div class="notice-body" id="deleteModalBody" style="color: #c9d1d9; font-size: 0.88rem; margin-bottom: 1rem;">
+                Are you sure you want to permanently delete the selected item(s)?
+            </div>
+            <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="executeFmDelete()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chmod & Chown Permissions Modal -->
+    <div id="chmodModal" class="notice-modal" onclick="closeChmodModal()">
+        <div class="chmod-modal-card" onclick="event.stopPropagation()">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; font-weight:bold; color:#58a6ff;">
+                <span>🔐 Edit Permissions & Ownership</span>
+                <button class="win-btn" onclick="closeChmodModal()">✕</button>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:0.8rem; margin-bottom:1.2rem;">
+                <div style="display:flex; flex-direction:column; gap:0.3rem;">
+                    <label style="font-size:0.8rem; color:#8b949e;">File Permissions (r / w / x)</label>
+                    <table style="width: 100%; text-align: center; font-size: 0.8rem; color: #c9d1d9; border-collapse: collapse; background: #0d1117; border: 1px solid #30363d; border-radius: 4px;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid #30363d; background: #161b22; color: #8b949e;">
+                                <th style="padding: 0.35rem; text-align: left; padding-left: 0.6rem;">Scope</th>
+                                <th style="padding: 0.35rem;">Read (r)</th>
+                                <th style="padding: 0.35rem;">Write (w)</th>
+                                <th style="padding: 0.35rem;">Execute (x)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="border-bottom: 1px solid #21262d;">
+                                <td style="padding: 0.35rem; text-align: left; padding-left: 0.6rem; font-weight: bold;">User</td>
+                                <td><input type="checkbox" id="desk_perm_u_r"></td>
+                                <td><input type="checkbox" id="desk_perm_u_w"></td>
+                                <td><input type="checkbox" id="desk_perm_u_x"></td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid #21262d;">
+                                <td style="padding: 0.35rem; text-align: left; padding-left: 0.6rem; font-weight: bold;">Group</td>
+                                <td><input type="checkbox" id="desk_perm_g_r"></td>
+                                <td><input type="checkbox" id="desk_perm_g_w"></td>
+                                <td><input type="checkbox" id="desk_perm_g_x"></td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 0.35rem; text-align: left; padding-left: 0.6rem; font-weight: bold;">Others</td>
+                                <td><input type="checkbox" id="desk_perm_o_r"></td>
+                                <td><input type="checkbox" id="desk_perm_o_w"></td>
+                                <td><input type="checkbox" id="desk_perm_o_x"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:0.3rem;">
+                    <label style="font-size:0.8rem; color:#8b949e;">Owner:Group (chown)</label>
+                    <input type="text" id="chownUser" placeholder="root:root or www-data:www-data" style="padding:0.45rem; background:#0d1117; border:1px solid #30363d; border-radius:4px; color:#fff; font-family:monospace; font-size:0.85rem;">
+                </div>
+                <label style="display:flex; align-items:center; gap:8px; font-size:0.8rem; color:#c9d1d9; cursor:pointer;">
+                    <input type="checkbox" id="chmodRecursive">
+                    <span>Apply recursively to all subfolders</span>
+                </label>
+            </div>
+            <div style="display:flex; gap:0.5rem; justify-content:flex-end;">
+                <button class="btn btn-secondary" onclick="closeChmodModal()">Cancel</button>
+                <button class="btn" onclick="saveFmPermissionsAndOwner()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Desktop Background Context Menu -->
+    <div id="desktopContextMenu" class="context-menu">
+        <div class="context-item" onclick="openApp('screensaver')">🌌 Screen Saver Settings</div>
+        <div class="context-divider"></div>
+        <div class="context-item" onclick="openApp('filemanager')">📂 New File Manager</div>
+        <div class="context-item" style="color: #f85149;" onclick="closeAllWindows()">✕ Close All Windows</div>
+    </div>
+
+    <!-- File Manager Context Menu -->
+    <div id="fmContextMenu" class="context-menu">
+        <div class="context-item" id="fmCtxOpen" onclick="fmCtxOpenItem()">📄 Open / View</div>
+        <div class="context-item" id="fmCtxEdit" onclick="fmCtxEditItem()">📝 Text Edit</div>
+        <div class="context-divider"></div>
+        <div class="context-item" onclick="fmCtxNewFolder()">📁 New Folder</div>
+        <div class="context-item" onclick="fmCtxCopySelected('cut')">✂️ Cut</div>
+        <div class="context-item" onclick="fmCtxCopySelected('copy')">📋 Copy</div>
+        <div class="context-item" id="fmCtxPaste" onclick="fmCtxPasteClipboard()">📌 Paste</div>
+        <div class="context-item" id="fmCtxDownload" onclick="fmCtxDownloadSelected()">📥 Download File</div>
+        <div class="context-item" onclick="fmCtxOpenChmodModal()">🔐 Permissions & Ownership</div>
+        <div class="context-divider"></div>
+        <div class="context-item" onclick="fmCtxRenameSelected()">✏️ Rename</div>
+        <div class="context-item" style="color: #f85149;" onclick="fmCtxDeleteSelected()">🗑️ Delete</div>
+    </div>
+
+    <!-- Taskbar Window Tab Context Menu -->
+    <div id="tbContextMenu" class="context-menu">
+        <div class="context-item" onclick="tbCtxRestore()">🗖 Restore / Focus</div>
+        <div class="context-item" onclick="tbCtxMinimize()">_ Minimize</div>
+        <div class="context-divider"></div>
+        <div class="context-item" style="color: #f85149;" onclick="tbCtxClose()">✕ Close Window</div>
+    </div>
+
+    <script>
+        let windowsMap = {};
+        let activeZIndex = 100;
+        let fmCount = 0;
+        let isFullscreenMode = false;
+        let is24HourClock = true;
+        let desktopClipboard = { action: null, sources: [] };
+        const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+
+        // Context Menu Targets
+        let fmCtxTargetWinId = null;
+        let fmCtxTargetItem = null;
+        let tbCtxTargetWinId = null;
+
+        /* App Config Definition */
+        const APP_DEFS = {
+            'filemanager': { title: 'File Manager', icon: '📂', width: 680, height: 460, multi: true, cap: 4 },
+            'editor': { title: 'Text Editor', icon: '📝', width: 620, height: 450, multi: false },
+            'audioplayer': { title: 'Audio Player', icon: '🎵', width: 520, height: 380, multi: false },
+            'imageviewer': { title: 'Image Viewer', icon: '🖼️', width: 640, height: 460, multi: false },
+            'videoplayer': { title: 'Video Player', icon: '🎬', width: 660, height: 480, multi: false },
+            'modelviewer': { title: '3D Viewer', icon: '🧊', width: 680, height: 480, multi: false },
+            'screensaver': { title: 'Screen Saver Settings', icon: '🌌', width: 420, height: 360, multi: false }
+        };
+
+        /* State Persistence in localStorage per Session */
+        function saveDesktopState() {
+            try {
+                const list = [];
+                Object.keys(windowsMap).forEach(winId => {
+                    const w = windowsMap[winId];
+                    const winEl = document.getElementById(winId);
+                    if (winEl) {
+                        list.push({
+                            winId: w.id,
+                            appId: w.appId,
+                            title: w.title,
+                            icon: w.icon,
+                            isMinimized: w.isMinimized,
+                            isMaximized: w.isMaximized,
+                            style: {
+                                left: winEl.style.left,
+                                top: winEl.style.top,
+                                width: winEl.style.width,
+                                height: winEl.style.height,
+                                zIndex: winEl.style.zIndex
+                            },
+                            state: {
+                                filePath: w.state.filePath,
+                                currentPath: w.state.currentPath,
+                                currentDir: w.state.currentDir,
+                                currentZoom: w.state.currentZoom,
+                                panX: w.state.panX,
+                                panY: w.state.panY,
+                                playlist: w.state.playlist,
+                                currentTrackIndex: w.state.currentTrackIndex,
+                                isShuffle: w.state.isShuffle,
+                                isLoop: w.state.isLoop
+                            }
+                        });
+                    }
+                });
+                sessionStorage.setItem('linnas_vd_state', JSON.stringify({ fmCount, list }));
+            } catch (e) {}
+        }
+
+        function restoreDesktopState() {
+            try {
+                const raw = sessionStorage.getItem('linnas_vd_state');
+                if (!raw) return false;
+                const parsed = JSON.parse(raw);
+                if (!parsed || !Array.isArray(parsed.list) || parsed.list.length === 0) return false;
+
+                fmCount = parsed.fmCount || 0;
+                parsed.list.forEach(item => {
+                    createWindow(item.winId, item.appId, item.title, item.icon, parseInt(item.style.width) || 600, parseInt(item.style.height) || 400, null, item);
+                });
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        /* Desktop Context Menu Handler */
+        function onDesktopContextMenu(e) {
+            if (e.target.closest('.desktop-window') || e.target.closest('#taskbar') || e.target.closest('#topNav')) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            hideContextMenus();
+
+            const menu = document.getElementById('desktopContextMenu');
+            menu.style.display = 'block';
+            menu.style.left = Math.min(e.clientX, window.innerWidth - 180) + 'px';
+            menu.style.top = Math.min(e.clientY, window.innerHeight - 150) + 'px';
+        }
+
+        /* Prevent Default Browser Context Menu Everywhere Else */
+        document.addEventListener('contextmenu', (e) => {
+            if (e.target.closest('.fm-table') || e.target.closest('.fm-toolbar') || e.target.closest('.taskbar-item') || e.target.closest('.context-menu') || e.target.closest('#desktopArea')) {
+                return;
+            }
+            e.preventDefault();
+        });
+
+        /* Window Management Engine */
+        function openApp(appId, fileData) {
+            const def = APP_DEFS[appId];
+            if (!def) return;
+
+            if (def.multi) {
+                if (appId === 'filemanager') {
+                    const existingFms = Object.keys(windowsMap).filter(k => k.startsWith('win_filemanager_'));
+                    if (existingFms.length >= (def.cap || 4)) {
+                        showNotice('Maximum Windows Reached', `You can have up to ${def.cap || 4} File Manager windows open simultaneously.`);
+                        bringToFront(existingFms[existingFms.length - 1]);
+                        return;
+                    }
+                    fmCount++;
+                    const winId = `win_filemanager_${fmCount}`;
+                    createWindow(winId, appId, `${def.title} #${fmCount}`, def.icon, def.width, def.height, fileData);
+                }
+            } else {
+                const winId = `win_${appId}`;
+                if (windowsMap[winId]) {
+                    restoreWindow(winId);
+                    bringToFront(winId);
+                    if (fileData) {
+                        loadMediaIntoAppWindow(winId, fileData.path);
+                    }
+                    return;
+                }
+                createWindow(winId, appId, def.title, def.icon, def.width, def.height, fileData);
+            }
+        }
+
+        function createWindow(winId, appId, title, icon, width, height, initialFileData, restoredObj) {
+            const container = document.getElementById('windowsContainer');
+
+            const winCount = Object.keys(windowsMap).length;
+            const left = restoredObj?.style?.left || (Math.min(60 + winCount * 30, window.innerWidth - width - 40) + 'px');
+            const top = restoredObj?.style?.top || (Math.min(40 + winCount * 25, window.innerHeight - height - 80) + 'px');
+
+            const winEl = document.createElement('div');
+            winEl.className = 'desktop-window active-window';
+            winEl.id = winId;
+            winEl.style.width = restoredObj?.style?.width || (width + 'px');
+            winEl.style.height = restoredObj?.style?.height || (height + 'px');
+            winEl.style.left = left;
+            winEl.style.top = top;
+            winEl.style.zIndex = restoredObj?.style?.zIndex || (++activeZIndex);
+
+            winEl.innerHTML = `
+                <div class="window-header" onmousedown="startDragWindow(event, '${winId}')">
+                    <span class="window-title" id="${winId}_title"><span>${icon}</span> <span>${escapeHtml(title)}</span></span>
+                    <div class="window-controls">
+                        <button class="win-btn" onclick="minimizeWindow('${winId}')" title="Minimize">_</button>
+                        <button class="win-btn" onclick="toggleMaximizeWindow('${winId}')" title="Maximize / Restore">🗖</button>
+                        <button class="win-btn win-btn-close" onclick="closeWindow('${winId}')" title="Close">✕</button>
+                    </div>
+                </div>
+                <div class="window-body" id="${winId}_body"></div>
+                <div class="window-resizer" onmousedown="startResizeWindow(event, '${winId}')"></div>
+                <div class="drop-target-overlay">📥 Drop File to Load</div>
+            `;
+
+            winEl.addEventListener('mousedown', () => bringToFront(winId), true);
+            winEl.addEventListener('pointerdown', () => bringToFront(winId), true);
+
+            container.appendChild(winEl);
+
+            windowsMap[winId] = {
+                id: winId,
+                appId: appId,
+                title: title,
+                icon: icon,
+                isMinimized: restoredObj ? restoredObj.isMinimized : false,
+                isMaximized: restoredObj ? restoredObj.isMaximized : false,
+                prevPos: null,
+                state: restoredObj ? restoredObj.state : {}
+            };
+
+            setupAppWindowDropTarget(winEl, winId, appId);
+            buildAppContent(winId, appId, initialFileData, restoredObj);
+            addTaskbarItem(winId, title, icon);
+
+            if (restoredObj) {
+                if (restoredObj.isMinimized) minimizeWindow(winId);
+                if (restoredObj.isMaximized) winEl.classList.add('is-maximized');
+            }
+
+            bringToFront(winId);
+            saveDesktopState();
+        }
+
+        function bringToFront(winId) {
+            document.querySelectorAll('.desktop-window').forEach(w => w.classList.remove('active-window'));
+            document.querySelectorAll('.taskbar-item').forEach(t => t.classList.remove('active'));
+
+            const win = document.getElementById(winId);
+            if (win) {
+                win.classList.add('active-window');
+                win.style.zIndex = ++activeZIndex;
+            }
+
+            const tb = document.getElementById(`tb_${winId}`);
+            if (tb) {
+                tb.classList.add('active');
+                tb.classList.remove('minimized');
+            }
+            saveDesktopState();
+        }
+
+        function minimizeWindow(winId) {
+            const win = document.getElementById(winId);
+            if (win) {
+                win.classList.add('is-minimized');
+                windowsMap[winId].isMinimized = true;
+            }
+            const tb = document.getElementById(`tb_${winId}`);
+            if (tb) {
+                tb.classList.remove('active');
+                tb.classList.add('minimized');
+            }
+            saveDesktopState();
+        }
+
+        function restoreWindow(winId) {
+            const win = document.getElementById(winId);
+            if (win) {
+                win.classList.remove('is-minimized');
+                windowsMap[winId].isMinimized = false;
+            }
+            bringToFront(winId);
+        }
+
+        function snapWindowPosition(winId, key) {
+            const win = document.getElementById(winId);
+            if (!win) return;
+            const wData = windowsMap[winId];
+
+            if (wData.isMaximized) {
+                win.classList.remove('is-maximized');
+                wData.isMaximized = false;
+            }
+
+            const desktopArea = document.getElementById('desktopArea');
+            const dWidth = desktopArea ? desktopArea.clientWidth : window.innerWidth;
+            const dHeight = desktopArea ? desktopArea.clientHeight : (window.innerHeight - 82);
+
+            let left = 0, top = 0, width = dWidth / 2, height = dHeight / 2;
+
+            if (key === '1') {
+                left = 0; top = 0; width = dWidth / 2; height = dHeight / 2;
+            } else if (key === '2') {
+                left = dWidth / 2; top = 0; width = dWidth / 2; height = dHeight / 2;
+            } else if (key === '3') {
+                left = 0; top = dHeight / 2; width = dWidth / 2; height = dHeight / 2;
+            } else if (key === '4') {
+                left = dWidth / 2; top = dHeight / 2; width = dWidth / 2; height = dHeight / 2;
+            } else if (key === 'ArrowLeft') {
+                left = 0; top = 0; width = dWidth / 2; height = dHeight;
+            } else if (key === 'ArrowRight') {
+                left = dWidth / 2; top = 0; width = dWidth / 2; height = dHeight;
+            }
+
+            win.style.left = `${left}px`;
+            win.style.top = `${top}px`;
+            win.style.width = `${width}px`;
+            win.style.height = `${height}px`;
+
+            bringToFront(winId);
+        }
+
+        function toggleMaximizeWindow(winId) {
+            const win = document.getElementById(winId);
+            if (!win) return;
+            const wData = windowsMap[winId];
+
+            if (wData.isMaximized) {
+                win.classList.remove('is-maximized');
+                if (wData.prevPos) {
+                    win.style.left = wData.prevPos.left;
+                    win.style.top = wData.prevPos.top;
+                    win.style.width = wData.prevPos.width;
+                    win.style.height = wData.prevPos.height;
+                }
+                wData.isMaximized = false;
+            } else {
+                wData.prevPos = {
+                    left: win.style.left,
+                    top: win.style.top,
+                    width: win.style.width,
+                    height: win.style.height
+                };
+                win.classList.add('is-maximized');
+                wData.isMaximized = true;
+            }
+            saveDesktopState();
+        }
+
+        function closeWindow(winId) {
+            const win = document.getElementById(winId);
+            if (win) win.remove();
+
+            const tb = document.getElementById(`tb_${winId}`);
+            if (tb) tb.remove();
+
+            delete windowsMap[winId];
+            saveDesktopState();
+        }
+
+        function closeAllWindows() {
+            Object.keys(windowsMap).forEach(id => closeWindow(id));
+            hideContextMenus();
+        }
+
+        /* Drag Window Logic */
+        let draggingWinId = null;
+        let dragOffset = { x: 0, y: 0 };
+
+        function startDragWindow(e, winId) {
+            if (e.target.closest('.win-btn') || e.target.closest('.window-controls')) return;
+            const win = document.getElementById(winId);
+            if (!win || windowsMap[winId].isMaximized) return;
+
+            draggingWinId = winId;
+            bringToFront(winId);
+
+            dragOffset.x = e.clientX - win.offsetLeft;
+            dragOffset.y = e.clientY - win.offsetTop;
+
+            document.addEventListener('mousemove', onDragWindow);
+            document.addEventListener('mouseup', stopDragWindow);
+        }
+
+        function onDragWindow(e) {
+            if (!draggingWinId) return;
+            const win = document.getElementById(draggingWinId);
+            if (!win) return;
+
+            let newLeft = e.clientX - dragOffset.x;
+            let newTop = e.clientY - dragOffset.y;
+
+            newLeft = Math.max(-win.offsetWidth + 80, Math.min(newLeft, window.innerWidth - 80));
+            newTop = Math.max(0, Math.min(newTop, window.innerHeight - 80));
+
+            win.style.left = newLeft + 'px';
+            win.style.top = newTop + 'px';
+        }
+
+        function stopDragWindow() {
+            draggingWinId = null;
+            document.removeEventListener('mousemove', onDragWindow);
+            document.removeEventListener('mouseup', stopDragWindow);
+            saveDesktopState();
+        }
+
+        /* Resize Window Logic */
+        let resizingWinId = null;
+        let resizeStart = { x: 0, y: 0, w: 0, h: 0 };
+
+        function startResizeWindow(e, winId) {
+            e.stopPropagation();
+            const win = document.getElementById(winId);
+            if (!win || windowsMap[winId].isMaximized) return;
+
+            resizingWinId = winId;
+            bringToFront(winId);
+
+            resizeStart = {
+                x: e.clientX,
+                y: e.clientY,
+                w: win.offsetWidth,
+                h: win.offsetHeight
+            };
+
+            document.addEventListener('mousemove', onResizeWindow);
+            document.addEventListener('mouseup', stopResizeWindow);
+        }
+
+        function onResizeWindow(e) {
+            if (!resizingWinId) return;
+            const win = document.getElementById(resizingWinId);
+            if (!win) return;
+
+            const newW = Math.max(300, resizeStart.w + (e.clientX - resizeStart.x));
+            const newH = Math.max(200, resizeStart.h + (e.clientY - resizeStart.y));
+
+            win.style.width = newW + 'px';
+            win.style.height = newH + 'px';
+
+            if (windowsMap[resizingWinId] && windowsMap[resizingWinId].appId === 'modelviewer') {
+                triggerThreeResize(resizingWinId);
+            }
+        }
+
+        function stopResizeWindow() {
+            resizingWinId = null;
+            document.removeEventListener('mousemove', onResizeWindow);
+            document.removeEventListener('mouseup', stopResizeWindow);
+            saveDesktopState();
+        }
+
+        /* Taskbar UI Sync & Taskbar Context Menu */
+        function addTaskbarItem(winId, title, icon) {
+            const itemsContainer = document.getElementById('taskbarItems');
+            const tbItem = document.createElement('div');
+            tbItem.className = 'taskbar-item active';
+            tbItem.id = `tb_${winId}`;
+            tbItem.innerHTML = `<span>${icon}</span> <span>${escapeHtml(title)}</span>`;
+
+            tbItem.onclick = () => {
+                const w = windowsMap[winId];
+                if (!w) return;
+                if (w.isMinimized) {
+                    restoreWindow(winId);
+                } else if (document.getElementById(winId).classList.contains('active-window')) {
+                    minimizeWindow(winId);
+                } else {
+                    bringToFront(winId);
+                }
+            };
+
+            tbItem.oncontextmenu = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                tbCtxTargetWinId = winId;
+                showTbContextMenu(e.clientX, e.clientY);
+            };
+
+            itemsContainer.appendChild(tbItem);
+        }
+
+        function showTbContextMenu(x, y) {
+            hideContextMenus();
+            const menu = document.getElementById('tbContextMenu');
+            menu.style.display = 'block';
+            menu.style.left = Math.min(x, window.innerWidth - 160) + 'px';
+            menu.style.top = (y - menu.offsetHeight - 5) + 'px';
+        }
+
+        function tbCtxRestore() {
+            if (tbCtxTargetWinId) restoreWindow(tbCtxTargetWinId);
+            hideContextMenus();
+        }
+
+        function tbCtxMinimize() {
+            if (tbCtxTargetWinId) minimizeWindow(tbCtxTargetWinId);
+            hideContextMenus();
+        }
+
+        function tbCtxClose() {
+            if (tbCtxTargetWinId) closeWindow(tbCtxTargetWinId);
+            hideContextMenus();
+        }
+
+        /* Start Menu & Desktop Handlers */
+        function toggleStartMenu(e) {
+            if (e) e.stopPropagation();
+            const menu = document.getElementById('startMenu');
+            menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+        }
+
+        function hideStartMenu() {
+            document.getElementById('startMenu').style.display = 'none';
+        }
+
+        function onDesktopClick(e) {
+            if (!e.target.closest('#startMenu') && !e.target.closest('.start-btn')) {
+                hideStartMenu();
+            }
+            hideContextMenus();
+        }
+
+        function hideContextMenus() {
+            document.getElementById('fmContextMenu').style.display = 'none';
+            document.getElementById('tbContextMenu').style.display = 'none';
+            document.getElementById('desktopContextMenu').style.display = 'none';
+        }
+
+        document.addEventListener('click', hideContextMenus);
+
+        /* 24h / 12h Tray Clock Toggle */
+        function updateClock() {
+            const now = new Date();
+            const clockEl = document.getElementById('trayClock');
+            if (!clockEl) return;
+
+            if (is24HourClock) {
+                const h = String(now.getHours()).padStart(2, '0');
+                const m = String(now.getMinutes()).padStart(2, '0');
+                const s = String(now.getSeconds()).padStart(2, '0');
+                clockEl.innerText = `${h}:${m}:${s}`;
+            } else {
+                clockEl.innerText = now.toLocaleTimeString();
+            }
+        }
+
+        function toggleClockFormat() {
+            is24HourClock = !is24HourClock;
+            updateClock();
+        }
+
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        /* Fullscreen Desktop Toggle */
+        function toggleFullscreenDesktop() {
+            if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+                const el = document.documentElement;
+                if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+                else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+                document.body.classList.add('is-fullscreen');
+                isFullscreenMode = true;
+                document.getElementById('startExitFsBtn').style.display = 'flex';
+            } else {
+                exitFullscreenDesktop();
+            }
+        }
+
+        function exitFullscreenDesktop() {
+            if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            document.body.classList.remove('is-fullscreen');
+            isFullscreenMode = false;
+            document.getElementById('startExitFsBtn').style.display = 'none';
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                document.body.classList.remove('is-fullscreen');
+                isFullscreenMode = false;
+                document.getElementById('startExitFsBtn').style.display = 'none';
+            } else {
+                document.body.classList.add('is-fullscreen');
+                isFullscreenMode = true;
+                document.getElementById('startExitFsBtn').style.display = 'flex';
+            }
+        });
+
+        /* Notice Modal */
+        function showNotice(title, message) {
+            document.getElementById('noticeTitle').innerText = title;
+            document.getElementById('noticeBody').innerText = message;
+            document.getElementById('noticeModal').style.display = 'flex';
+        }
+
+        function closeNoticeModal() {
+            document.getElementById('noticeModal').style.display = 'none';
+        }
+
+        /* Chmod / Chown Permissions Modal */
+        function setDeskCheckboxPermissionsFromOctal(octalStr) {
+            let oct = (octalStr || '0755').replace(/^0+/, '');
+            if (oct.length < 3) oct = oct.padStart(3, '0');
+            const u = parseInt(oct.charAt(oct.length - 3), 10) || 0;
+            const g = parseInt(oct.charAt(oct.length - 2), 10) || 0;
+            const o = parseInt(oct.charAt(oct.length - 1), 10) || 0;
+
+            document.getElementById('desk_perm_u_r').checked = !!(u & 4);
+            document.getElementById('desk_perm_u_w').checked = !!(u & 2);
+            document.getElementById('desk_perm_u_x').checked = !!(u & 1);
+
+            document.getElementById('desk_perm_g_r').checked = !!(g & 4);
+            document.getElementById('desk_perm_g_w').checked = !!(g & 2);
+            document.getElementById('desk_perm_g_x').checked = !!(g & 1);
+
+            document.getElementById('desk_perm_o_r').checked = !!(o & 4);
+            document.getElementById('desk_perm_o_w').checked = !!(o & 2);
+            document.getElementById('desk_perm_o_x').checked = !!(o & 1);
+        }
+
+        function getDeskOctalFromCheckboxes() {
+            const u = (document.getElementById('desk_perm_u_r').checked ? 4 : 0) +
+                      (document.getElementById('desk_perm_u_w').checked ? 2 : 0) +
+                      (document.getElementById('desk_perm_u_x').checked ? 1 : 0);
+            const g = (document.getElementById('desk_perm_g_r').checked ? 4 : 0) +
+                      (document.getElementById('desk_perm_g_w').checked ? 2 : 0) +
+                      (document.getElementById('desk_perm_g_x').checked ? 1 : 0);
+            const o = (document.getElementById('desk_perm_o_r').checked ? 4 : 0) +
+                      (document.getElementById('desk_perm_o_w').checked ? 2 : 0) +
+                      (document.getElementById('desk_perm_o_x').checked ? 1 : 0);
+            return `0${u}${g}${o}`;
+        }
+
+        function openChmodModal() {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
+            const wData = windowsMap[fmCtxTargetWinId];
+            if (wData.state.selectedPaths.size === 0) {
+                showNotice('Permissions Error', 'Please select at least 1 file/folder.');
+                return;
+            }
+            const firstPath = Array.from(wData.state.selectedPaths)[0];
+            const item = wData.state.items ? wData.state.items.find(i => i.path === firstPath) : null;
+            setDeskCheckboxPermissionsFromOctal(item && item.mode_octal ? item.mode_octal : '0755');
+            document.getElementById('chmodModal').style.display = 'flex';
+        }
+
+        function closeChmodModal() {
+            document.getElementById('chmodModal').style.display = 'none';
+        }
+
+        async function saveFmPermissionsAndOwner() {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
+            const wData = windowsMap[fmCtxTargetWinId];
+
+            const modeOctal = getDeskOctalFromCheckboxes();
+            const chownUser = document.getElementById('chownUser').value.trim();
+            const recursive = document.getElementById('chmodRecursive').checked;
+            const paths = Array.from(wData.state.selectedPaths);
+
+            if (paths.length === 0) return;
+
+            try {
+                if (modeOctal) {
+                    const encBody = await encryptPayload({ paths, mode_octal: modeOctal, recursive });
+                    const res = await fetch('/api/fs/chmod', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: encBody
+                    });
+                    const data = await res.json();
+                    if (!data.success) {
+                        showNotice('Chmod Error', data.error || 'Failed to update permissions.');
+                        return;
+                    }
+                }
+
+                if (chownUser) {
+                    const parts = chownUser.split(':');
+                    const owner = parts[0] || '';
+                    const group = parts[1] || '';
+                    const encBody = await encryptPayload({ paths, owner, group, recursive });
+                    const res = await fetch('/api/fs/chown', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: encBody
+                    });
+                    const data = await res.json();
+                    if (!data.success) {
+                        showNotice('Chown Error', data.error || 'Failed to update ownership.');
+                        return;
+                    }
+                }
+
+                closeChmodModal();
+                fmRefresh(fmCtxTargetWinId);
+            } catch (err) {
+                showNotice('Permissions Error', err.message);
+            }
+        }
+
+        /* Show App-Sized Toast Notification inside Window */
+        function showAppToast(winId, message) {
+            const winEl = document.getElementById(winId);
+            if (!winEl) return;
+
+            let toast = winEl.querySelector('.app-window-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.className = 'app-window-toast';
+                toast.style.cssText = `
+                    position: absolute;
+                    bottom: 12px;
+                    left: 50%;
+                    transform: translateX(-50%) translateY(20px);
+                    background: rgba(238, 75, 43, 0.92);
+                    color: #fff;
+                    padding: 0.4rem 0.8rem;
+                    border-radius: 6px;
+                    font-size: 0.78rem;
+                    font-weight: 500;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+                    z-index: 100;
+                    opacity: 0;
+                    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+                    pointer-events: none;
+                    white-space: nowrap;
+                    max-width: 90%;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                `;
+                winEl.appendChild(toast);
+            }
+
+            toast.innerText = message;
+            requestAnimationFrame(() => {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateX(-50%) translateY(0)';
+            });
+
+            if (toast._timer) clearTimeout(toast._timer);
+            toast._timer = setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(-50%) translateY(20px)';
+            }, 2800);
+        }
+
+        /* Built-in File Picker Modal */
+        let activePickerCallback = null;
+        let currentPickerExts = [];
+
+        async function openNASPickerModal(initialDir, allowedExts, onSelectFile, isSaveAs = false) {
+            currentPickerExts = allowedExts || [];
+            activePickerCallback = onSelectFile;
+
+            if (isSaveAs) {
+                const targetName = prompt('Enter filename to save:', 'untitled.txt');
+                if (!targetName) return;
+                const path = (initialDir === '/' ? '' : initialDir) + '/' + targetName.trim();
+                onSelectFile(path);
+                return;
+            }
+
+            loadPickerDirectory(initialDir || '/');
+            document.getElementById('pickerModal').style.display = 'flex';
+        }
+
+        async function loadPickerDirectory(dirPath) {
+            document.getElementById('pickerModalPath').innerText = dirPath;
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(dirPath)}`);
+                const data = await res.json();
+                const container = document.getElementById('pickerFileList');
+                container.innerHTML = '';
+
+                if (data.parent && data.parent !== dirPath) {
+                    const upDiv = document.createElement('div');
+                    upDiv.className = 'file-item';
+                    upDiv.innerText = '📁 .. (Parent Directory)';
+                    upDiv.onclick = () => loadPickerDirectory(data.parent);
+                    container.appendChild(upDiv);
+                }
+
+                if (data.items) {
+                    data.items.forEach(item => {
+                        const ext = item.name.split('.').pop().toLowerCase();
+                        if (item.is_dir || currentPickerExts.length === 0 || currentPickerExts.includes(ext)) {
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = 'file-item';
+                            itemDiv.innerText = (item.is_dir ? '📁 ' : '📄 ') + item.name;
+                            itemDiv.onclick = () => {
+                                if (item.is_dir) {
+                                    loadPickerDirectory(item.path);
+                                } else {
+                                    closePickerModal();
+                                    if (activePickerCallback) activePickerCallback(item.path);
+                                }
+                            };
+                            container.appendChild(itemDiv);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('Picker error:', e);
+            }
+        }
+
+        function closePickerModal() {
+            document.getElementById('pickerModal').style.display = 'none';
+        }
+
+        /* Drop Receiving Logic on App Windows */
+        function setupAppWindowDropTarget(winEl, winId, appId) {
+            winEl.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                winEl.classList.add('drop-target-active');
+            });
+
+            winEl.addEventListener('dragleave', () => {
+                winEl.classList.remove('drop-target-active');
+            });
+
+            winEl.addEventListener('drop', (e) => {
+                e.preventDefault();
+                winEl.classList.remove('drop-target-active');
+
+                const dataStr = e.dataTransfer.getData('application/json');
+                if (!dataStr) return;
+
+                try {
+                    const payload = JSON.parse(dataStr);
+                    if (payload.type === 'linnas-file') {
+                        const paths = payload.sourcePaths || [payload.sourcePath];
+
+                        if (appId === 'audioplayer') {
+                            audioAddPathsToPlaylist(winId, paths);
+                            return;
+                        }
+
+                        const firstFile = paths.find(p => !p.endsWith('/'));
+                        if (!firstFile) {
+                            showAppToast(winId, '⚠️ Please drop a valid file, not a folder.');
+                            return;
+                        }
+
+                        const fileName = firstFile.split('/').pop();
+                        if (checkAppFileCapability(appId, fileName)) {
+                            loadMediaIntoAppWindow(winId, firstFile);
+                        } else {
+                            showAppToast(winId, `⚠️ Unsupported file format: '${fileName}'`);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Drop parse error:', err);
+                }
+            });
+        }
+
+        function checkAppFileCapability(appId, fileName) {
+            const ext = fileName.split('.').pop().toLowerCase();
+            switch (appId) {
+                case 'audioplayer': return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext);
+                case 'imageviewer': return ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'].includes(ext);
+                case 'videoplayer': return ['mp4', 'webm', 'ogg', 'ogv', 'mkv', 'mov', 'avi'].includes(ext);
+                case 'editor': return ['txt', 'conf', 'json', 'sh', 'py', 'go', 'js', 'html', 'htm', 'css', 'md', 'log', 'yaml', 'yml', 'ini', 'xml', 'csv'].includes(ext);
+                case 'modelviewer': return ['stl', 'obj', 'gltf', 'glb', '3mf'].includes(ext);
+                case 'filemanager': return true;
+                default: return false;
+            }
+        }
+
+        /* App Window Content Builders & Media Loaders */
+        function buildAppContent(winId, appId, initialFileData, restoredObj) {
+            const body = document.getElementById(`${winId}_body`);
+            const wData = windowsMap[winId];
+
+            if (appId === 'filemanager') {
+                buildFileManagerUI(winId, restoredObj?.state?.currentPath || initialFileData?.path || '/');
+            } else if (appId === 'editor') {
+                body.innerHTML = `
+                    <div style="padding: 0.4rem 0.6rem; background: #161b22; border-bottom: 1px solid #30363d; display: flex; gap: 0.4rem; align-items: center;">
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="editorLoadPrompt('${winId}')">📂 Load</button>
+                        <button class="btn" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="saveEditorContent('${winId}')">💾 Save</button>
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="saveEditorContentAs('${winId}')">💾 Save As</button>
+                        <span id="${winId}_filepath" style="font-family: monospace; font-size: 0.78rem; color: #58a6ff; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 0.4rem;">No file loaded</span>
+                    </div>
+                    <textarea id="${winId}_textarea" style="flex: 1; width: 100%; background: #0d1117; color: #7ee787; border: none; outline: none; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; resize: none;" placeholder="Open a text file or drop a file from File Manager here..."></textarea>
+                `;
+                const initFile = restoredObj?.state?.filePath || initialFileData?.path;
+                if (initFile) {
+                    loadMediaIntoAppWindow(winId, initFile);
+                }
+            } else if (appId === 'audioplayer') {
+                wData.state.playlist = restoredObj?.state?.playlist || [];
+                wData.state.currentTrackIndex = restoredObj?.state?.currentTrackIndex ?? -1;
+                wData.state.isShuffle = restoredObj?.state?.isShuffle || false;
+                wData.state.isLoop = restoredObj?.state?.isLoop || false;
+
+                body.innerHTML = `
+                    <div class="app-media-container" style="padding: 0.8rem; justify-content: flex-start; gap: 0.8rem;">
+                        <div style="width: 100%; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; background: #161b22; padding: 0.5rem; border-radius: 6px; border: 1px solid #30363d;">
+                            <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="audioPlayLast('${winId}')">⏮️ Last</button>
+                            <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="audioPlayNext('${winId}')">⏭️ Next</button>
+                            <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="audioLoadPrompt('${winId}')">📂 Load</button>
+                            <button class="btn btn-danger" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="audioDeleteSelected('${winId}')">🗑️ Delete</button>
+                            <button id="${winId}_btnRand" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="audioToggleShuffle('${winId}')">🔀 Random</button>
+                            <button id="${winId}_btnLoop" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="audioToggleLoop('${winId}')">🔁 Loop</button>
+                        </div>
+                        <div id="${winId}_empty" class="app-empty-state" style="margin: auto;">
+                            <div class="app-empty-icon">🎵</div>
+                            <div>No audio file loaded. Drag audio files or click 'Load' to add tracks.</div>
+                        </div>
+                        <div id="${winId}_player_box" style="display: none; flex-direction: column; align-items: center; gap: 0.5rem; width: 100%;">
+                            <div id="${winId}_track_title" style="font-weight: bold; color: #58a6ff; font-size: 0.88rem; text-align: center; font-family: monospace; word-break: break-all;"></div>
+                            <audio id="${winId}_audio" controls style="width: 100%; height: 32px;"></audio>
+                        </div>
+                        <div style="flex: 1; width: 100%; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 6px;" id="${winId}_playlist_box">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;">
+                                <thead>
+                                    <tr style="background: #161b22; color: #8b949e; border-bottom: 1px solid #30363d;">
+                                        <th style="padding: 0.4rem; width: 30px;">#</th>
+                                        <th style="padding: 0.4rem;">Title</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="${winId}_playlist_tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+
+                const audioEl = document.getElementById(`${winId}_audio`);
+                if (audioEl) {
+                    audioEl.onended = () => {
+                        if (wData.state.isLoop) {
+                            audioEl.currentTime = 0;
+                            audioEl.play().catch(() => {});
+                        } else {
+                            audioPlayNext(winId);
+                        }
+                    };
+                }
+
+                if (initialFileData && initialFileData.path) {
+                    audioAddPathsToPlaylist(winId, [initialFileData.path], true);
+                } else if (restoredObj?.state?.playlist?.length > 0) {
+                    renderAudioPlaylist(winId);
+                    if (wData.state.currentTrackIndex >= 0) {
+                        playAudioTrackIndex(winId, wData.state.currentTrackIndex, false);
+                    }
+                }
+            } else if (appId === 'imageviewer') {
+                wData.state.currentDir = restoredObj?.state?.currentDir || initialFileData?.dir || '/';
+                wData.state.currentZoom = restoredObj?.state?.currentZoom || 1;
+                wData.state.panX = restoredObj?.state?.panX || 0;
+                wData.state.panY = restoredObj?.state?.panY || 0;
+
+                body.innerHTML = `
+                    <div style="padding: 0.4rem 0.6rem; background: #161b22; border-bottom: 1px solid #30363d; display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="imagePlayPrev('${winId}')">⏮️ Last</button>
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="imagePlayNext('${winId}')">⏭️ Next</button>
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="imageLoadPrompt('${winId}')">📂 Load</button>
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.4rem; font-size: 0.78rem;" onclick="imageAdjustZoom('${winId}', 1.2)">🔍+</button>
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.4rem; font-size: 0.78rem;" onclick="imageAdjustZoom('${winId}', 0.8)">🔍-</button>
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.4rem; font-size: 0.78rem;" onclick="imageZoom1to1('${winId}')">1:1 (*)</button>
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.4rem; font-size: 0.78rem;" onclick="imageFitWindow('${winId}')">Fit (/)</button>
+                    </div>
+                    <div class="app-media-container" style="overflow: hidden; padding: 0.5rem;">
+                        <div id="${winId}_empty" class="app-empty-state">
+                            <div class="app-empty-icon">🖼️</div>
+                            <div>No image loaded. Click 'Load' or drop an image file here.</div>
+                        </div>
+                        <div id="${winId}_img_box" style="display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center;">
+                            <img id="${winId}_img" style="max-width: 100%; max-height: 100%; object-fit: contain; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.6)); transition: transform 0.15s ease-out;">
+                        </div>
+                    </div>
+                `;
+                const initFile = restoredObj?.state?.filePath || initialFileData?.path;
+                if (initFile) {
+                    loadMediaIntoAppWindow(winId, initFile);
+                }
+            } else if (appId === 'videoplayer') {
+                body.innerHTML = `
+                    <div style="padding: 0.4rem 0.6rem; background: #161b22; border-bottom: 1px solid #30363d; display: flex; gap: 0.4rem; align-items: center;">
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="videoLoadPrompt('${winId}')">📂 Load Video</button>
+                    </div>
+                    <div class="app-media-container" style="padding: 0;">
+                        <div id="${winId}_empty" class="app-empty-state" style="padding: 1rem;">
+                            <div class="app-empty-icon">🎬</div>
+                            <div>No video loaded. Click 'Load Video' or drop a video file (.mp4, .webm) here.</div>
+                        </div>
+                        <video id="${winId}_video" controls style="display: none; width: 100%; height: 100%; background: #000; object-fit: contain;"></video>
+                    </div>
+                `;
+                const vid = document.getElementById(`${winId}_video`);
+                if (vid) {
+                    ['mousedown', 'pointerdown', 'click', 'play', 'pause', 'seeking', 'volumechange', 'focus', 'touchstart'].forEach(evt => {
+                        vid.addEventListener(evt, () => bringToFront(winId), true);
+                    });
+                }
+                const initFile = restoredObj?.state?.filePath || initialFileData?.path;
+                if (initFile) {
+                    loadMediaIntoAppWindow(winId, initFile);
+                }
+            } else if (appId === 'modelviewer') {
+                body.innerHTML = `
+                    <div style="padding: 0.4rem 0.6rem; background: #161b22; border-bottom: 1px solid #30363d; display: flex; gap: 0.4rem; align-items: center;">
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="modelPlayPrev('${winId}')">⏮️ Last</button>
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="modelPlayNext('${winId}')">⏭️ Next</button>
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.78rem;" onclick="modelLoadPrompt('${winId}')">📂 Load</button>
+                    </div>
+                    <div class="app-media-container" style="padding: 0; position: relative;">
+                        <div id="${winId}_empty" class="app-empty-state" style="padding: 1rem;">
+                            <div class="app-empty-icon">🧊</div>
+                            <div>No 3D model loaded. Drop a 3D file (.stl, .obj, .gltf, .glb) here.</div>
+                        </div>
+                        <div id="${winId}_canvas" style="display: none; width: 100%; height: 100%;"></div>
+                    </div>
+                `;
+                const initFile = restoredObj?.state?.filePath || initialFileData?.path;
+                if (initFile) {
+                    loadMediaIntoAppWindow(winId, initFile);
+                }
+            } else if (appId === 'screensaver') {
+                body.innerHTML = `
+                    <div style="padding: 1.2rem; display: flex; flex-direction: column; gap: 1rem; color: #c9d1d9;">
+                        <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                            <label style="font-size: 0.85rem; font-weight: bold; color: #58a6ff;">Screensaver Visualizer</label>
+                            <select id="ssModuleSelect" style="padding: 0.5rem; background: #0d1117; border: 1px solid #30363d; border-radius: 5px; color: #fff; font-size: 0.85rem;">
+                                <option value="Disabled">Disabled</option>
+                                <option value="Random">Random (Selects module on trigger)</option>
+                                <option value="Starfield">Starfield (Space Warp)</option>
+                                <option value="Bubbles">Floating Bubbles</option>
+                                <option value="Qix">Qix (Neon Abstract Lines)</option>
+                                <option value="DigitalRain">Digital Rain (Cyber Matrix)</option>
+                                <option value="Lightning">Lightning Storm</option>
+                                <option value="Gravity">N-Body Chaos Gravity</option>
+                                <option value="Fireworks">Atmospheric Fireworks</option>
+                                <option value="Flocking">Boids Flocking Engine</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                            <label style="font-size: 0.85rem; font-weight: bold; color: #58a6ff;">Idle Timeout</label>
+                            <select id="ssTimeoutSelect" style="padding: 0.5rem; background: #0d1117; border: 1px solid #30363d; border-radius: 5px; color: #fff; font-size: 0.85rem;">
+                                <option value="0">Disabled (Never launch)</option>
+                                <option value="60">1 Minute</option>
+                                <option value="120">2 Minutes</option>
+                                <option value="300">5 Minutes</option>
+                                <option value="600">10 Minutes</option>
+                                <option value="900">15 Minutes</option>
+                                <option value="1800">30 Minutes</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 0.8rem;">
+                            <button class="btn btn-secondary" onclick="previewScreensaverConfig()">👁️ Preview</button>
+                            <button class="btn" onclick="saveScreensaverConfig()">💾 Save Settings</button>
+                        </div>
+                    </div>
+                `;
+                document.getElementById('ssModuleSelect').value = ssConfig.module;
+                document.getElementById('ssTimeoutSelect').value = ssConfig.timeout;
+            }
+        }
+
+        /* App Media Loading Engine with File Size and Parity Checks */
+        async function loadMediaIntoAppWindow(winId, filePath) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            const appId = wData.appId;
+            const fileName = filePath.split('/').pop();
+
+            if (!checkAppFileCapability(appId, fileName)) {
+                showAppToast(winId, `⚠️ Unsupported file format: '${fileName}'`);
+                return;
+            }
+
+            const rawUrl = `/api/fs/raw?path=${encodeURIComponent(filePath)}`;
+
+            if (appId === 'editor') {
+                try {
+                    const checkRes = await fetch('/api/plugin/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ plugin: 'editor', cmd_key: 'check_file_cmd', args: { filepath: filePath } })
+                    });
+                    const checkData = await checkRes.json();
+                    const size = parseInt(checkData.output ? checkData.output.trim() : '0', 10) || 0;
+
+                    if (size > MAX_FILE_SIZE) {
+                        showAppToast(winId, `⚠️ File size (${formatBytes(size)}) exceeds maximum limit (2 MB).`);
+                        return;
+                    }
+                } catch (e) {}
+
+                document.getElementById(`${winId}_filepath`).innerText = filePath;
+                const area = document.getElementById(`${winId}_textarea`);
+                area.value = 'Loading file content...';
+
+                try {
+                    const res = await fetch(rawUrl);
+                    const text = await res.text();
+                    area.value = text;
+                    wData.state.filePath = filePath;
+                } catch (err) {
+                    area.value = 'Failed to load file: ' + err.message;
+                }
+            } else if (appId === 'audioplayer') {
+                audioAddPathsToPlaylist(winId, [filePath], true);
+            } else if (appId === 'imageviewer') {
+                wData.state.filePath = filePath;
+                wData.state.currentDir = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
+                await loadImageSiblingList(winId, wData.state.currentDir);
+
+                document.getElementById(`${winId}_empty`).style.display = 'none';
+                const box = document.getElementById(`${winId}_img_box`);
+                box.style.display = 'flex';
+                const img = document.getElementById(`${winId}_img`);
+                img.src = rawUrl;
+                updateImageTransform(winId);
+            } else if (appId === 'videoplayer') {
+                wData.state.filePath = filePath;
+                document.getElementById(`${winId}_empty`).style.display = 'none';
+                const vid = document.getElementById(`${winId}_video`);
+                vid.style.display = 'block';
+                vid.src = rawUrl;
+                vid.play().catch(() => {});
+            } else if (appId === 'modelviewer') {
+                wData.state.filePath = filePath;
+                wData.state.currentDir = filePath.substring(0, filePath.lastIndexOf('/')) || '/';
+                await loadModelSiblingList(winId, wData.state.currentDir);
+
+                document.getElementById(`${winId}_empty`).style.display = 'none';
+                const container = document.getElementById(`${winId}_canvas`);
+                container.style.display = 'block';
+                initThreeInWindow(winId, rawUrl, fileName);
+            }
+
+            const titleEl = document.getElementById(`${winId}_title`);
+            if (titleEl) {
+                titleEl.innerHTML = `<span>${wData.icon}</span> <span>${escapeHtml(APP_DEFS[appId].title)} - ${escapeHtml(fileName)}</span>`;
+            }
+            saveDesktopState();
+        }
+
+        /* Image Viewer Navigation & Zoom Mechanics */
+        async function loadImageSiblingList(winId, dirPath) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(dirPath)}`);
+                const data = await res.json();
+                if (data.items) {
+                    wData.state.siblingImages = data.items.filter(i => !i.is_dir && checkAppFileCapability('imageviewer', i.name)).map(i => i.path);
+                }
+            } catch (e) {}
+        }
+
+        function updateImageTransform(winId) {
+            const wData = windowsMap[winId];
+            const img = document.getElementById(`${winId}_img`);
+            if (img && wData) {
+                const z = wData.state.currentZoom || 1;
+                const px = wData.state.panX || 0;
+                const py = wData.state.panY || 0;
+                img.style.transform = `translate(${px}px, ${py}px) scale(${z})`;
+            }
+        }
+
+        function imageAdjustZoom(winId, factor) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            wData.state.currentZoom = (wData.state.currentZoom || 1) * factor;
+            if (wData.state.currentZoom < 0.2) wData.state.currentZoom = 0.2;
+            if (wData.state.currentZoom > 10) wData.state.currentZoom = 10;
+            updateImageTransform(winId);
+        }
+
+        function imageZoom1to1(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            wData.state.currentZoom = 1;
+            wData.state.panX = 0;
+            wData.state.panY = 0;
+            updateImageTransform(winId);
+        }
+
+        function imageFitWindow(winId) {
+            imageZoom1to1(winId);
+        }
+
+        function imagePlayNext(winId) {
+            const wData = windowsMap[winId];
+            if (!wData || !wData.state.siblingImages || wData.state.siblingImages.length === 0) return;
+            let idx = wData.state.siblingImages.indexOf(wData.state.filePath);
+            let nextIdx = (idx + 1) % wData.state.siblingImages.length;
+            loadMediaIntoAppWindow(winId, wData.state.siblingImages[nextIdx]);
+        }
+
+        function imagePlayPrev(winId) {
+            const wData = windowsMap[winId];
+            if (!wData || !wData.state.siblingImages || wData.state.siblingImages.length === 0) return;
+            let idx = wData.state.siblingImages.indexOf(wData.state.filePath);
+            let prevIdx = (idx - 1 + wData.state.siblingImages.length) % wData.state.siblingImages.length;
+            loadMediaIntoAppWindow(winId, wData.state.siblingImages[prevIdx]);
+        }
+
+        function imageLoadPrompt(winId) {
+            const wData = windowsMap[winId];
+            openNASPickerModal(wData?.state?.currentDir || '/', ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'], (selectedPath) => {
+                loadMediaIntoAppWindow(winId, selectedPath);
+            });
+        }
+
+        /* 3D Model Navigation Mechanics */
+        async function loadModelSiblingList(winId, dirPath) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(dirPath)}`);
+                const data = await res.json();
+                if (data.items) {
+                    wData.state.siblingModels = data.items.filter(i => !i.is_dir && checkAppFileCapability('modelviewer', i.name)).map(i => i.path);
+                }
+            } catch (e) {}
+        }
+
+        function modelPlayNext(winId) {
+            const wData = windowsMap[winId];
+            if (!wData || !wData.state.siblingModels || wData.state.siblingModels.length === 0) return;
+            let idx = wData.state.siblingModels.indexOf(wData.state.filePath);
+            let nextIdx = (idx + 1) % wData.state.siblingModels.length;
+            loadMediaIntoAppWindow(winId, wData.state.siblingModels[nextIdx]);
+        }
+
+        function modelPlayPrev(winId) {
+            const wData = windowsMap[winId];
+            if (!wData || !wData.state.siblingModels || wData.state.siblingModels.length === 0) return;
+            let idx = wData.state.siblingModels.indexOf(wData.state.filePath);
+            let prevIdx = (idx - 1 + wData.state.siblingModels.length) % wData.state.siblingModels.length;
+            loadMediaIntoAppWindow(winId, wData.state.siblingModels[prevIdx]);
+        }
+
+        function modelLoadPrompt(winId) {
+            const wData = windowsMap[winId];
+            openNASPickerModal(wData?.state?.currentDir || '/', ['stl', 'obj', 'gltf', 'glb', '3mf'], (selectedPath) => {
+                loadMediaIntoAppWindow(winId, selectedPath);
+            });
+        }
+
+        /* Video Player Load Prompt */
+        function videoLoadPrompt(winId) {
+            openNASPickerModal('/', ['mp4', 'webm', 'ogg', 'ogv', 'mkv', 'mov', 'avi'], (selectedPath) => {
+                loadMediaIntoAppWindow(winId, selectedPath);
+            });
+        }
+
+        /* Text Editor Load, Save & Save As */
+        function editorLoadPrompt(winId) {
+            openNASPickerModal('/', ['txt', 'conf', 'json', 'sh', 'py', 'go', 'js', 'html', 'htm', 'css', 'md', 'log', 'yaml', 'yml', 'ini', 'xml', 'csv'], (selectedPath) => {
+                loadMediaIntoAppWindow(winId, selectedPath);
+            });
+        }
+
+        function saveEditorContentAs(winId) {
+            openNASPickerModal('/', [], (targetPath) => {
+                const wData = windowsMap[winId];
+                if (wData) wData.state.filePath = targetPath;
+                saveEditorContent(winId);
+            }, true);
+        }
+
+        async function saveEditorContent(winId) {
+            const wData = windowsMap[winId];
+            if (!wData || !wData.state || !wData.state.filePath) {
+                saveEditorContentAs(winId);
+                return;
+            }
+
+            const filePath = wData.state.filePath;
+            const content = document.getElementById(`${winId}_textarea`).value;
+
+            try {
+                const encBody = await encryptPayload({ filepath: filePath, content: content });
+                const res = await fetch('/api/file/write', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showNotice('File Saved', `Successfully saved '${filePath.split('/').pop()}'.`);
+                } else {
+                    showNotice('Save Error', data.error || 'Failed to save file.');
+                }
+            } catch (err) {
+                showNotice('Save Error', err.message);
+            }
+        }
+
+        /* Audio Player Playlist Engine */
+        async function audioAddPathsToPlaylist(winId, paths, replaceSingle = false) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+
+            if (!wData.state.playlist) wData.state.playlist = [];
+
+            if (replaceSingle && paths.length === 1 && !paths[0].endsWith('/')) {
+                wData.state.playlist = [{ path: paths[0], name: paths[0].split('/').pop() }];
+                wData.state.currentTrackIndex = 0;
+            } else {
+                for (const p of paths) {
+                    if (p.endsWith('/')) {
+                        try {
+                            const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(p)}`);
+                            const data = await res.json();
+                            if (data.items) {
+                                data.items.filter(i => !i.is_dir && checkAppFileCapability('audioplayer', i.name)).forEach(i => {
+                                    if (!wData.state.playlist.some(t => t.path === i.path)) {
+                                        wData.state.playlist.push({ path: i.path, name: i.name });
+                                    }
+                                });
+                            }
+                        } catch (e) {}
+                    } else if (checkAppFileCapability('audioplayer', p.split('/').pop())) {
+                        if (!wData.state.playlist.some(t => t.path === p)) {
+                            wData.state.playlist.push({ path: p, name: p.split('/').pop() });
+                        }
+                    }
+                }
+                if (wData.state.currentTrackIndex === -1 && wData.state.playlist.length > 0) {
+                    wData.state.currentTrackIndex = 0;
+                }
+            }
+
+            renderAudioPlaylist(winId);
+            if (wData.state.currentTrackIndex >= 0 && wData.state.playlist[wData.state.currentTrackIndex]) {
+                playAudioTrackIndex(winId, wData.state.currentTrackIndex);
+            }
+        }
+
+        function renderAudioPlaylist(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            const tbody = document.getElementById(`${winId}_playlist_tbody`);
+            const emptyState = document.getElementById(`${winId}_empty`);
+            const playerBox = document.getElementById(`${winId}_player_box`);
+
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            const list = wData.state.playlist || [];
+            if (list.length === 0) {
+                if (emptyState) emptyState.style.display = 'flex';
+                if (playerBox) playerBox.style.display = 'none';
+                return;
+            }
+
+            if (emptyState) emptyState.style.display = 'none';
+            if (playerBox) playerBox.style.display = 'flex';
+
+            list.forEach((t, idx) => {
+                const tr = document.createElement('tr');
+                tr.style.cssText = 'cursor: pointer; border-bottom: 1px solid #21262d;';
+                if (idx === wData.state.currentTrackIndex) {
+                    tr.style.background = '#263850';
+                    tr.style.color = '#79c0ff';
+                    tr.style.fontWeight = 'bold';
+                }
+                tr.innerHTML = `
+                    <td style="padding: 0.4rem;">${idx + 1}</td>
+                    <td style="padding: 0.4rem;">${escapeHtml(t.name)}</td>
+                `;
+                tr.onclick = () => playAudioTrackIndex(winId, idx);
+                tbody.appendChild(tr);
+            });
+        }
+
+        function playAudioTrackIndex(winId, idx, autoStart = true) {
+            const wData = windowsMap[winId];
+            if (!wData || !wData.state.playlist || idx < 0 || idx >= wData.state.playlist.length) return;
+
+            wData.state.currentTrackIndex = idx;
+            const track = wData.state.playlist[idx];
+
+            document.getElementById(`${winId}_track_title`).innerText = track.name;
+            const audioEl = document.getElementById(`${winId}_audio`);
+            audioEl.src = `/api/fs/raw?path=${encodeURIComponent(track.path)}`;
+            if (autoStart) audioEl.play().catch(() => {});
+
+            renderAudioPlaylist(winId);
+            saveDesktopState();
+        }
+
+        function audioPlayNext(winId) {
+            const wData = windowsMap[winId];
+            if (!wData || !wData.state.playlist || wData.state.playlist.length === 0) return;
+
+            let nextIdx = 0;
+            if (wData.state.isShuffle) {
+                nextIdx = Math.floor(Math.random() * wData.state.playlist.length);
+            } else {
+                nextIdx = (wData.state.currentTrackIndex + 1) % wData.state.playlist.length;
+            }
+            playAudioTrackIndex(winId, nextIdx);
+        }
+
+        function audioPlayLast(winId) {
+            const wData = windowsMap[winId];
+            if (!wData || !wData.state.playlist || wData.state.playlist.length === 0) return;
+            let prevIdx = (wData.state.currentTrackIndex - 1 + wData.state.playlist.length) % wData.state.playlist.length;
+            playAudioTrackIndex(winId, prevIdx);
+        }
+
+        function audioDeleteSelected(winId) {
+            const wData = windowsMap[winId];
+            if (!wData || !wData.state.playlist || wData.state.currentTrackIndex < 0) return;
+
+            wData.state.playlist.splice(wData.state.currentTrackIndex, 1);
+            if (wData.state.playlist.length === 0) {
+                wData.state.currentTrackIndex = -1;
+                const audioEl = document.getElementById(`${winId}_audio`);
+                if (audioEl) { audioEl.pause(); audioEl.src = ''; }
+            } else {
+                wData.state.currentTrackIndex = Math.min(wData.state.currentTrackIndex, wData.state.playlist.length - 1);
+                playAudioTrackIndex(winId, wData.state.currentTrackIndex);
+            }
+            renderAudioPlaylist(winId);
+        }
+
+        function audioToggleShuffle(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            wData.state.isShuffle = !wData.state.isShuffle;
+            const btn = document.getElementById(`${winId}_btnRand`);
+            if (btn) btn.style.background = wData.state.isShuffle ? '#238636' : '#21262d';
+            saveDesktopState();
+        }
+
+        function audioToggleLoop(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            wData.state.isLoop = !wData.state.isLoop;
+            const btn = document.getElementById(`${winId}_btnLoop`);
+            if (btn) btn.style.background = wData.state.isLoop ? '#238636' : '#21262d';
+            saveDesktopState();
+        }
+
+        function audioLoadPrompt(winId) {
+            openNASPickerModal('/', ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'], (selectedPath) => {
+                audioAddPathsToPlaylist(winId, [selectedPath]);
+            });
+        }
+
+        /* Three.js 3D Model Rendering Engine */
+        function initThreeInWindow(winId, rawUrl, fileName) {
+            const container = document.getElementById(`${winId}_canvas`);
+            container.innerHTML = '';
+
+            const wData = windowsMap[winId];
+            if (!wData) return;
+
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0d1117);
+
+            const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 50, 100);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight1.position.set(1, 1, 1).normalize();
+            scene.add(dirLight1);
+
+            const gridHelper = new THREE.GridHelper(200, 50, 0x30363d, 0x21262d);
+            scene.add(gridHelper);
+
+            wData.three = { scene, camera, renderer, controls };
+
+            function animate() {
+                if (!windowsMap[winId]) return;
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            const ext = fileName.split('.').pop().toLowerCase();
+
+            if (ext === 'stl') {
+                const loader = new THREE.STLLoader();
+                loader.load(rawUrl, function(geometry) {
+                    const material = new THREE.MeshStandardMaterial({ color: 0x58a6ff, roughness: 0.3, metalness: 0.2 });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    centerAndFit3DObject(mesh, camera, controls);
+                    scene.add(mesh);
+                });
+            } else if (ext === 'obj') {
+                const loader = new THREE.OBJLoader();
+                loader.load(rawUrl, function(obj) {
+                    obj.traverse(child => {
+                        if (child.isMesh) child.material = new THREE.MeshStandardMaterial({ color: 0x7ee787, roughness: 0.4 });
+                    });
+                    centerAndFit3DObject(obj, camera, controls);
+                    scene.add(obj);
+                });
+            } else if (ext === 'gltf' || ext === 'glb') {
+                const loader = new THREE.GLTFLoader();
+                loader.load(rawUrl, function(gltf) {
+                    const obj = gltf.scene;
+                    centerAndFit3DObject(obj, camera, controls);
+                    scene.add(obj);
+                });
+            }
+        }
+
+        function triggerThreeResize(winId) {
+            const wData = windowsMap[winId];
+            if (wData && wData.three) {
+                const container = document.getElementById(`${winId}_canvas`);
+                if (container) {
+                    wData.three.camera.aspect = container.clientWidth / container.clientHeight;
+                    wData.three.camera.updateProjectionMatrix();
+                    wData.three.renderer.setSize(container.clientWidth, container.clientHeight);
+                }
+            }
+        }
+
+        function centerAndFit3DObject(object, camera, controls) {
+            const box = new THREE.Box3().setFromObject(object);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+
+            object.position.x += (object.position.x - center.x);
+            object.position.y += (object.position.y - center.y);
+            object.position.z += (object.position.z - center.z);
+
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const fov = camera.fov * (Math.PI / 180);
+            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.8;
+
+            camera.position.set(0, maxDim * 0.5, cameraZ || 50);
+            camera.lookAt(0, 0, 0);
+            controls.target.set(0, 0, 0);
+            controls.update();
+        }
+
+        /* File Manager UI & Operations */
+        function buildFileManagerUI(winId, initialPath) {
+            const body = document.getElementById(`${winId}_body`);
+            const wData = windowsMap[winId];
+            wData.state.currentPath = initialPath || '/';
+            wData.state.selectedPaths = new Set();
+            wData.state.lastClickedIdx = null;
+
+            body.innerHTML = `
+                <div class="fm-toolbar">
+                    <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="fmNavigateUp('${winId}')">⬆ Up</button>
+                    <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem;" onclick="fmRefresh('${winId}')">🔄</button>
+                    <button class="btn" style="padding: 0.25rem 0.5rem;" onclick="fmPromptNewFolder('${winId}')">📁+ New Folder</button>
+                    <div class="fm-breadcrumbs" id="${winId}_breadcrumbs"></div>
+                    <span id="${winId}_selCount" style="font-size:0.75rem; color:#58a6ff; font-weight:bold;">0 sel</span>
+                </div>
+                <div style="flex: 1; overflow-y: auto;" id="${winId}_file_container" ondragover="fmOnDragOver(event, '${winId}')" ondrop="fmOnDrop(event, '${winId}')">
+                    <table class="fm-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th style="width: 90px;">Size</th>
+                                <th style="width: 100px;">Mode</th>
+                            </tr>
+                        </thead>
+                        <tbody id="${winId}_table_body">
+                            <tr><td colspan="3" style="text-align: center; color: #8b949e; padding: 1rem;">Loading directory...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            const container = document.getElementById(`${winId}_file_container`);
+            container.oncontextmenu = (e) => {
+                if (e.target.closest('.fm-row')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                fmCtxTargetWinId = winId;
+                fmCtxTargetItem = null;
+                showFmContextMenu(e.clientX, e.clientY, null, wData.state.selectedPaths.size);
+            };
+
+            loadFmDirectory(winId, wData.state.currentPath);
+        }
+
+        async function loadFmDirectory(winId, path) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            wData.state.currentPath = path || '/';
+            wData.state.selectedPaths.clear();
+            wData.state.lastClickedIdx = null;
+
+            renderFmBreadcrumbs(winId, wData.state.currentPath);
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(wData.state.currentPath)}`);
+                const data = await res.json();
+                if (data.error) {
+                    showNotice('Directory Error', data.error);
+                    return;
+                }
+
+                wData.state.items = data.items || [];
+                renderFmFileList(winId);
+                saveDesktopState();
+            } catch (err) {
+                showNotice('Fetch Error', err.message);
+            }
+        }
+
+        function renderFmBreadcrumbs(winId, path) {
+            const container = document.getElementById(`${winId}_breadcrumbs`);
+            if (!container) return;
+            container.innerHTML = '';
+
+            const parts = path.split('/').filter(Boolean);
+
+            const rootItem = document.createElement('span');
+            rootItem.className = 'fm-breadcrumb-item';
+            rootItem.innerText = '📁 /';
+            rootItem.onclick = () => loadFmDirectory(winId, '/');
+            container.appendChild(rootItem);
+
+            let accumulated = '';
+            parts.forEach(p => {
+                accumulated += '/' + p;
+                const sep = document.createElement('span');
+                sep.innerText = '/';
+                sep.style.color = '#8b949e';
+                container.appendChild(sep);
+
+                const item = document.createElement('span');
+                item.className = 'fm-breadcrumb-item';
+                item.innerText = p;
+                const target = accumulated;
+                item.onclick = () => loadFmDirectory(winId, target);
+                container.appendChild(item);
+            });
+        }
+
+        function renderFmFileList(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            const tbody = document.getElementById(`${winId}_table_body`);
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            if (wData.state.items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #8b949e; padding: 1.5rem;">Directory is empty.</td></tr>';
+                renderFmSelectionCount(winId);
+                return;
+            }
+
+            wData.state.items.forEach((item, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = 'fm-row';
+                tr.setAttribute('data-path', item.path);
+                if (wData.state.selectedPaths.has(item.path)) tr.classList.add('selected');
+                tr.draggable = true;
+
+                const ext = item.name.split('.').pop().toLowerCase();
+                let icon = '📄';
+                if (item.is_dir) icon = '📁';
+                else if (['stl', 'obj', 'gltf', 'glb', '3mf'].includes(ext)) icon = '🧊';
+                else if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].includes(ext)) icon = '🎵';
+                else if (['mp4', 'webm', 'mkv', 'mov'].includes(ext)) icon = '🎬';
+                else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) icon = '🖼️';
+                else if (['txt', 'json', 'sh', 'py', 'go', 'js', 'html', 'css', 'md', 'conf'].includes(ext)) icon = '📝';
+
+                tr.innerHTML = `
+                    <td>
+                        <span style="margin-right: 6px;">${icon}</span>
+                        <strong>${escapeHtml(item.name)}</strong>
+                    </td>
+                    <td>${item.is_dir ? '--' : formatBytes(item.size)}</td>
+                    <td><span style="font-family: monospace; color: #8b949e;">${item.permissions || 'rwxr-xr-x'}</span></td>
+                `;
+
+                tr.onclick = (e) => {
+                    if (e.ctrlKey || e.metaKey) {
+                        if (wData.state.selectedPaths.has(item.path)) {
+                            wData.state.selectedPaths.delete(item.path);
+                        } else {
+                            wData.state.selectedPaths.add(item.path);
+                        }
+                        wData.state.lastClickedIdx = idx;
+                    } else if (e.shiftKey && wData.state.lastClickedIdx !== null) {
+                        const start = Math.min(wData.state.lastClickedIdx, idx);
+                        const end = Math.max(wData.state.lastClickedIdx, idx);
+                        if (!e.ctrlKey) wData.state.selectedPaths.clear();
+                        for (let i = start; i <= end; i++) {
+                            if (wData.state.items[i]) wData.state.selectedPaths.add(wData.state.items[i].path);
+                        }
+                    } else {
+                        wData.state.selectedPaths.clear();
+                        wData.state.selectedPaths.add(item.path);
+                        wData.state.lastClickedIdx = idx;
+                    }
+                    renderFmSelectionState(winId);
+                };
+
+                tr.ondragstart = (e) => {
+                    if (!wData.state.selectedPaths.has(item.path)) {
+                        wData.state.selectedPaths.clear();
+                        wData.state.selectedPaths.add(item.path);
+                        wData.state.lastClickedIdx = idx;
+                        renderFmSelectionState(winId);
+                    }
+                    const payload = {
+                        type: 'linnas-file',
+                        sourceWinId: winId,
+                        sourcePaths: Array.from(wData.state.selectedPaths),
+                        sourcePath: item.path,
+                        isDir: item.is_dir,
+                        name: item.name
+                    };
+                    e.dataTransfer.setData('application/json', JSON.stringify(payload));
+                    e.dataTransfer.effectAllowed = 'move';
+                };
+
+                tr.ondblclick = () => {
+                    if (item.is_dir) {
+                        loadFmDirectory(winId, item.path);
+                    } else {
+                        openFileInApp(item.path, item.name, winId);
+                    }
+                };
+
+                tr.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    fmCtxTargetWinId = winId;
+                    fmCtxTargetItem = item;
+                    if (!wData.state.selectedPaths.has(item.path)) {
+                        wData.state.selectedPaths.clear();
+                        wData.state.selectedPaths.add(item.path);
+                        wData.state.lastClickedIdx = idx;
+                        renderFmSelectionState(winId);
+                    }
+                    showFmContextMenu(e.clientX, e.clientY, item, wData.state.selectedPaths.size);
+                };
+
+                tbody.appendChild(tr);
+            });
+
+            renderFmSelectionCount(winId);
+        }
+
+        function renderFmSelectionState(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            const rows = document.querySelectorAll(`#${winId}_table_body tr.fm-row`);
+            rows.forEach((tr, idx) => {
+                if (wData.state.items[idx]) {
+                    tr.classList.toggle('selected', wData.state.selectedPaths.has(wData.state.items[idx].path));
+                }
+            });
+            renderFmSelectionCount(winId);
+        }
+
+        function renderFmSelectionCount(winId) {
+            const wData = windowsMap[winId];
+            const cntEl = document.getElementById(`${winId}_selCount`);
+            if (wData && cntEl) {
+                cntEl.innerText = `${wData.state.selectedPaths ? wData.state.selectedPaths.size : 0} sel`;
+            }
+        }
+
+        function fmNavigateUp(winId) {
+            const wData = windowsMap[winId];
+            if (!wData || wData.state.currentPath === '/') return;
+            const parts = wData.state.currentPath.split('/').filter(Boolean);
+            parts.pop();
+            const parent = '/' + parts.join('/');
+            loadFmDirectory(winId, parent);
+        }
+
+        function fmRefresh(winId) {
+            const wData = windowsMap[winId];
+            if (wData) loadFmDirectory(winId, wData.state.currentPath);
+        }
+
+        async function fmPromptNewFolder(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+
+            const name = prompt('Enter new folder name:');
+            if (!name) return;
+
+            const cleanName = name.trim().replace(/[^a-zA-Z0-9_\-\.\ ]/g, '_');
+            const target = (wData.state.currentPath === '/' ? '' : wData.state.currentPath) + '/' + cleanName;
+
+            try {
+                const encBody = await encryptPayload({ path: target });
+                const res = await fetch('/api/fs/mkdir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    fmRefresh(winId);
+                } else {
+                    showNotice('New Folder Error', data.error || 'Failed to create folder.');
+                }
+            } catch (err) {
+                showNotice('New Folder Error', err.message);
+            }
+        }
+
+        /* File Manager Context Menu Engine */
+        function showFmContextMenu(x, y, item, selCount) {
+            hideContextMenus();
+            const menu = document.getElementById('fmContextMenu');
+            menu.style.display = 'block';
+
+            const menuWidth = menu.offsetWidth || 180;
+            const menuHeight = menu.offsetHeight || 300;
+
+            menu.style.left = Math.min(x, window.innerWidth - menuWidth - 10) + 'px';
+            menu.style.top = Math.min(y, window.innerHeight - menuHeight - 10) + 'px';
+
+            const ctxOpen = document.getElementById('fmCtxOpen');
+            const ctxEdit = document.getElementById('fmCtxEdit');
+            const ctxPaste = document.getElementById('fmCtxPaste');
+
+            if (item) {
+                if (item.is_dir) {
+                    ctxOpen.innerText = '📁 Open Directory';
+                    ctxEdit.style.display = 'none';
+                } else {
+                    ctxOpen.innerText = '📄 Open File';
+                    ctxEdit.style.display = 'flex';
+                }
+            } else {
+                ctxOpen.innerText = '📄 Open';
+                ctxEdit.style.display = 'none';
+            }
+
+            ctxPaste.style.display = (desktopClipboard.action && desktopClipboard.sources.length > 0) ? 'flex' : 'none';
+            ctxPaste.innerText = `📌 Paste (${desktopClipboard.sources.length} items)`;
+        }
+
+        function fmCtxOpenItem() {
+            if (!fmCtxTargetItem) return;
+            if (fmCtxTargetItem.is_dir) {
+                loadFmDirectory(fmCtxTargetWinId, fmCtxTargetItem.path);
+            } else {
+                openFileInApp(fmCtxTargetItem.path, fmCtxTargetItem.name, fmCtxTargetWinId);
+            }
+            hideContextMenus();
+        }
+
+        function fmCtxEditItem() {
+            if (fmCtxTargetItem && !fmCtxTargetItem.is_dir) {
+                openApp('editor', { path: fmCtxTargetItem.path });
+            }
+            hideContextMenus();
+        }
+
+        function fmCtxNewFolder() {
+            if (fmCtxTargetWinId) fmPromptNewFolder(fmCtxTargetWinId);
+            hideContextMenus();
+        }
+
+        function fmCtxCopySelected(action) {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
+            const wData = windowsMap[fmCtxTargetWinId];
+            if (wData.state.selectedPaths.size === 0) return;
+
+            desktopClipboard.action = action;
+            desktopClipboard.sources = Array.from(wData.state.selectedPaths);
+            hideContextMenus();
+        }
+
+        function showTransferDialog(title, icon, detail, statusText) {
+            document.getElementById('transferModalTitle').innerText = title;
+            document.getElementById('transferModalIcon').innerText = icon;
+            document.getElementById('transferModalDetail').innerText = detail;
+            document.getElementById('transferStatusText').innerText = statusText || 'Processing file transfer...';
+            document.getElementById('transferModal').style.display = 'flex';
+        }
+
+        function hideTransferDialog() {
+            document.getElementById('transferModal').style.display = 'none';
+        }
+
+        async function fmCtxPasteClipboard() {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId] || !desktopClipboard.action || desktopClipboard.sources.length === 0) return;
+
+            const wData = windowsMap[fmCtxTargetWinId];
+            const destDir = wData.state.currentPath;
+            const actionName = (desktopClipboard.action === 'cut') ? 'Moving' : 'Copying';
+            const actionIcon = (desktopClipboard.action === 'cut') ? '✂️' : '📋';
+            const endpoint = (desktopClipboard.action === 'cut') ? '/api/fs/move' : '/api/fs/copy';
+
+            showTransferDialog(
+                `${actionName} ${desktopClipboard.sources.length} item(s)...`,
+                actionIcon,
+                `${actionName} ${desktopClipboard.sources.length} item(s) to ${destDir}`,
+                'Executing system file operation...'
+            );
+
+            try {
+                const encBody = await encryptPayload({
+                    sources: desktopClipboard.sources,
+                    destination: destDir
+                });
+
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+
+                const data = await res.json();
+                hideTransferDialog();
+
+                if (data.success) {
+                    if (desktopClipboard.action === 'cut') {
+                        desktopClipboard = { action: null, sources: [] };
+                    }
+                    Object.keys(windowsMap).forEach(k => {
+                        if (windowsMap[k].appId === 'filemanager') fmRefresh(k);
+                    });
+                } else {
+                    showNotice('Paste Error', data.error || 'Failed to paste items.');
+                }
+            } catch (err) {
+                hideTransferDialog();
+                showNotice('Paste Error', err.message);
+            }
+            hideContextMenus();
+        }
+
+        function fmCtxDownloadSelected() {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
+            const wData = windowsMap[fmCtxTargetWinId];
+            wData.state.selectedPaths.forEach(path => {
+                const link = document.createElement('a');
+                link.href = `/api/fs/raw?path=${encodeURIComponent(path)}`;
+                link.download = path.split('/').pop();
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+            hideContextMenus();
+        }
+
+        function fmCtxOpenChmodModal() {
+            openChmodModal();
+            hideContextMenus();
+        }
+
+        async function fmCtxRenameSelected() {
+            if (!fmCtxTargetWinId || !windowsMap[fmCtxTargetWinId]) return;
+            const wData = windowsMap[fmCtxTargetWinId];
+            if (wData.state.selectedPaths.size !== 1) {
+                showNotice('Rename Item', 'Please select exactly 1 item to rename.');
+                return;
+            }
+
+            const oldPath = Array.from(wData.state.selectedPaths)[0];
+            const oldName = oldPath.split('/').pop();
+            const newName = prompt('Enter new name:', oldName);
+            if (!newName || newName === oldName) return;
+
+            const parent = oldPath.substring(0, oldPath.lastIndexOf('/')) || '/';
+            const newPath = (parent === '/' ? '' : parent) + '/' + newName.trim();
+
+            try {
+                const encBody = await encryptPayload({ old_path: oldPath, new_path: newPath });
+                const res = await fetch('/api/fs/rename', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    fmRefresh(fmCtxTargetWinId);
+                } else {
+                    showNotice('Rename Error', data.error || 'Failed to rename item.');
+                }
+            } catch (err) {
+                showNotice('Rename Error', err.message);
+            }
+            hideContextMenus();
+        }
+
+        let pendingDeleteWinId = null;
+
+        function promptFmDelete(winId) {
+            const targetWinId = winId || fmCtxTargetWinId;
+            if (!targetWinId || !windowsMap[targetWinId]) return;
+            const wData = windowsMap[targetWinId];
+            if (!wData.state.selectedPaths || wData.state.selectedPaths.size === 0) return;
+
+            pendingDeleteWinId = targetWinId;
+            const count = wData.state.selectedPaths.size;
+            document.getElementById('deleteModalBody').innerText = `Are you sure you want to permanently delete ${count} selected item(s)?`;
+            document.getElementById('deleteModal').style.display = 'flex';
+            hideContextMenus();
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').style.display = 'none';
+            pendingDeleteWinId = null;
+        }
+
+        async function executeFmDelete() {
+            if (!pendingDeleteWinId || !windowsMap[pendingDeleteWinId]) {
+                closeDeleteModal();
+                return;
+            }
+            const targetWinId = pendingDeleteWinId;
+            const wData = windowsMap[targetWinId];
+            const paths = Array.from(wData.state.selectedPaths);
+            closeDeleteModal();
+
+            if (paths.length === 0) return;
+
+            try {
+                const encBody = await encryptPayload({ paths });
+                const res = await fetch('/api/fs/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    fmRefresh(targetWinId);
+                } else {
+                    showNotice('Delete Error', data.error || 'Failed to delete items.');
+                }
+            } catch (err) {
+                showNotice('Delete Error', err.message);
+            }
+        }
+
+        function fmCtxDeleteSelected() {
+            promptFmDelete(fmCtxTargetWinId);
+        }
+
+        /* Drag & Drop File Move Between File Managers */
+        function fmOnDragOver(e, winId) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        }
+
+        async function fmOnDrop(e, targetWinId) {
+            e.preventDefault();
+            const targetData = windowsMap[targetWinId];
+            if (!targetData) return;
+
+            const dataStr = e.dataTransfer.getData('application/json');
+            if (!dataStr) return;
+
+            try {
+                const payload = JSON.parse(dataStr);
+                if (payload.type === 'linnas-file') {
+                    const sources = payload.sourcePaths || [payload.sourcePath];
+                    const destDir = targetData.state.currentPath;
+
+                    showTransferDialog(
+                        `Moving ${sources.length} item(s)...`,
+                        '📦',
+                        `Moving ${sources.length} item(s) to ${destDir}`,
+                        'Executing drag & drop file transfer...'
+                    );
+
+                    const encBody = await encryptPayload({
+                        sources: sources,
+                        destination: destDir
+                    });
+
+                    const res = await fetch('/api/fs/move', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: encBody
+                    });
+
+                    const data = await res.json();
+                    hideTransferDialog();
+
+                    if (data.success) {
+                        if (payload.sourceWinId && windowsMap[payload.sourceWinId]) {
+                            fmRefresh(payload.sourceWinId);
+                        }
+                        fmRefresh(targetWinId);
+                    } else {
+                        showNotice('Move Error', data.error || 'Failed to move items.');
+                    }
+                }
+            } catch (err) {
+                console.error('FM Drop Error:', err);
+            }
+        }
+
+        /* Open File in Compatible App with Strict Capability & Toast Check */
+        function openFileInApp(filePath, fileName, winId) {
+            const ext = fileName.split('.').pop().toLowerCase();
+
+            if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext)) {
+                openApp('audioplayer', { path: filePath });
+            } else if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'].includes(ext)) {
+                openApp('imageviewer', { path: filePath });
+            } else if (['mp4', 'webm', 'mkv', 'mov', 'ogv', 'avi'].includes(ext)) {
+                openApp('videoplayer', { path: filePath });
+            } else if (['stl', 'obj', 'gltf', 'glb', '3mf'].includes(ext)) {
+                openApp('modelviewer', { path: filePath });
+            } else if (['txt', 'conf', 'json', 'sh', 'py', 'go', 'js', 'html', 'htm', 'css', 'md', 'log', 'yaml', 'yml', 'ini', 'xml', 'csv'].includes(ext)) {
+                openApp('editor', { path: filePath });
+            } else {
+                if (winId) {
+                    showAppToast(winId, `⚠️ Unsupported file format: '${fileName}'`);
+                } else {
+                    showNotice('Unknown File Type', `⚠️ '${fileName}' is an unknown file type and cannot be opened.`);
+                }
+            }
+        }
+
+        /* Helpers */
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        /* Keyboard Shortcuts Engine & Navigation */
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F11') {
+                e.preventDefault();
+                toggleFullscreenDesktop();
+                return;
+            }
+
+            const isInputFocus = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+
+            // Tab key cycling between active app windows
+            if (e.key === 'Tab' && !isInputFocus) {
+                const openWinIds = Object.keys(windowsMap);
+                if (openWinIds.length > 1) {
+                    e.preventDefault();
+                    const activeWinEl = document.querySelector('.desktop-window.active-window');
+                    let currIdx = openWinIds.findIndex(id => id === activeWinEl?.id);
+                    let nextIdx = (currIdx + (e.shiftKey ? -1 : 1) + openWinIds.length) % openWinIds.length;
+                    bringToFront(openWinIds[nextIdx]);
+                }
+                return;
+            }
+
+            const activeWinEl = document.querySelector('.desktop-window.active-window');
+            if (!activeWinEl) return;
+            const activeWinId = activeWinEl.id;
+            const wData = windowsMap[activeWinId];
+
+            // Window Snap & Tiling Shortcuts: Ctrl+1-4 (corners) and Ctrl+Left/Right (halves)
+            if ((e.ctrlKey || e.metaKey) && ['1', '2', '3', '4', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+                snapWindowPosition(activeWinId, e.key);
+                return;
+            }
+
+            if (!wData) return;
+
+            // App-specific Keyboard Shortcuts
+            if (wData.appId === 'filemanager') {
+                if (e.key === 'Backspace' && !isInputFocus) {
+                    e.preventDefault();
+                    fmNavigateUp(activeWinId);
+                    return;
+                }
+                if (e.key === ' ' && !isInputFocus) {
+                    e.preventDefault();
+                    const items = wData.state.items || [];
+                    if (items.length > 0 && wData.state.lastClickedIdx !== null && items[wData.state.lastClickedIdx]) {
+                        const targetPath = items[wData.state.lastClickedIdx].path;
+                        if (wData.state.selectedPaths.has(targetPath)) {
+                            wData.state.selectedPaths.delete(targetPath);
+                        } else {
+                            wData.state.selectedPaths.add(targetPath);
+                        }
+                        renderFmSelectionState(activeWinId);
+                    }
+                    return;
+                }
+                if (e.key === 'Delete' && !isInputFocus) {
+                    if (wData.state.selectedPaths && wData.state.selectedPaths.size > 0) {
+                        e.preventDefault();
+                        promptFmDelete(activeWinId);
+                        return;
+                    }
+                }
+                if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key) && !isInputFocus) {
+                    const items = wData.state.items || [];
+                    if (items.length === 0) return;
+                    e.preventDefault();
+
+                    let selPaths = Array.from(wData.state.selectedPaths);
+                    let lastPath = selPaths[selPaths.length - 1];
+                    let currentIdx = items.findIndex(i => i.path === lastPath);
+                    let targetIdx = 0;
+
+                    if (e.key === 'ArrowUp') targetIdx = currentIdx > 0 ? currentIdx - 1 : 0;
+                    else if (e.key === 'ArrowDown') targetIdx = currentIdx < items.length - 1 ? currentIdx + 1 : items.length - 1;
+                    else if (e.key === 'PageUp') targetIdx = Math.max(0, currentIdx - 8);
+                    else if (e.key === 'PageDown') targetIdx = Math.min(items.length - 1, currentIdx + 8);
+                    else if (e.key === 'Home') targetIdx = 0;
+                    else if (e.key === 'End') targetIdx = items.length - 1;
+
+                    if (!e.shiftKey) wData.state.selectedPaths.clear();
+                    wData.state.selectedPaths.add(items[targetIdx].path);
+                    wData.state.lastClickedIdx = targetIdx;
+                    renderFmSelectionState(activeWinId);
+
+                    const rowEl = document.querySelector(`#${activeWinId}_body tr[data-path="${CSS.escape(items[targetIdx].path)}"]`);
+                    if (rowEl) rowEl.scrollIntoView({ block: 'nearest' });
+                    return;
+                }
+            } else if (wData.appId === 'imageviewer') {
+                if (!isInputFocus) {
+                    if (e.key === 'PageUp') { e.preventDefault(); imagePlayNext(activeWinId); }
+                    else if (e.key === 'PageDown') { e.preventDefault(); imagePlayPrev(activeWinId); }
+                    else if (e.key === 'Home') { e.preventDefault(); if (wData.state.siblingImages?.length > 0) loadMediaIntoAppWindow(activeWinId, wData.state.siblingImages[0]); }
+                    else if (e.key === 'End') { e.preventDefault(); if (wData.state.siblingImages?.length > 0) loadMediaIntoAppWindow(activeWinId, wData.state.siblingImages[wData.state.siblingImages.length - 1]); }
+                    else if (e.key === '+' || e.key === '=') { e.preventDefault(); imageAdjustZoom(activeWinId, 1.2); }
+                    else if (e.key === '-' || e.key === '_') { e.preventDefault(); imageAdjustZoom(activeWinId, 0.85); }
+                    else if (e.key === '*') { e.preventDefault(); imageZoom1to1(activeWinId); }
+                    else if (e.key === '/') { e.preventDefault(); imageFitWindow(activeWinId); }
+                }
+            } else if (wData.appId === 'videoplayer') {
+                if (!isInputFocus) {
+                    const vid = document.getElementById(`${activeWinId}_video`);
+                    if (vid) {
+                        if (e.key === ',') { e.preventDefault(); vid.currentTime = Math.max(0, vid.currentTime - 0.04); }
+                        else if (e.key === '.') { e.preventDefault(); vid.currentTime = Math.min(vid.duration || 0, vid.currentTime + 0.04); }
+                        else if (e.key === 'ArrowLeft') { e.preventDefault(); vid.currentTime = Math.max(0, vid.currentTime - (e.shiftKey ? 15 : 5)); }
+                        else if (e.key === 'ArrowRight') { e.preventDefault(); vid.currentTime = Math.min(vid.duration || 0, vid.currentTime + (e.shiftKey ? 15 : 5)); }
+                        else if (e.key.toLowerCase() === 'm') { e.preventDefault(); vid.muted = !vid.muted; }
+                    }
+                }
+            } else if (wData.appId === 'audioplayer') {
+                if (!isInputFocus) {
+                    const audioEl = document.getElementById(`${activeWinId}_audio`);
+                    if (e.key.toLowerCase() === 'n') { e.preventDefault(); audioPlayNext(activeWinId); }
+                    else if (e.key.toLowerCase() === 'b') { e.preventDefault(); audioPlayLast(activeWinId); }
+                    else if (e.key === ' ' && audioEl) { e.preventDefault(); if (audioEl.paused) audioEl.play().catch(() => {}); else audioEl.pause(); }
+                    else if (e.key === 'Delete') { e.preventDefault(); audioDeleteSelected(activeWinId); }
+                }
+            }
+        });
+
+        /* ========================================================== */
+        /* FULLSCREEN SCREENSAVER ENGINE (Ported from ss.html) */
+        /* ========================================================== */
+        let ssConfig = {
+            module: 'Starfield',
+            timeout: 300 // default 5 mins in seconds
+        };
+
+        try {
+            const saved = localStorage.getItem('linnas_ss_config');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.module !== undefined) ssConfig.module = parsed.module;
+                if (parsed.timeout !== undefined) ssConfig.timeout = parseInt(parsed.timeout, 10);
+            }
+        } catch (e) {}
+
+        function saveScreensaverConfig() {
+            const mod = document.getElementById('ssModuleSelect').value;
+            const to = parseInt(document.getElementById('ssTimeoutSelect').value, 10);
+
+            ssConfig.module = mod;
+            ssConfig.timeout = to;
+
+            try {
+                localStorage.setItem('linnas_ss_config', JSON.stringify(ssConfig));
+            } catch (e) {}
+
+            showNotice('Settings Saved', 'Screen Saver configuration updated successfully.');
+            resetIdleTimer();
+        }
+
+        function previewScreensaverConfig() {
+            const mod = document.getElementById('ssModuleSelect').value;
+            if (mod === 'Disabled') {
+                showNotice('Disabled', 'Screen saver module is set to Disabled.');
+                return;
+            }
+            startScreensaver(mod);
+        }
+
+        let ssActive = false;
+        let ssIntervalId = null;
+        let idleSeconds = 0;
+
+        function resetIdleTimer() {
+            idleSeconds = 0;
+            if (ssActive) {
+                stopScreensaver();
+            }
+        }
+
+        ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'].forEach(evt => {
+            window.addEventListener(evt, resetIdleTimer, { passive: true });
+        });
+
+        setInterval(() => {
+            if (ssConfig.timeout <= 0 || ssConfig.module === 'Disabled') return;
+            idleSeconds++;
+            if (idleSeconds >= ssConfig.timeout && !ssActive) {
+                startScreensaver(ssConfig.module);
+            }
+        }, 1000);
+
+        function startScreensaver(moduleName) {
+            if (ssActive) return;
+            ssActive = true;
+
+            const overlay = document.getElementById('screensaverOverlay');
+            overlay.style.display = 'block';
+
+            const can = document.getElementById('screensaverCanvas');
+            const ctx = can.getContext('2d');
+
+            let mx = can.width = window.innerWidth;
+            let my = can.height = window.innerHeight;
+
+            const ssModulesList = [
+                {
+                    name: "Starfield",
+                    interval: 30,
+                    init() {
+                        this.stars = 1000;
+                        this.stx = []; this.sty = []; this.sth = []; this.stv = [];
+                        this.stz = []; this.stw = []; this.stc = [];
+                        this.fr = Math.floor(Math.random() * 2) ? 1 : -1;
+                    },
+                    frame() {
+                        ctx.fillStyle = "#000000";
+                        ctx.fillRect(0, 0, mx, my);
+                        for (let i = 0; i < this.stars; i++) {
+                            if (this.fr == 1 && (this.sty[i] === undefined || this.sty[i] > my || this.sty[i] < 0 || this.stx[i] > mx || this.stx[i] < 0)) {
+                                this.stx[i] = mx / 2; this.sty[i] = my / 2;
+                                this.sth[i] = ((Math.random() * 2) - 1) * 9; this.stv[i] = ((Math.random() * 2) - 1) * 9;
+                                this.stz[i] = 1; this.stw[i] = 1;
+                                this.stc[i] = "rgba(" + Math.random() * 255 + "," + Math.random() * 255 + "," + Math.random() * 255 + ",200)";
+                            }
+                            this.stx[i] = this.stx[i] + (this.sth[i] * this.stw[i]);
+                            this.sty[i] = this.sty[i] + (this.stv[i] * this.stw[i]);
+                            ctx.fillStyle = this.stc[i] || "#fff";
+                            ctx.fillRect(this.stx[i], this.sty[i], this.stz[i] || 2, this.stz[i] || 2);
+                        }
+                    }
+                }
+            ];
+
+            const chosenMod = ssModulesList[0];
+            chosenMod.init();
+            ssIntervalId = setInterval(() => { chosenMod.frame(); }, chosenMod.interval);
+        }
+
+        function stopScreensaver() {
+            if (!ssActive) return;
+            ssActive = false;
+            if (ssIntervalId) clearInterval(ssIntervalId);
+            ssIntervalId = null;
+            const overlay = document.getElementById('screensaverOverlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        async function checkAuthStatus() {
+            try {
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+                if (data.is_root) {
+                    const badge = document.getElementById('adminWarningBadge');
+                    if (badge) badge.style.display = 'inline-flex';
+                }
+            } catch (e) {}
+        }
+
+        /* Initial Setup with Session Restoration */
+        window.onload = () => {
+            checkAuthStatus();
+            const restored = restoreDesktopState();
+            if (!restored) {
+                openApp('filemanager');
+            }
+        };
+    </script>
+</body>
+</html>

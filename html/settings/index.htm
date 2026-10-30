@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Server Settings</title>
+    <script src="/js/crypto.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+
+        .form-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; margin-bottom: 1.2rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; flex: 1; min-width: 220px; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
+        .form-group input:focus, .form-group select:focus { border-color: #58a6ff; outline: none; }
+
+        .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: white; }
+        .btn-secondary:hover { background: #484f58; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #b62324; }
+
+        .badge-active { background: #238636; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
+        .badge-inactive { background: #da3633; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
+
+        /* Floating Console Drawer */
+        .sticky-console { position: fixed; bottom: 0; left: 0; right: 0; background: #161b22; border-top: 2px solid #58a6ff; box-shadow: 0 -4px 20px rgba(0,0,0,0.5); padding: 1rem 1.5rem; display: none; z-index: 1000; }
+        .console-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-weight: bold; color: #58a6ff; font-size: 0.95rem; }
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>Server Settings</h2>
+    <p class="subtitle">Manage server hostname, web server HTTP port, automatic boot startup, admin account password, and power operations.</p>
+
+    <!-- Hostname & Port Settings -->
+    <div class="section">
+        <div class="section-title">System Hostname & Network Port</div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Server Hostname</label>
+                <input type="text" id="sysHostname" placeholder="debian-server">
+            </div>
+            <button class="btn" onclick="saveSystemHostname()">Set Hostname</button>
+        </div>
+        <div class="form-row" style="margin-top: 1rem;">
+            <div class="form-group">
+                <label>Web Application Server Port (HTTP)</label>
+                <input type="number" id="serverPortInput" min="1025" max="65535" placeholder="8080">
+            </div>
+            <button class="btn btn-secondary" onclick="saveServerPort()">Change HTTP Port (Auto UFW Allow)</button>
+        </div>
+    </div>
+
+    <!-- Admin Password Settings -->
+    <div class="section">
+        <div class="section-title">Admin Account Password</div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Current Password</label>
+                <input type="password" id="currPass" placeholder="••••••••">
+            </div>
+            <div class="form-group">
+                <label>New Password</label>
+                <input type="password" id="newPass" placeholder="••••••••">
+            </div>
+            <div class="form-group">
+                <label>Confirm New Password</label>
+                <input type="password" id="confirmPass" placeholder="••••••••">
+            </div>
+        </div>
+        <button class="btn" onclick="changeAdminPassword()">Update Password (Saved to linnas.data)</button>
+    </div>
+
+    <!-- Boot Service Autostart -->
+    <div class="section">
+        <div class="section-title">
+            <span>Automatic Application Boot Service</span>
+            <span id="bootServiceBadge" class="badge-inactive">checking...</span>
+        </div>
+        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Configure LinNAS to automatically start in the background upon system bootup via systemd service.</p>
+        <div style="display: flex; gap: 0.8rem;">
+            <button class="btn" onclick="toggleBootService(true)">Enable Start on Boot</button>
+            <button class="btn btn-danger" onclick="toggleBootService(false)">Disable Start on Boot</button>
+        </div>
+        <div style="margin-top: 1rem; border-top: 1px solid #30363d; padding-top: 0.8rem;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: #c9d1d9; cursor: pointer;">
+                <input type="checkbox" id="debugStartupCheckbox" onchange="toggleDebugStartup(this.checked)">
+                <span><strong>Enable Startup Debug Logging & Diagnostic Reports</strong> (records autostart boot diagnostics to <code>autostart_debug.log</code> and alerts after login if issues occur)</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Application Management & Controls -->
+    <div class="section">
+        <div class="section-title">LinNAS Application Management</div>
+        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Restart or stop the LinNAS application process, or restore default embedded plugin assets from binary disk image.</p>
+        <div style="display: flex; gap: 0.8rem; flex-wrap: wrap;">
+            <button class="btn" style="background:#1f6beb;" onclick="restartAppNow()">🔄 Restart App</button>
+            <button class="btn btn-secondary" style="background:#21262d; border: 1px solid #30363d; color:#58a6ff;" onclick="restoreDefaultPlugins()">🔄 Restore Default Plugins from Binary</button>
+            <button class="btn btn-danger" onclick="quitAppNow()">🛑 Quit / Close App</button>
+        </div>
+    </div>
+
+    <!-- Power Control & Schedule -->
+    <div class="section">
+        <div class="section-title">Power Control & Scheduled Power Tasks</div>
+        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 1rem;">Execute instant or scheduled power operations on this Debian server.</p>
+
+        <div style="display: flex; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <button class="btn btn-danger" onclick="poweroffNow()">Instant Power Off</button>
+            <button class="btn btn-secondary" style="background:#d29922; color:#000;" onclick="rebootNow()">Instant Reboot</button>
+            <button class="btn btn-secondary" onclick="cancelScheduledPower()">Cancel Scheduled Power Tasks</button>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group" style="max-width: 200px;">
+                <label>Schedule Action</label>
+                <select id="schedAction">
+                    <option value="poweroff">Scheduled Power Off</option>
+                    <option value="reboot">Scheduled Reboot</option>
+                </select>
+            </div>
+            <div class="form-group" style="max-width: 140px;">
+                <label>In Minutes</label>
+                <input type="number" id="schedMinutes" value="30" min="1" max="1440">
+            </div>
+            <button class="btn btn-secondary" onclick="schedulePowerAction()">Set Schedule Timer</button>
+        </div>
+    </div>
+
+    <!-- Console Drawer -->
+    <div id="stickyConsole" class="sticky-console">
+        <div class="console-header">
+            <span>Execution Console</span>
+            <button class="btn btn-danger" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="closeConsole()">Close Panel</button>
+        </div>
+        <div id="outputBox" class="output-box"></div>
+    </div>
+
+    <script>
+        async function loadSettings() {
+            // Load Settings Config
+            try {
+                const res = await fetch('/api/settings/get');
+                const data = await res.json();
+                if (data.port) {
+                    document.getElementById('serverPortInput').value = data.port;
+                }
+            } catch (err) {
+                console.error('Failed to load settings:', err);
+            }
+
+            // Load Hostname
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'settings', cmd_key: 'get_hostname_cmd', args: {} })
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    document.getElementById('sysHostname').value = data.output.trim();
+                }
+            } catch (err) {
+                console.error('Failed to load hostname:', err);
+            }
+
+            checkBootServiceStatus();
+            loadDebugStartupSetting();
+        }
+
+        async function loadDebugStartupSetting() {
+            try {
+                const res = await fetch('/api/startup/issues');
+                const data = await res.json();
+                document.getElementById('debugStartupCheckbox').checked = data.debug_enabled;
+            } catch (err) {}
+        }
+
+        async function toggleDebugStartup(enabled) {
+            try {
+                const res = await fetch('/api/settings/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ feature: 'debug_startup', enabled: enabled })
+                });
+                showOutput(`Startup debug logging ${enabled ? 'enabled' : 'disabled'}.`);
+            } catch (err) {
+                showOutput('Failed to toggle debug startup setting: ' + err.message);
+            }
+        }
+
+        async function saveSystemHostname() {
+            const hostname = document.getElementById('sysHostname').value.trim();
+            if (!hostname) {
+                showOutput('Please enter a valid hostname.');
+                return;
+            }
+
+            showOutput(`Setting system hostname to '${hostname}'...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'settings', cmd_key: 'set_hostname_sudo', args: { hostname } })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `System hostname successfully updated to '${hostname}'.` : `Failed to set hostname: ${data.error}\n${data.output}`);
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function quitAppNow() {
+            if (!confirm('Are you sure you want to QUIT and close the LinNAS application?')) return;
+            showOutput('Stopping LinNAS application...');
+            try {
+                await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'settings', cmd_key: 'quit_app_sudo', args: {} })
+                });
+                showOutput('LinNAS application stopped.');
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function saveServerPort() {
+            const port = parseInt(document.getElementById('serverPortInput').value, 10);
+            if (!port || port <= 1024 || port > 65535) {
+                showOutput('Please enter a valid HTTP port number between 1025 and 65535.');
+                return;
+            }
+
+            showOutput(`Updating web server HTTP port to ${port}...`);
+            try {
+                const encBody = await encryptPayload({ port });
+                const res = await fetch('/api/settings/port', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                showOutput(data.message || (data.success ? 'Port updated successfully!' : 'Failed: ' + data.error));
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function changeAdminPassword() {
+            const current_password = document.getElementById('currPass').value;
+            const new_password = document.getElementById('newPass').value;
+            const confirm_password = document.getElementById('confirmPass').value;
+
+            if (!current_password || !new_password) {
+                showOutput('Please enter both current password and new password.');
+                return;
+            }
+
+            if (new_password !== confirm_password) {
+                showOutput('New password and confirmation do not match.');
+                return;
+            }
+
+            showOutput('Updating admin password...');
+            try {
+                const encBody = await encryptPayload({ current_password, new_password });
+                const res = await fetch('/api/auth/password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('currPass').value = '';
+                    document.getElementById('newPass').value = '';
+                    document.getElementById('confirmPass').value = '';
+                    showOutput('Password updated successfully and saved to linnas.data!');
+                } else {
+                    showOutput('Failed to change password: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function checkBootServiceStatus() {
+            const badge = document.getElementById('bootServiceBadge');
+            fetch('/api/plugin/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin: 'settings', cmd_key: 'boot_service_status_cmd', args: {} })
+            }).then(res => res.json()).then(data => {
+                const output = data.output || '';
+                const isEnabled = data.success || output.includes('enabled');
+                badge.innerText = isEnabled ? 'Enabled on Boot' : 'Disabled';
+                badge.className = isEnabled ? 'badge-active' : 'badge-inactive';
+            }).catch(() => {
+                badge.innerText = 'Disabled';
+                badge.className = 'badge-inactive';
+            });
+        }
+
+        async function toggleBootService(enable) {
+            const cmdKey = enable ? 'enable_boot_service_sudo' : 'disable_boot_service_sudo';
+            showOutput(`${enable ? 'Enabling' : 'Disabling'} application boot service...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'settings', cmd_key: cmdKey, args: {} })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Successfully ${enable ? 'enabled' : 'disabled'} application autostart on boot.\n` + (data.output || '') : `Operation failed: ${data.error}\n${data.output}`);
+                checkBootServiceStatus();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function restoreDefaultPlugins() {
+            if (!confirm('Are you sure you want to restore all default plugins from the embedded application binary? Custom plugin edits may be overwritten.')) return;
+            showOutput('Restoring default plugins from embedded binary...');
+            try {
+                const res = await fetch('/api/plugins/restore', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    showOutput(`Successfully restored default plugins from binary.`);
+                    if (window.parent && typeof window.parent.loadPlugins === 'function') {
+                        window.parent.loadPlugins();
+                    }
+                } else {
+                    showOutput('Failed to restore plugins: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Restore error: ' + err.message);
+            }
+        }
+
+        async function restartAppNow() {
+            if (!confirm('Are you sure you want to RESTART the LinNAS application?')) return;
+            showOutput('Restarting LinNAS application service...');
+            try {
+                await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'settings', cmd_key: 'restart_app_sudo', args: {} })
+                });
+                showOutput('Restart command sent. The page will reload in 3 seconds...');
+                setTimeout(() => { window.top.location.reload(); }, 3000);
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function poweroffNow() {
+            if (!confirm('Are you sure you want to INSTANTLY POWER OFF the server?')) return;
+            showOutput('Initiating instant server power off...');
+            await fetch('/api/plugin/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin: 'settings', cmd_key: 'poweroff_sudo', args: {} })
+            });
+        }
+
+        async function rebootNow() {
+            if (!confirm('Are you sure you want to REBOOT the server?')) return;
+            showOutput('Initiating server reboot...');
+            await fetch('/api/plugin/exec', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plugin: 'settings', cmd_key: 'reboot_sudo', args: {} })
+            });
+        }
+
+        async function schedulePowerAction() {
+            const action = document.getElementById('schedAction').value;
+            const minutes = document.getElementById('schedMinutes').value || 30;
+            const cmdKey = (action === 'reboot') ? 'schedule_reboot_sudo' : 'schedule_poweroff_sudo';
+
+            showOutput(`Scheduling ${action} in ${minutes} minutes...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'settings', cmd_key: cmdKey, args: { minutes: minutes.toString() } })
+                });
+                const data = await res.json();
+                showOutput(`Scheduled ${action} in ${minutes} minutes.\n` + (data.output || ''));
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function cancelScheduledPower() {
+            showOutput('Canceling scheduled power off or reboot tasks...');
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'settings', cmd_key: 'cancel_shutdown_sudo', args: {} })
+                });
+                const data = await res.json();
+                showOutput('Cancelled power tasks.\n' + (data.output || ''));
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function showOutput(text) {
+            document.getElementById('stickyConsole').style.display = 'block';
+            const box = document.getElementById('outputBox');
+            box.innerText = text;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function closeConsole() {
+            document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+        window.onload = loadSettings;
+    </script>
+</body>
+</html>

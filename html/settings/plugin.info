@@ -1,0 +1,3 @@
+<p><strong>Server Settings & Autostart</strong></p>
+<p>Configure server hostname, web HTTP listening port, feature module toggles, administrator account password, and systemd boot autostart service enablement.</p>
+<p>Includes autostart diagnostic logging and port lockout protection via automatic UFW firewall updates.</p>
