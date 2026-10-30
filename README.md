@@ -9,16 +9,16 @@ From there you have a modular, decoupled plugin architecture, that enables users
 
 ---
 
-Packages:
+Packages:<br>
 <img width="960" height="540" alt="linnas-packages" src="https://github.com/user-attachments/assets/6739eafa-181a-49fb-975a-62b7aba3c11c" />
 
-Drives:
+Drives:<br>
 <img width="960" height="540" alt="linnas-drives" src="https://github.com/user-attachments/assets/d31d7f1a-6427-407f-8b99-38150b0c830c" />
 
-Virtual desktop:
+Virtual desktop:<br>
 <img width="960" height="540" alt="linnas-vdesktop" src="https://github.com/user-attachments/assets/1784a73c-3c94-41f2-92c9-ff2c68002463" />
 
-File manager:
+File manager:<br>
 <img width="960" height="540" alt="linnas-fm" src="https://github.com/user-attachments/assets/3f8ae981-9c37-4cd1-acf2-42d8be8e3b4d" />
 
 ---
