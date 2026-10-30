@@ -1,0 +1,2 @@
+<p><strong>Physical Disk Devices & Partitions Manager</strong></p>
+<p>Detect, mount, and manage physical storage drives, partition volumes, and startup boot mounts configured in <code>/etc/fstab</code>.</p>

@@ -2,23 +2,23 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Drives, ISO & VHD Config</title>
+    <title>Mount Virtual Disk Image (ISO/VHD/IMG) - LinNAS</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 220px; }
         h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
         p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
 
+        .notice-banner { background: #162235; border: 1px solid #388bfd; border-radius: 6px; padding: 0.9rem 1.2rem; color: #79c0ff; margin-bottom: 1.5rem; font-size: 0.88rem; display: flex; align-items: center; gap: 10px; }
+
         .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
         .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; }
 
-        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
         .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
         .form-group label { font-size: 0.85rem; color: #8b949e; }
         .form-group input, .form-group select { padding: 0.6rem; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; font-size: 0.9rem; }
         .form-group input:focus { border-color: #58a6ff; outline: none; }
-
-        .checkbox-group { display: flex; align-items: center; gap: 8px; margin-top: 0.5rem; font-size: 0.9rem; color: #c9d1d9; }
 
         .btn { padding: 0.6rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
         .btn:hover { background: #2ea043; }
@@ -27,23 +27,9 @@
         .btn-danger { background: #da3633; color: white; }
         .btn-danger:hover { background: #b62324; }
 
-        table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
-        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
-        th { color: #8b949e; font-weight: 600; background: #1f242d; }
-
-        /* Compact half-height style for parent disk rows */
-        tr.disk-parent-row td {
-            padding: 0.3rem 0.75rem;
-            background: #11151c;
-            color: #8b949e;
-            font-size: 0.8rem;
-            border-bottom: 1px solid #21262d;
-        }
-
         .path-input-group { display: flex; gap: 0.5rem; }
         .path-input-group input { flex: 1; }
 
-        /* Floating Bottom Console Drawer */
         .sticky-console {
             position: fixed;
             bottom: 0;
@@ -66,7 +52,6 @@
             font-size: 0.95rem;
         }
 
-        /* Modal Styles */
         .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
         .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 650px; margin: 10% auto; padding: 1.5rem; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
@@ -79,66 +64,41 @@
     </style>
 </head>
 <body>
-    <h2>VHD & ISO</h2>
-    <p class="subtitle">Mount physical disk partitions, ISO optical disc images, or VHD virtual disk containers into your server filesystem with optional startup boot persistence.</p>
+    <h2>Mount Virtual Disk Image (ISO/VHD/IMG)</h2>
+    <p class="subtitle">Mount ISO optical disc images, VHD/VHDX virtual disk files, IMG/RAW disk dumps, and qcow2 images directly into your server filesystem.</p>
 
-    <!-- Physical Disk Partitions -->
-    <div class="section">
-        <div class="section-title">Physical Disk Devices & Partitions</div>
-        <button class="btn btn-secondary" onclick="loadDriveList()">Refresh Drives List</button>
-        <table>
-            <thead>
-                <tr>
-                    <th>Device</th>
-                    <th>Type</th>
-                    <th>FileSystem</th>
-                    <th>Label / Volume ID</th>
-                    <th>Size</th>
-                    <th>UUID</th>
-                    <th>Mount Point</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody id="drivesTableBody">
-                <tr><td colspan="8" style="text-align: center; color: #8b949e;">Detecting storage devices...</td></tr>
-            </tbody>
-        </table>
+    <div class="notice-banner">
+        <span style="font-size: 1.2rem;">ℹ️</span>
+        <div>
+            <strong>Boot & Reboot Persistence Notice:</strong> Virtual disk image loop mounts and their temporary SMB network shares <strong>do not automatically remount or re-share on server reboot</strong>. If the server restarts, you must manually select and mount the virtual disk image again.
+        </div>
     </div>
 
-    <!-- ISO & VHD Mount Form -->
     <div class="section">
-        <div class="section-title">Mount Virtual Disk Image (ISO / VHD)</div>
+        <div class="section-title">Mount Virtual Disk Image</div>
         <div class="form-grid">
             <div class="form-group">
-                <label>Image File Path</label>
+                <label>Virtual Image File Path (.iso, .vhd, .vhdx, .img, .raw, .qcow2)</label>
                 <div class="path-input-group">
                     <input type="text" id="imgPath" placeholder="/var/downloads/debian.iso">
-                    <button class="btn btn-secondary" onclick="openFileBrowser()">Browse...</button>
+                    <button class="btn btn-secondary" onclick="openFileBrowser()">Browse Image...</button>
                 </div>
             </div>
             <div class="form-group">
-                <label>Target Mount Point</label>
+                <label>Target Mount Point Folder</label>
                 <input type="text" id="imgMount" placeholder="/mnt/debian_iso">
-            </div>
-            <div class="form-group">
-                <label>Format Type</label>
-                <select id="imgType">
-                    <option value="iso">ISO Image (.iso)</option>
-                    <option value="vhd">VHD / Virtual Disk (.vhd, .vhdx, .img, .raw)</option>
-                </select>
             </div>
         </div>
         <div class="form-group" style="margin-top: 0.8rem;">
-            <label>Restrict Auto-Share to SMB User (Required for Auto-Sharing)</label>
+            <label>Restrict Optional Auto-Share to SMB User</label>
             <select id="smbUserSelect">
                 <option value="">-- Do Not Share via SMB --</option>
             </select>
         </div>
         <br>
-        <button class="btn" onclick="mountImage()">Mount Image File</button>
+        <button class="btn" onclick="mountImage()">Mount Virtual Image File</button>
     </div>
 
-    <!-- File Browser Modal -->
     <div id="fileModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -152,7 +112,6 @@
         </div>
     </div>
 
-    <!-- Floating Output Console Drawer -->
     <div id="stickyConsole" class="sticky-console">
         <div class="console-header">
             <span>Execution Console</span>
@@ -163,6 +122,7 @@
 
     <script>
         let smbUsers = [];
+        const SUPPORTED_EXTS = ['iso', 'vhd', 'vhdx', 'img', 'raw', 'qcow2'];
 
         async function loadSmbUsers() {
             const select = document.getElementById('smbUserSelect');
@@ -191,189 +151,9 @@
             }
         }
 
-        async function loadDriveList() {
-            const tbody = document.getElementById('drivesTableBody');
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #8b949e;">Scanning disks...</td></tr>';
-
-            try {
-                const res = await fetch('/api/plugin/exec', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ plugin: 'drive_mount', cmd_key: 'list_drives_cmd', args: {} })
-                });
-                const data = await res.json();
-                if (!data.success) {
-                    tbody.innerHTML = `<tr><td colspan="8" style="color:#f85149;">Failed to scan disks: ${data.error}</td></tr>`;
-                    return;
-                }
-
-                const parsed = JSON.parse(data.output);
-                tbody.innerHTML = '';
-
-                if (!parsed.blockdevices || parsed.blockdevices.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #8b949e;">No block devices found.</td></tr>';
-                    return;
-                }
-
-                parsed.blockdevices.forEach(dev => {
-                    renderDeviceRow(dev, tbody, '');
-                });
-            } catch (err) {
-                tbody.innerHTML = `<tr><td colspan="8" style="color:#f85149;">Error scanning drives: ${err.message}</td></tr>`;
-            }
-        }
-
-        function renderDeviceRow(dev, tbody, indent) {
-            const tr = document.createElement('tr');
-            const devName = dev.name ? '/dev/' + dev.name : '-';
-            const hasChildren = dev.children && dev.children.length > 0;
-            const type = dev.type || '-';
-
-            // Is this a parent physical disk device containing partitions?
-            const isParentDisk = (type === 'disk' && hasChildren);
-
-            // Is this an MBR extended partition container (e.g. sda2, 1K size, containing logical partitions)?
-            const isExtendedContainer = hasChildren && type === 'part';
-            const isSwap = dev.fstype === 'swap';
-
-            let fstype = dev.fstype || '-';
-            let mount = dev.mountpoint || dev.mountpoints?.join(', ') || '-';
-
-            if (isParentDisk) {
-                tr.className = 'disk-parent-row';
-                fstype = '-';
-                mount = '';
-            } else if (isExtendedContainer) {
-                fstype = 'Extended Container';
-                mount = '';
-            } else if (isSwap) {
-                mount = '[SWAP]';
-            }
-
-            const label = dev.label || '-';
-            const uuid = dev.uuid || '';
-            const size = dev.size || '-';
-
-            // Check for 1K size (extended partition container)
-            const isTinyContainer = (size === '1K' || size === '0B' || size === '1024');
-
-            let actionBtn = '';
-            if (!isParentDisk && !isExtendedContainer && !isSwap && !isTinyContainer) {
-                if (dev.type === 'part' || (dev.type === 'disk' && !hasChildren)) {
-                    if (dev.mountpoint) {
-                        actionBtn = `<button class="btn btn-danger" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="unmountPartition('${dev.mountpoint}', '${uuid}')">Unmount</button>`;
-                    } else {
-                        const cleanName = dev.label ? dev.label.replace(/[^a-zA-Z0-9_]/g, '_') : dev.name;
-                        actionBtn = `<button class="btn" style="padding:0.3rem 0.6rem; font-size:0.8rem;" onclick="mountPartitionPrompt('${devName}', '${cleanName}', '${uuid}', '${fstype}')">Mount</button>`;
-                    }
-                }
-            }
-
-            const mountDisplay = (mount && mount !== '-') ? `<span style="color:#7ee787;">${mount}</span>` : (isParentDisk || isExtendedContainer ? '' : 'Unmounted');
-
-            tr.innerHTML = `
-                <td><strong>${indent}${devName}</strong></td>
-                <td>${type}</td>
-                <td>${fstype}</td>
-                <td><strong style="color: #58a6ff;">${label}</strong></td>
-                <td>${size}</td>
-                <td><small style="color: #8b949e; font-family: monospace;">${uuid || 'N/A'}</small></td>
-                <td>${mountDisplay}</td>
-                <td>${actionBtn}</td>
-            `;
-            tbody.appendChild(tr);
-
-            if (hasChildren) {
-                dev.children.forEach(child => renderDeviceRow(child, tbody, '└─ '));
-            }
-        }
-
-        async function mountPartitionPrompt(device, defaultName, uuid, fstype) {
-            const defaultPath = `/mnt/${defaultName || device.replace('/dev/', '')}`;
-            const target = prompt(`Enter target mount point folder for ${device}:`, defaultPath);
-            if (!target) return;
-
-            const autoFstab = confirm(`Auto-mount this drive at server boot via UUID in /etc/fstab?\n\nUUID: ${uuid || 'N/A'}\nMount Point: ${target}`);
-
-            showOutput(`Mounting ${device} to ${target}...`);
-            try {
-                const res = await fetch('/api/plugin/exec', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        plugin: 'drive_mount',
-                        cmd_key: 'mount_disk_sudo',
-                        args: { device, mountpoint: target }
-                    })
-                });
-                const data = await res.json();
-
-                if (data.success) {
-                    let msg = `Successfully mounted ${device} to ${target}`;
-                    if (autoFstab && uuid) {
-                        await fetch('/api/plugin/exec', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                plugin: 'drive_mount',
-                                cmd_key: 'fstab_add_sudo',
-                                args: { uuid, mountpoint: target, fstype: fstype || 'auto' }
-                            })
-                        });
-                        msg += ` and added boot entry to /etc/fstab (UUID=${uuid}).`;
-                    }
-                    showOutput(msg);
-                } else {
-                    showOutput(`Mount error: ${data.error}\n${data.output}`);
-                }
-                loadDriveList();
-            } catch (err) {
-                showOutput('Execution error: ' + err.message);
-            }
-        }
-
-        async function unmountPartition(mountpoint, uuid) {
-            showOutput(`Unmounting ${mountpoint}...`);
-            try {
-                const res = await fetch('/api/plugin/exec', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        plugin: 'drive_mount',
-                        cmd_key: 'unmount_disk_sudo',
-                        args: { mountpoint }
-                    })
-                });
-                const data = await res.json();
-                const outStr = (data.output || '') + ' ' + (data.error || '');
-                const isNotMounted = outStr.toLowerCase().includes('not mounted') || outStr.toLowerCase().includes('no such file') || outStr.toLowerCase().includes('not found') || outStr.toLowerCase().includes('not target');
-
-                if (data.success || isNotMounted) {
-                    if (uuid) {
-                        await fetch('/api/plugin/exec', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                plugin: 'drive_mount',
-                                cmd_key: 'fstab_remove_sudo',
-                                args: { uuid }
-                            })
-                        });
-                    }
-                    showOutput(`Unmounted / removed ${mountpoint} and cleaned /etc/fstab.`);
-                } else {
-                    showOutput(`Unmount error: ${data.error}\n${data.output}`);
-                }
-                loadDriveList();
-            } catch (err) {
-                showOutput('Execution error: ' + err.message);
-            }
-        }
-
         async function mountImage() {
             const filepath = document.getElementById('imgPath').value.trim();
             const mountpoint = document.getElementById('imgMount').value.trim();
-            const type = document.getElementById('imgType').value;
             const smbUser = document.getElementById('smbUserSelect').value;
 
             if (!filepath || !mountpoint) {
@@ -381,8 +161,10 @@
                 return;
             }
 
-            const cmdKey = (type === 'vhd') ? 'mount_vhd_sudo' : 'mount_iso_sudo';
-            showOutput(`Mounting ${type.toUpperCase()} image ${filepath}...`);
+            const ext = filepath.split('.').pop().toLowerCase();
+            const cmdKey = (ext === 'iso') ? 'mount_iso_sudo' : 'mount_vhd_sudo';
+
+            showOutput(`Mounting virtual image ${filepath}...`);
 
             try {
                 const res = await fetch('/api/plugin/exec', {
@@ -396,12 +178,11 @@
                 });
                 const data = await res.json();
                 if (data.success) {
-                    showOutput(`Image mounted successfully to ${mountpoint}`);
+                    showOutput(`Virtual image mounted successfully to ${mountpoint}`);
                     if (smbUser) {
                         const shareName = filepath.split('/').pop().replace(/[^a-zA-Z0-9_]/g, '_');
                         await addSmbShare(mountpoint, shareName, smbUser);
                     }
-                    loadDriveList();
                 } else {
                     showOutput(`Mount failed: ${data.error}\n${data.output}`);
                 }
@@ -435,7 +216,6 @@
             }
         }
 
-        /* File Browser Modal */
         let currentBrowserPath = '/';
 
         async function openFileBrowser(path) {
@@ -459,17 +239,20 @@
 
                 if (data.items) {
                     data.items.forEach(item => {
-                        const itemDiv = document.createElement('div');
-                        itemDiv.className = 'file-item';
-                        itemDiv.innerText = (item.is_dir ? '📁 ' : '📄 ') + item.name;
-                        itemDiv.onclick = () => {
-                            if (item.is_dir) {
-                                openFileBrowser(item.path);
-                            } else {
-                                selectFile(item.path);
-                            }
-                        };
-                        container.appendChild(itemDiv);
+                        const ext = item.name.split('.').pop().toLowerCase();
+                        if (item.is_dir || SUPPORTED_EXTS.includes(ext)) {
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = 'file-item';
+                            itemDiv.innerText = (item.is_dir ? '📁 ' : '💿 ') + item.name;
+                            itemDiv.onclick = () => {
+                                if (item.is_dir) {
+                                    openFileBrowser(item.path);
+                                } else {
+                                    selectFile(item.path);
+                                }
+                            };
+                            container.appendChild(itemDiv);
+                        }
                     });
                 }
             } catch (err) {
@@ -507,13 +290,6 @@
             if (filename) {
                 document.getElementById('imgMount').value = `/mnt/${filename}`;
             }
-
-            const ext = path.split('.').pop().toLowerCase();
-            if (['vhd', 'vhdx', 'img', 'raw'].includes(ext)) {
-                document.getElementById('imgType').value = 'vhd';
-            } else {
-                document.getElementById('imgType').value = 'iso';
-            }
             closeModal();
         }
 
@@ -534,7 +310,6 @@
 
         window.onload = async () => {
             await loadSmbUsers();
-            await loadDriveList();
         };
     </script>
 </body>

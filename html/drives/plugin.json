@@ -1,0 +1,14 @@
+{
+  "id": "drives",
+  "name": "Physical Drives",
+  "description": "Detect, mount, and manage physical disk partitions and boot mounts in /etc/fstab",
+  "category": "Storage",
+  "default": true,
+  "commands": {
+    "list_drives_cmd": "lsblk -J -o NAME,SIZE,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINT",
+    "mount_disk_sudo": "mkdir -p \"{mountpoint}\" && mount \"{device}\" \"{mountpoint}\"",
+    "unmount_disk_sudo": "umount \"{mountpoint}\"",
+    "fstab_add_sudo": "mkdir -p \"{mountpoint}\" && grep -q \"{uuid}\" /etc/fstab || echo \"UUID={uuid} {mountpoint} {fstype} defaults 0 2\" >> /etc/fstab",
+    "fstab_remove_sudo": "sed -i \"/{uuid}/d\" /etc/fstab"
+  }
+}
