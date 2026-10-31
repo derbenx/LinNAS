@@ -85,32 +85,56 @@
     <div class="section">
         <div class="section-title">Quick Common Service Rules</div>
         <div style="display: flex; flex-direction: column; gap: 0.8rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
-                <div><strong>HTTP & HTTPS Web Server (Ports 80, 443/tcp)</strong></div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button id="btn_p80" data-label="Allow 80 Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('80', 'tcp', 'any')">+ Allow 80 Anywhere</button>
-                    <button id="btn_p443" data-label="Allow 443 Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('443', 'tcp', 'any')">+ Allow 443 Anywhere</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px; flex-wrap: wrap; gap: 0.8rem;">
+                <div>
+                    <div><strong>HTTP & HTTPS Web Server (Ports 80, 443/tcp)</strong></div>
+                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                        <span style="font-size: 0.78rem; color: #8b949e;">Rule Name:</span>
+                        <input type="text" id="name_web" value="Web Server" style="font-size: 0.8rem; padding: 2px 6px; background:#161b22; border:1px solid #30363d; color:#fff; border-radius:4px; width: 140px;">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button id="btn_p80" data-label="Allow 80 Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('80', 'tcp', 'any', document.getElementById('name_web').value || 'Web HTTP')">+ Allow 80 Anywhere</button>
+                    <button id="btn_p443" data-label="Allow 443 Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('443', 'tcp', 'any', document.getElementById('name_web').value || 'Web HTTPS')">+ Allow 443 Anywhere</button>
                 </div>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
-                <div><strong>Samba File Sharing (Ports 139, 445/tcp, 137, 138/udp)</strong></div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button id="btn_smb_lan" data-label="Allow SMB LAN Subnet" class="btn btn-secondary" onclick="toggleQuickPreset('445', 'tcp', 'lan')">+ Allow SMB LAN Subnet</button>
-                    <button id="btn_smb_any" data-label="Allow SMB Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('445', 'tcp', 'any')">+ Allow SMB Anywhere</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px; flex-wrap: wrap; gap: 0.8rem;">
+                <div>
+                    <div><strong>Samba File Sharing (Ports 139, 445/tcp, 137, 138/udp)</strong></div>
+                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                        <span style="font-size: 0.78rem; color: #8b949e;">Rule Name:</span>
+                        <input type="text" id="name_smb" value="Samba Share" style="font-size: 0.8rem; padding: 2px 6px; background:#161b22; border:1px solid #30363d; color:#fff; border-radius:4px; width: 140px;">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button id="btn_smb_lan" data-label="Allow SMB LAN Subnet" class="btn btn-secondary" onclick="toggleSambaPreset('lan')">+ Allow SMB LAN Subnet</button>
+                    <button id="btn_smb_any" data-label="Allow SMB Anywhere" class="btn btn-secondary" onclick="toggleSambaPreset('any')">+ Allow SMB Anywhere</button>
                 </div>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
-                <div><strong>NTP Time Synchronization (Port 123/udp)</strong></div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button id="btn_ntp_lan" data-label="Allow NTP LAN Subnet" class="btn btn-secondary" onclick="toggleQuickPreset('123', 'udp', 'lan')">+ Allow NTP LAN Subnet</button>
-                    <button id="btn_ntp_any" data-label="Allow NTP Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('123', 'udp', 'any')">+ Allow NTP Anywhere</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px; flex-wrap: wrap; gap: 0.8rem;">
+                <div>
+                    <div><strong>NTP Time Synchronization (Port 123/udp)</strong></div>
+                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                        <span style="font-size: 0.78rem; color: #8b949e;">Rule Name:</span>
+                        <input type="text" id="name_ntp" value="NTP Time" style="font-size: 0.8rem; padding: 2px 6px; background:#161b22; border:1px solid #30363d; color:#fff; border-radius:4px; width: 140px;">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button id="btn_ntp_lan" data-label="Allow NTP LAN Subnet" class="btn btn-secondary" onclick="toggleQuickPreset('123', 'udp', 'lan', document.getElementById('name_ntp').value || 'NTP Time')">+ Allow NTP LAN Subnet</button>
+                    <button id="btn_ntp_any" data-label="Allow NTP Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('123', 'udp', 'any', document.getElementById('name_ntp').value || 'NTP Time')">+ Allow NTP Anywhere</button>
                 </div>
             </div>
-            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
-                <div><strong>SSH Remote Console (Port 22/tcp)</strong></div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button id="btn_ssh_lan" data-label="Allow SSH LAN Subnet" class="btn btn-secondary" onclick="toggleQuickPreset('22', 'tcp', 'lan')">+ Allow SSH LAN Subnet</button>
-                    <button id="btn_ssh_any" data-label="Allow SSH Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('22', 'tcp', 'any')">+ Allow SSH Anywhere</button>
+            <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px; flex-wrap: wrap; gap: 0.8rem;">
+                <div>
+                    <div><strong>SSH Remote Console (Port 22/tcp)</strong></div>
+                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px;">
+                        <span style="font-size: 0.78rem; color: #8b949e;">Rule Name:</span>
+                        <input type="text" id="name_ssh" value="SSH Access" style="font-size: 0.8rem; padding: 2px 6px; background:#161b22; border:1px solid #30363d; color:#fff; border-radius:4px; width: 140px;">
+                    </div>
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <button id="btn_ssh_lan" data-label="Allow SSH LAN Subnet" class="btn btn-secondary" onclick="toggleQuickPreset('22', 'tcp', 'lan', document.getElementById('name_ssh').value || 'SSH')">+ Allow SSH LAN Subnet</button>
+                    <button id="btn_ssh_any" data-label="Allow SSH Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('22', 'tcp', 'any', document.getElementById('name_ssh').value || 'SSH')">+ Allow SSH Anywhere</button>
                 </div>
             </div>
         </div>
@@ -120,18 +144,22 @@
     <div class="section">
         <div class="section-title">Add Custom Firewall Rule</div>
         <div class="form-row">
-            <div class="form-group" style="max-width: 140px;">
+            <div class="form-group" style="max-width: 180px;">
+                <label>Rule Name</label>
+                <input type="text" id="customName" placeholder="e.g. Minecraft Server" value="Custom Service">
+            </div>
+            <div class="form-group" style="max-width: 130px;">
                 <label>Port Number</label>
                 <input type="number" id="customPort" placeholder="8080" min="1" max="65535">
             </div>
-            <div class="form-group" style="max-width: 120px;">
+            <div class="form-group" style="max-width: 110px;">
                 <label>Protocol</label>
                 <select id="customProto">
                     <option value="tcp">TCP</option>
                     <option value="udp">UDP</option>
                 </select>
             </div>
-            <div class="form-group" style="max-width: 220px;">
+            <div class="form-group" style="max-width: 200px;">
                 <label>Access Source</label>
                 <select id="customAccess">
                     <option value="any">Anywhere (0.0.0.0/0)</option>
@@ -148,15 +176,16 @@
         <table>
             <thead>
                 <tr>
-                    <th>Rule #</th>
+                    <th style="width: 70px;">State</th>
+                    <th>Name</th>
                     <th>To (Port / Proto)</th>
                     <th>Action</th>
                     <th>From (Source)</th>
-                    <th>Actions</th>
+                    <th style="text-align: right; width: 100px;">Actions</th>
                 </tr>
             </thead>
             <tbody id="rulesTableBody">
-                <tr><td colspan="5" style="text-align: center; color: #8b949e;">Loading UFW rules...</td></tr>
+                <tr><td colspan="6" style="text-align: center; color: #8b949e;">Loading UFW rules...</td></tr>
             </tbody>
         </table>
     </div>
@@ -187,9 +216,33 @@
         }
 
         let currentRulesList = [];
+        let ruleMetadata = {}; // key -> { name, disabled, rawCmd }
+
+        async function loadRuleMetadata() {
+            try {
+                const res = await fetch('/api/plugin/data?plugin=ufw');
+                const data = await res.json();
+                ruleMetadata = (data && data.rules) ? data.rules : {};
+            } catch (e) {
+                ruleMetadata = {};
+            }
+        }
+
+        async function saveRuleMetadata() {
+            try {
+                await fetch('/api/plugin/data?plugin=ufw', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rules: ruleMetadata })
+                });
+            } catch (e) {
+                console.error('Failed to save rule metadata:', e);
+            }
+        }
 
         async function loadUFWStatus() {
             await loadSettings();
+            await loadRuleMetadata();
             const badge = document.getElementById('ufwBadge');
             const toggle = document.getElementById('ufwToggleCheckbox');
 
@@ -217,9 +270,27 @@
             await toggleUFW(checked);
         }
 
+        function getRuleKey(toPort, fromSrc) {
+            return `${toPort}_${fromSrc}`.replace(/[^a-zA-Z0-9_]/g, '_');
+        }
+
+        function inferRuleName(toPort, fromSrc) {
+            const p = toPort.toLowerCase();
+            if (p.includes(currentAppPort.toString())) return 'LinNAS Web Control';
+            if (p.includes('80/tcp')) return 'Web HTTP';
+            if (p.includes('443/tcp')) return 'Web HTTPS';
+            if (p.includes('445/tcp')) return 'Samba SMB';
+            if (p.includes('139/tcp')) return 'Samba NetBIOS-SSN';
+            if (p.includes('137/udp')) return 'Samba NetBIOS-NS';
+            if (p.includes('138/udp')) return 'Samba NetBIOS-DGM';
+            if (p.includes('123/udp')) return 'NTP Time';
+            if (p.includes('22/tcp')) return 'SSH Console';
+            return 'Custom Service';
+        }
+
         async function loadAllUFWRules() {
             const tbody = document.getElementById('rulesTableBody');
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #8b949e;">Scanning rules...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #8b949e;">Scanning rules...</td></tr>';
             currentRulesList = [];
 
             try {
@@ -232,7 +303,6 @@
                 const output = data.output || '';
 
                 const lines = output.split('\n');
-                tbody.innerHTML = '';
                 let ruleIdx = 0;
 
                 lines.forEach(line => {
@@ -266,7 +336,20 @@
                             if (parts[1]) toPort = parts[1];
                         }
 
-                        currentRulesList.push({ idx: ruleIdx, rawCmd, toPort, fromSrc, action });
+                        const ruleKey = getRuleKey(toPort, fromSrc);
+                        const stored = ruleMetadata[ruleKey] || {};
+                        const ruleName = stored.name || inferRuleName(toPort, fromSrc);
+
+                        currentRulesList.push({
+                            idx: ruleIdx,
+                            key: ruleKey,
+                            name: ruleName,
+                            rawCmd,
+                            toPort,
+                            fromSrc,
+                            action,
+                            enabled: true
+                        });
                         return;
                     }
 
@@ -279,29 +362,79 @@
                         const action = match[3].trim();
                         const fromSrc = match[4].trim();
                         const rawCmd = `ufw delete ${num}`;
-                        currentRulesList.push({ idx: ruleIdx, ruleNum: num, rawCmd, toPort, fromSrc, action });
+                        const ruleKey = getRuleKey(toPort, fromSrc);
+                        const stored = ruleMetadata[ruleKey] || {};
+                        const ruleName = stored.name || inferRuleName(toPort, fromSrc);
+
+                        currentRulesList.push({
+                            idx: ruleIdx,
+                            ruleNum: num,
+                            key: ruleKey,
+                            name: ruleName,
+                            rawCmd,
+                            toPort,
+                            fromSrc,
+                            action,
+                            enabled: true
+                        });
                     }
                 });
 
+                // Include any rules stored as disabled in metadata
+                Object.keys(ruleMetadata).forEach(k => {
+                    const meta = ruleMetadata[k];
+                    if (meta && meta.disabled && meta.rawCmd) {
+                        const exists = currentRulesList.some(r => r.key === k);
+                        if (!exists) {
+                            ruleIdx++;
+                            currentRulesList.push({
+                                idx: ruleIdx,
+                                key: k,
+                                name: meta.name || 'Disabled Rule',
+                                rawCmd: meta.rawCmd,
+                                toPort: meta.toPort || '-',
+                                fromSrc: meta.fromSrc || 'Anywhere',
+                                action: 'DISABLED',
+                                enabled: false
+                            });
+                        }
+                    }
+                });
+
+                tbody.innerHTML = '';
                 if (currentRulesList.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #8b949e;">No rules configured. Add rules above to view them here.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #8b949e;">No rules configured. Add rules above to view them here.</td></tr>';
                     return;
                 }
 
                 updatePresetBadges();
 
-                currentRulesList.forEach(rule => {
+                currentRulesList.forEach((rule, rIndex) => {
                     const isAppPortRule = rule.toPort.includes(currentAppPort.toString());
                     const tr = document.createElement('tr');
+                    if (!rule.enabled) tr.style.opacity = '0.6';
+
                     tr.innerHTML = `
-                        <td><strong>[${rule.idx}]</strong></td>
-                        <td>${escapeHtml(rule.toPort)}</td>
-                        <td><span class="badge-active">${escapeHtml(rule.action)}</span></td>
-                        <td>${escapeHtml(rule.fromSrc)}</td>
                         <td>
                             ${isAppPortRule
+                                ? `<span title="LinNAS web port is permanently enabled" style="color:#7ee787;font-size:0.9rem;">🔒 ON</span>`
+                                : `<label class="switch" style="transform: scale(0.85); margin-left: -4px;">
+                                    <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="toggleRuleActiveState(${rIndex}, this.checked)">
+                                    <span class="slider"></span>
+                                   </label>`
+                            }
+                        </td>
+                        <td>
+                            <strong style="color: #f0f6fc;">${escapeHtml(rule.name)}</strong>
+                            <div style="font-size:0.72rem;color:#8b949e;">[ID: ${rule.idx}]</div>
+                        </td>
+                        <td><code>${escapeHtml(rule.toPort)}</code></td>
+                        <td><span class="${rule.enabled ? 'badge-active' : 'badge-inactive'}">${escapeHtml(rule.action)}</span></td>
+                        <td>${escapeHtml(rule.fromSrc)}</td>
+                        <td style="text-align: right;">
+                            ${isAppPortRule
                                 ? `<span class="badge-protected">PROTECTED</span>`
-                                : `<button class="btn btn-danger" style="padding:0.22rem 0.5rem; font-size:0.75rem;" onclick="removeConfiguredRule('${encodeURIComponent(rule.rawCmd)}')">Delete</button>`
+                                : `<button class="btn btn-danger" style="padding:0.22rem 0.5rem; font-size:0.75rem;" onclick="removeConfiguredRule('${encodeURIComponent(rule.rawCmd)}', '${rule.key}')">Delete</button>`
                             }
                         </td>
                     `;
@@ -309,7 +442,7 @@
                 });
 
             } catch (err) {
-                tbody.innerHTML = `<tr><td colspan="5" style="color:#f85149;">Failed to load rules: ${err.message}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" style="color:#f85149;">Failed to load rules: ${err.message}</td></tr>`;
             }
         }
 
@@ -328,8 +461,6 @@
             const presets = [
                 { id: 'btn_p80', port: '80', proto: 'tcp', access: 'any' },
                 { id: 'btn_p443', port: '443', proto: 'tcp', access: 'any' },
-                { id: 'btn_smb_lan', port: '445', proto: 'tcp', access: 'lan' },
-                { id: 'btn_smb_any', port: '445', proto: 'tcp', access: 'any' },
                 { id: 'btn_ntp_lan', port: '123', proto: 'udp', access: 'lan' },
                 { id: 'btn_ntp_any', port: '123', proto: 'udp', access: 'any' },
                 { id: 'btn_ssh_lan', port: '22', proto: 'tcp', access: 'lan' },
@@ -353,9 +484,93 @@
                     }
                 }
             });
+
+            // Samba presets check all 4 ports
+            ['lan', 'any'].forEach(access => {
+                const el = document.getElementById(access === 'lan' ? 'btn_smb_lan' : 'btn_smb_any');
+                if (el) {
+                    const allActive = SAMBA_PORTS.every(sp => isRuleConfigured(sp.port, sp.proto, access));
+                    if (allActive) {
+                        el.style.background = '#238636';
+                        el.style.color = '#fff';
+                        el.style.borderColor = '#2ea043';
+                        el.innerText = '✓ ' + el.dataset.label;
+                    } else {
+                        el.style.background = '#21262d';
+                        el.style.color = '#c9d1d9';
+                        el.style.borderColor = '#30363d';
+                        el.innerText = '+ ' + el.dataset.label;
+                    }
+                }
+            });
         }
 
-        async function removeConfiguredRule(encRuleCmd) {
+        async function toggleRuleActiveState(idx, enable) {
+            const rule = currentRulesList[idx];
+            if (!rule) return;
+
+            if (enable) {
+                // Re-enable rule
+                showOutput(`Enabling firewall rule: ${rule.rawCmd}...`);
+                try {
+                    const res = await fetch('/api/plugin/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            plugin: 'ufw',
+                            cmd_key: 'delete_rule_cmd_sudo',
+                            args: { rule_cmd: rule.rawCmd }
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        if (ruleMetadata[rule.key]) {
+                            delete ruleMetadata[rule.key].disabled;
+                        }
+                        await saveRuleMetadata();
+                        showOutput(`Rule re-enabled successfully.\n` + (data.output || ''));
+                    } else {
+                        showOutput(`Failed to enable rule: ${data.error}`);
+                    }
+                } catch (e) {
+                    showOutput(`Execution error: ${e.message}`);
+                }
+            } else {
+                // Disable rule (remove from UFW, but keep in metadata as disabled)
+                const deleteCmd = rule.rawCmd.startsWith('ufw ') ? rule.rawCmd.replace(/^ufw\s+/, 'ufw delete ') : rule.rawCmd;
+                showOutput(`Disabling firewall rule: ${deleteCmd}...`);
+                try {
+                    const res = await fetch('/api/plugin/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            plugin: 'ufw',
+                            cmd_key: 'delete_rule_cmd_sudo',
+                            args: { rule_cmd: deleteCmd }
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        ruleMetadata[rule.key] = {
+                            name: rule.name,
+                            disabled: true,
+                            rawCmd: rule.rawCmd,
+                            toPort: rule.toPort,
+                            fromSrc: rule.fromSrc
+                        };
+                        await saveRuleMetadata();
+                        showOutput(`Rule disabled successfully.\n` + (data.output || ''));
+                    } else {
+                        showOutput(`Failed to disable rule: ${data.error}`);
+                    }
+                } catch (e) {
+                    showOutput(`Execution error: ${e.message}`);
+                }
+            }
+            await loadUFWStatus();
+        }
+
+        async function removeConfiguredRule(encRuleCmd, ruleKey) {
             const rawCmd = decodeURIComponent(encRuleCmd);
             const deleteCmd = rawCmd.startsWith('ufw ') ? rawCmd.replace(/^ufw\s+/, 'ufw delete ') : rawCmd;
 
@@ -371,8 +586,11 @@
                     })
                 });
                 const data = await res.json();
-                showOutput(data.success ? `Rule deleted successfully.
-` + (data.output || '') : 'Delete failed: ' + data.error);
+                if (ruleKey && ruleMetadata[ruleKey]) {
+                    delete ruleMetadata[ruleKey];
+                    await saveRuleMetadata();
+                }
+                showOutput(data.success ? `Rule deleted successfully.\n` + (data.output || '') : 'Delete failed: ' + data.error);
                 loadUFWStatus();
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
@@ -407,7 +625,41 @@
         }
 
 
-        async function toggleQuickPreset(port, proto, access) {
+        const SAMBA_PORTS = [
+            { port: '139', proto: 'tcp', label: 'NetBIOS-SSN' },
+            { port: '445', proto: 'tcp', label: 'SMB' },
+            { port: '137', proto: 'udp', label: 'NetBIOS-NS' },
+            { port: '138', proto: 'udp', label: 'NetBIOS-DGM' }
+        ];
+
+        async function toggleSambaPreset(access) {
+            const baseName = document.getElementById('name_smb').value.trim() || 'Samba Share';
+            const allActive = SAMBA_PORTS.every(sp => isRuleConfigured(sp.port, sp.proto, access));
+
+            if (allActive) {
+                showOutput(`Removing Samba ports for ${access}...`);
+                for (const sp of SAMBA_PORTS) {
+                    const found = currentRulesList.find(r => {
+                        const portMatch = r.toPort.includes(sp.port) && r.toPort.includes(sp.proto);
+                        if (!portMatch) return false;
+                        if (access === 'lan') return r.fromSrc.includes('192.168.');
+                        return r.fromSrc.toLowerCase().includes('any') || r.fromSrc.includes('0.0.0.0/0');
+                    });
+                    if (found) {
+                        await removeConfiguredRule(encodeURIComponent(found.rawCmd), found.key);
+                    }
+                }
+            } else {
+                showOutput(`Adding separate Samba rules (139/tcp, 445/tcp, 137/udp, 138/udp) for ${access}...`);
+                for (const sp of SAMBA_PORTS) {
+                    const ruleName = `${baseName} (${sp.label} ${sp.port}/${sp.proto})`;
+                    await addQuickRule(sp.port, sp.proto, access, ruleName);
+                }
+            }
+            await loadUFWStatus();
+        }
+
+        async function toggleQuickPreset(port, proto, access, ruleName) {
             const found = currentRulesList.find(r => {
                 const portMatch = r.toPort.includes(port.toString()) && (!proto || r.toPort.includes(proto));
                 if (!portMatch) return false;
@@ -417,14 +669,14 @@
             });
 
             if (found) {
-                await removeConfiguredRule(encodeURIComponent(found.rawCmd));
+                await removeConfiguredRule(encodeURIComponent(found.rawCmd), found.key);
             } else {
-                await addQuickRule(port, proto, access);
+                await addQuickRule(port, proto, access, ruleName);
             }
         }
 
-        async function addQuickRule(port, proto, access) {
-            showOutput(`Adding UFW rule for port ${port}/${proto}...`);
+        async function addQuickRule(port, proto, access, ruleName) {
+            showOutput(`Adding UFW rule for port ${port}/${proto} (${ruleName || 'Service'})...`);
             try {
                 let cmdKey = 'allow_port_sudo';
                 let args = { port: port.toString(), proto: proto };
@@ -440,6 +692,17 @@
                     body: JSON.stringify({ plugin: 'ufw', cmd_key: cmdKey, args: args })
                 });
                 const data = await res.json();
+                if (data.success) {
+                    const toPort = `${port}/${proto}`;
+                    const fromSrc = access === 'lan' ? '192.168.0.0/16' : 'Anywhere';
+                    const key = getRuleKey(toPort, fromSrc);
+                    ruleMetadata[key] = {
+                        name: ruleName || `${port}/${proto} Rule`,
+                        toPort,
+                        fromSrc
+                    };
+                    await saveRuleMetadata();
+                }
                 showOutput(data.success ? `Rule for ${port}/${proto} added successfully.\n` + (data.output || '') : 'Failed: ' + data.error);
                 loadUFWStatus();
             } catch (err) {
@@ -448,6 +711,7 @@
         }
 
         async function addCustomRule() {
+            const name = document.getElementById('customName').value.trim() || 'Custom Rule';
             const port = document.getElementById('customPort').value.trim();
             const proto = document.getElementById('customProto').value;
             const access = document.getElementById('customAccess').value;
@@ -457,7 +721,7 @@
                 return;
             }
 
-            await addQuickRule(port, proto, access);
+            await addQuickRule(port, proto, access, name);
         }
 
         async function deleteRule(ruleNum) {

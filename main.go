@@ -382,6 +382,11 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if os.Getuid() != 0 {
+		http.Error(w, "Root privileges required for cron operations", http.StatusForbidden)
+		return
+	}
+
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
@@ -426,6 +431,11 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 func handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if os.Getuid() != 0 {
+		http.Error(w, "Root privileges required for cron operations", http.StatusForbidden)
 		return
 	}
 
@@ -1148,6 +1158,11 @@ func handlePluginData(w http.ResponseWriter, r *http.Request) {
 		w.Write(dataBytes)
 
 	case http.MethodPost, http.MethodPut:
+		if pluginID == "cron" && os.Getuid() != 0 {
+			http.Error(w, "Root privileges required for cron operations", http.StatusForbidden)
+			return
+		}
+
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, "Failed to read request body", http.StatusBadRequest)
@@ -2258,6 +2273,17 @@ func main() {
 		mux.HandleFunc("/api/sources/get", authMiddleware(handleSourcesGet))
 	mux.HandleFunc("/api/sources/test", authMiddleware(handleSourcesTest))
 	mux.HandleFunc("/api/sources/apply", authMiddleware(handleSourcesApply))
+	mux.HandleFunc("/api/app/path", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		exePath, err := os.Executable()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if resolved, err := filepath.EvalSymlinks(exePath); err == nil {
+			exePath = resolved
+		}
+		jsonResponse(w, map[string]interface{}{"path": exePath})
+	}))
 	mux.HandleFunc("/api/cron/run", authMiddleware(handleCronRun))
 	mux.HandleFunc("/api/cron/stop", authMiddleware(handleCronStop))
 	mux.HandleFunc("/api/dns/convert", authMiddleware(handleDNSConvert))

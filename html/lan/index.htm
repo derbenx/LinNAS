@@ -84,8 +84,8 @@
             <div class="form-group" style="max-width: 240px;">
                 <label>IP & DNS Assignment Mode</label>
                 <select id="ipModeSelect" onchange="toggleIpModeFields()">
-                    <option value="dhcp">DHCP (Automatic IP & DNS)</option>
-                    <option value="manual">Manual (Static IP & Custom DNS)</option>
+                    <option value="dhcp">DHCP</option>
+                    <option value="manual">Manual</option>
                 </select>
             </div>
             <div class="form-group">
@@ -96,14 +96,14 @@
                 <label>Subnet Mask / CIDR (e.g. 24 or 255.255.255.0)</label>
                 <input type="text" id="cidrMask" placeholder="24 or 255.255.255.0">
             </div>
+        </div>
+
+        <!-- Gateway & Custom DNS Row -->
+        <div class="form-row" id="dnsRow">
             <div class="form-group">
                 <label>Default Gateway (e.g. 192.168.1.1)</label>
                 <input type="text" id="gateway" placeholder="192.168.1.1">
             </div>
-        </div>
-
-        <!-- Custom DNS Row -->
-        <div class="form-row" id="dnsRow">
             <div class="form-group">
                 <label>Primary DNS Server (DNS1)</label>
                 <input type="text" id="dns1" placeholder="1.1.1.1">

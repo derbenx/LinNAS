@@ -225,6 +225,14 @@
     <h2>Cron Tasks</h2>
     <p class="subtitle">Schedule and automate recurring background jobs, maintenance scripts, and boot tasks with custom execution parameters.</p>
 
+    <!-- Non-root Warning Notice (similar to Wi-Fi warning) -->
+    <div id="rootWarningNotice" class="service-banner warning" style="display: none;">
+        <div class="service-banner-text">
+            <strong>⚠️ Root Privileges Required:</strong> Managing and modifying cron tasks requires root privileges. LinNAS is currently running under a non-root user account. Cron scheduling and configuration controls are disabled.
+        </div>
+    </div>
+
+    <div id="cronMainContainer">
     <!-- Cron Daemon Status Warning Banner -->
     <div id="serviceBanner" class="service-banner">
         <div class="service-banner-text" id="serviceBannerText">
@@ -366,6 +374,7 @@
             </div>
         </div>
     </div>
+    </div>
 
     <!-- File Browser Modal -->
     <div id="fileModal" class="modal">
@@ -405,10 +414,15 @@
         let currentRunAbortController = null;
         let activeRunningTaskId = null;
 
+        let isRootUser = true;
+
         // Init on DOM ready
-        window.onload = () => {
-            checkCronService();
-            loadTasks();
+        window.onload = async () => {
+            await checkUserRoot();
+            if (isRootUser) {
+                checkCronService();
+                loadTasks();
+            }
 
             document.getElementById('taskRootToggle').addEventListener('change', (e) => {
                 const label = document.getElementById('taskRootLabel');
@@ -421,6 +435,24 @@
                 }
             });
         };
+
+        async function checkUserRoot() {
+            try {
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+                isRootUser = !!data.is_root;
+            } catch (e) {
+                isRootUser = false;
+            }
+
+            if (!isRootUser) {
+                document.getElementById('rootWarningNotice').style.display = 'flex';
+                document.getElementById('cronMainContainer').style.display = 'none';
+            } else {
+                document.getElementById('rootWarningNotice').style.display = 'none';
+                document.getElementById('cronMainContainer').style.display = 'block';
+            }
+        }
 
         async function checkCronService() {
             try {
@@ -492,6 +524,29 @@
                 const res = await fetch('/api/plugin/data?plugin=cron');
                 const data = await res.json();
                 tasks = (data && Array.isArray(data.tasks)) ? data.tasks : [];
+
+                // Ensure default LinNAS @reboot task exists
+                let linnasTask = tasks.find(t => t.id === 'linnas_boot' || t.name === 'LinNAS');
+                if (!linnasTask) {
+                    linnasTask = {
+                        id: 'linnas_boot',
+                        name: 'LinNAS',
+                        command: '/usr/local/bin/linnas',
+                        args: '',
+                        schedule: '@reboot',
+                        schedule_mode: 'simple',
+                        simple_preset: 'reboot',
+                        is_root: true,
+                        enabled: false
+                    };
+                    tasks.unshift(linnasTask);
+                    await saveTasksToBackend();
+                } else {
+                    linnasTask.id = 'linnas_boot';
+                    linnasTask.schedule = '@reboot';
+                    linnasTask.is_root = true;
+                }
+
                 renderTasks();
             } catch (e) {
                 tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #f85149; padding: 2rem;">Failed to load tasks: ${e.message}</td></tr>`;
@@ -510,16 +565,20 @@
             tasks.forEach((t, idx) => {
                 const tr = document.createElement('tr');
                 const fullCmd = (t.command || '') + (t.args ? ' ' + t.args : '');
+                const isDefaultLinnas = (t.id === 'linnas_boot' || t.name === 'LinNAS');
 
                 tr.innerHTML = `
                     <td>
                         <label class="switch">
-                            <input type="checkbox" ${t.enabled !== false ? 'checked' : ''} onchange="toggleTaskActive(${idx}, this.checked)">
+                            <input type="checkbox" ${t.enabled ? 'checked' : ''} onchange="toggleTaskActive(${idx}, this.checked)">
                             <span class="slider"></span>
                         </label>
                     </td>
                     <td>
-                        <div style="font-weight: 600; color: #f0f6fc;">${escapeHtml(t.name || 'Untitled Task')}</div>
+                        <div style="font-weight: 600; color: #f0f6fc;">
+                            ${escapeHtml(t.name || 'Untitled Task')}
+                            ${isDefaultLinnas ? '<span class="badge" style="background:rgba(88,166,255,0.2);color:#58a6ff;margin-left:5px;">System</span>' : ''}
+                        </div>
                         <div style="font-size: 0.75rem; color: #8b949e;">ID: ${escapeHtml(t.id || 'task-' + idx)}</div>
                     </td>
                     <td>
@@ -534,8 +593,11 @@
                     </td>
                     <td style="text-align: right;">
                         <button class="btn btn-sm btn-secondary" onclick="runTaskNow(${idx})">▶️ Run</button>
-                        <button class="btn btn-sm btn-secondary" onclick="editTask(${idx})">✏️ Edit</button>
-                        <button class="btn btn-sm btn-danger" onclick="deleteTask(${idx})">🗑️</button>
+                        ${isDefaultLinnas
+                            ? `<button class="btn btn-sm btn-secondary" disabled style="opacity:0.5;cursor:not-allowed;" title="LinNAS system task cannot be deleted">🔒 System</button>`
+                            : `<button class="btn btn-sm btn-secondary" onclick="editTask(${idx})">✏️ Edit</button>
+                               <button class="btn btn-sm btn-danger" onclick="deleteTask(${idx})">🗑️</button>`
+                        }
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -558,10 +620,26 @@
         }
 
         async function toggleTaskActive(idx, isChecked) {
-            if (tasks[idx]) {
-                tasks[idx].enabled = isChecked;
-                await saveTasksToBackend();
+            const task = tasks[idx];
+            if (!task) return;
+
+            task.enabled = isChecked;
+
+            // If toggling on the default LinNAS task, dynamically look up exact binary path
+            if (isChecked && (task.id === 'linnas_boot' || task.name === 'LinNAS')) {
+                try {
+                    const res = await fetch('/api/app/path');
+                    const data = await res.json();
+                    if (data && data.path) {
+                        task.command = data.path;
+                    }
+                } catch (e) {
+                    console.error('Failed to look up Linnas binary path:', e);
+                }
             }
+
+            await saveTasksToBackend();
+            renderTasks();
         }
 
         function openNewTaskModal() {
@@ -719,7 +797,13 @@
         }
 
         async function deleteTask(idx) {
-            if (!confirm(`Delete task "${tasks[idx].name}"?`)) return;
+            const task = tasks[idx];
+            if (!task) return;
+            if (task.id === 'linnas_boot' || task.name === 'LinNAS') {
+                alert('The default LinNAS boot task cannot be deleted. You can toggle it on or off instead.');
+                return;
+            }
+            if (!confirm(`Delete task "${task.name}"?`)) return;
             tasks.splice(idx, 1);
             await saveTasksToBackend();
             renderTasks();

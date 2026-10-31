@@ -16,6 +16,7 @@
         .plugin-status { font-size: 0.8rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 4px; }
         .status-installed { background: #238636; color: white; }
         .status-uninstalled { background: #30363d; color: #8b949e; }
+        .badge-untested { background: rgba(210, 153, 34, 0.2); color: #e3b341; border: 1px solid #d29922; font-size: 0.75rem; padding: 0.15rem 0.45rem; border-radius: 4px; font-weight: 600; margin-left: 6px; }
 
         .btn { padding: 0.5rem 1rem; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; font-size: 0.85rem; width: fit-content; }
         .btn-install { background: #238636; color: white; }
@@ -178,14 +179,18 @@
                     </label>
                 `;
 
+                const isUntested = ['apache', 'php', 'mysql'].includes(p.id);
+                const untestedBadge = isUntested ? `<span class="badge-untested" title="Untested with LinNAS">⚠️ Untested with LinNAS</span>` : '';
+
                 card.innerHTML = `
                     <div>
                         <div class="plugin-title">
-                            <span>${p.name} <button class="btn btn-info" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; margin-left: 6px;" onclick="showPluginInfo('${p.id}', '${p.name}')">ℹ️ Info</button></span>
+                            <span>${p.name}${untestedBadge} <button class="btn btn-info" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; margin-left: 6px;" onclick="showPluginInfo('${p.id}', '${p.name}')">ℹ️ Info</button></span>
                             <span class="plugin-status ${isInstalled ? 'status-installed' : 'status-uninstalled'}">
                                 ${isInstalled ? 'Installed' : 'Not Installed'}
                             </span>
                         </div>
+                        ${isUntested ? `<div style="font-size:0.78rem; color:#e3b341; margin-bottom:0.5rem; background:rgba(210,153,34,0.1); border-left:3px solid #d29922; padding:4px 8px; border-radius:2px;">Notice: This package is currently untested with LinNAS.</div>` : ''}
                         <div class="plugin-desc">${p.description}</div>
                     </div>
                     <div>
