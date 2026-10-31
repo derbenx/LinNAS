@@ -2366,6 +2366,7 @@ func main() {
 	mux.HandleFunc("/api/cloud/load", authMiddleware(handleCloudLoad))
 	mux.HandleFunc("/api/cloud/delete", authMiddleware(handleCloudDelete))
 	mux.HandleFunc("/api/cloud/mkdir", authMiddleware(handleCloudMkdir))
+	mux.HandleFunc("/api/cloud/smart", authMiddleware(handleCloudSmart))
 	mux.HandleFunc("/api/settings/get", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, map[string]interface{}{
 			"port":            appConfig.Port,
@@ -2854,6 +2855,38 @@ func saveCloudConfig(cfg CloudConfig) error {
 	return nil
 }
 
+func getPrimaryIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err == nil {
+		defer conn.Close()
+		localAddr := conn.LocalAddr().(*net.UDPAddr)
+		return localAddr.IP.String()
+	}
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "127.0.0.1"
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback == 0 && iface.Flags&net.FlagUp != 0 {
+			addrs, _ := iface.Addrs()
+			for _, addr := range addrs {
+				var ip net.IP
+				switch v := addr.(type) {
+				case *net.IPNet:
+					ip = v.IP
+				case *net.IPAddr:
+					ip = v.IP
+				}
+				if ip != nil && !ip.IsLoopback() && ip.To4() != nil {
+					return ip.String()
+				}
+			}
+		}
+	}
+	return "127.0.0.1"
+}
+
 func getPrimaryMAC() string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -3076,6 +3109,9 @@ func handleCloudStatus(w http.ResponseWriter, r *http.Request) {
 
 	mac := getPrimaryMAC()
 
+	primaryIP := getPrimaryIP()
+	serverEndpoint := fmt.Sprintf("%s:%d", primaryIP, appConfig.Port)
+
 	jsonResponse(w, map[string]interface{}{
 		"success":            true,
 		"enabled":            cfg.Enabled,
@@ -3085,9 +3121,82 @@ func handleCloudStatus(w http.ResponseWriter, r *http.Request) {
 		"current_uuid":       currentUUID,
 		"uuid_matches":       cfg.VolumeUUID == "" || cfg.VolumeUUID == currentUUID,
 		"server_mac":         mac,
+		"server_ip":          primaryIP,
+		"server_port":        appConfig.Port,
+		"server_endpoint":    serverEndpoint,
 		"active_file_locks":  activeLocksCount,
 		"last_activity_sec":  activeSecondsAgo,
 		"activity_flicker":   activeSecondsAgo >= 0 && activeSecondsAgo < 3,
+	})
+}
+
+type SmartDiskInfo struct {
+	Device   string `json:"device"`
+	Model    string `json:"model"`
+	Capacity string `json:"capacity"`
+	Health   string `json:"health"` // "PASSED", "FAILED", "UNKNOWN"
+	TempC    int    `json:"temp_c,omitempty"`
+	RawInfo  string `json:"raw_info,omitempty"`
+}
+
+func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
+	recordCloudActivity()
+	out, err := exec.Command("lsblk", "-d", "-n", "-o", "NAME,TYPE,SIZE,MODEL").CombinedOutput()
+	var disks []SmartDiskInfo
+	overallHealthy := true
+
+	if err == nil {
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		for _, line := range lines {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && fields[1] == "disk" {
+				dev := fields[0]
+				size := ""
+				if len(fields) >= 3 {
+					size = fields[2]
+				}
+				model := ""
+				if len(fields) >= 4 {
+					model = strings.Join(fields[3:], " ")
+				}
+
+				info := SmartDiskInfo{
+					Device:   "/dev/" + dev,
+					Capacity: size,
+					Model:    model,
+					Health:   "UNKNOWN",
+				}
+
+				// Check SMART health via smartctl
+				sCmd := exec.Command("smartctl", "-H", "/dev/"+dev)
+				if os.Getuid() != 0 {
+					sCmd = exec.Command("sudo", "-n", "smartctl", "-H", "/dev/"+dev)
+				}
+				sOut, sErr := sCmd.CombinedOutput()
+				sStr := string(sOut)
+				if sErr == nil || strings.Contains(sStr, "PASSED") || strings.Contains(sStr, "OK") {
+					if strings.Contains(sStr, "FAILED") {
+						info.Health = "FAILED"
+						overallHealthy = false
+					} else if strings.Contains(sStr, "PASSED") || strings.Contains(sStr, "OK") {
+						info.Health = "PASSED"
+					}
+				} else if strings.Contains(sStr, "FAILED") {
+					info.Health = "FAILED"
+					overallHealthy = false
+				}
+
+				info.RawInfo = strings.TrimSpace(sStr)
+				disks = append(disks, info)
+			}
+		}
+	}
+
+	jsonResponse(w, map[string]interface{}{
+		"success":         true,
+		"overall_healthy": overallHealthy,
+		"disks":           disks,
+		"timestamp":       time.Now().Unix(),
 	})
 }
 

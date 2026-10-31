@@ -214,16 +214,16 @@
                 <div class="info-value" id="infoStatus">Stopped</div>
             </div>
             <div class="info-card">
+                <div class="info-label">Client Connect Endpoint (IP:Port)</div>
+                <div class="info-value" id="infoEndpoint" style="color: #58a6ff; font-family: monospace;">--:8080</div>
+            </div>
+            <div class="info-card">
                 <div class="info-label">Drive Volume UUID</div>
                 <div class="info-value" id="infoUUID">--</div>
             </div>
             <div class="info-card">
                 <div class="info-label">Active File Locks</div>
                 <div class="info-value" id="infoLocks">0 in-use</div>
-            </div>
-            <div class="info-card">
-                <div class="info-label">Server MAC ID</div>
-                <div class="info-value" id="infoMAC">--</div>
             </div>
         </div>
     </div>
@@ -324,7 +324,7 @@
                 }
                 document.getElementById('infoUUID').innerText = data.current_uuid || data.configured_uuid || '--';
                 document.getElementById('infoLocks').innerText = `${data.active_file_locks || 0} in-use`;
-                document.getElementById('infoMAC').innerText = data.server_mac || '--';
+                document.getElementById('infoEndpoint').innerText = data.server_endpoint || '--';
 
                 // Activity LED flicker
                 const lanLed = document.getElementById('lanLed');
