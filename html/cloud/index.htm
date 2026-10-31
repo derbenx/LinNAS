@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Local Cloud</title>
+    <script src="/js/crypto.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 80px; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 10px; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .status-online { background: rgba(46, 160, 67, 0.15); color: #3fb950; border: 1px solid #238636; }
+        .status-offline { background: rgba(218, 54, 51, 0.15); color: #f85149; border: 1px solid #da3633; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .dot-green { background: #3fb950; box-shadow: 0 0 8px #3fb950; }
+        .dot-red { background: #f85149; }
+
+        /* Hardware Activity Indicators */
+        .activity-indicators {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin-left: auto;
+            background: #161b22;
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid #30363d;
+            font-size: 0.8rem;
+        }
+        .indicator-item { display: flex; align-items: center; gap: 6px; color: #8b949e; }
+        .flicker-led {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #30363d;
+            transition: background 0.15s, box-shadow 0.15s;
+        }
+        .flicker-led.active-lan { background: #58a6ff; box-shadow: 0 0 8px #58a6ff; }
+        .flicker-led.active-hdd { background: #e3b341; box-shadow: 0 0 8px #e3b341; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; }
+
+        .form-grid { display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: end; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 0.4rem; }
+        .form-group label { font-size: 0.85rem; color: #8b949e; }
+        .form-group input { padding: 0.65rem 0.8rem; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #fff; font-size: 0.95rem; }
+        .form-group input:focus { border-color: #58a6ff; outline: none; }
+
+        .path-input-group { display: flex; gap: 0.5rem; }
+        .path-input-group input { flex: 1; }
+
+        .btn { padding: 0.65rem 1.2rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #484f58; color: #fff; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #b62324; }
+
+        .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem; }
+        .info-card { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; }
+        .info-label { font-size: 0.75rem; text-transform: uppercase; color: #8b949e; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .info-value { font-size: 1.05rem; font-weight: 600; color: #f0f6fc; word-break: break-all; }
+
+        .notice-box {
+            background: rgba(56, 139, 253, 0.1);
+            border: 1px solid #388bfd;
+            border-radius: 6px;
+            padding: 0.9rem 1.2rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.85rem;
+            color: #c9d1d9;
+            line-height: 1.4;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            backdrop-filter: blur(2px);
+        }
+        .modal-content {
+            background-color: #161b22;
+            margin: 6% auto;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 650px;
+            display: flex;
+            flex-direction: column;
+            max-height: 80vh;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .modal-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-header h3 { font-size: 1.1rem; color: #f0f6fc; }
+        .modal-body {
+            padding: 1rem 1.5rem;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .modal-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid #30363d;
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.8rem;
+        }
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-top: 0.5rem;
+        }
+        .file-item {
+            padding: 0.6rem 0.8rem;
+            background: #0d1117;
+            border: 1px solid #21262d;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: background 0.15s, border-color 0.15s;
+            font-size: 0.9rem;
+        }
+        .file-item:hover {
+            background: #21262d;
+            border-color: #58a6ff;
+            color: #58a6ff;
+        }
+
+        /* File list table */
+        table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.9rem; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
+        th { color: #8b949e; font-weight: 600; background: #1f242d; }
+        .badge { padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+        .badge-recycle { background: #388bfd22; color: #58a6ff; border: 1px solid #388bfd55; }
+    </style>
+</head>
+<body>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;">
+        <h2>
+            <span>☁️ Local Cloud</span>
+            <span id="serviceBadge" class="status-badge status-offline">
+                <span class="status-dot dot-red"></span>
+                <span>Stopped</span>
+            </span>
+        </h2>
+        <div class="activity-indicators">
+            <div class="indicator-item">
+                <span id="lanLed" class="flicker-led"></span>
+                <span>LAN</span>
+            </div>
+            <div class="indicator-item">
+                <span id="hddLed" class="flicker-led"></span>
+                <span>DISK</span>
+            </div>
+        </div>
+    </div>
+    <p class="subtitle">Secure private cloud synchronization service with thread locking, automatic RecycleBin versioning, and encrypted transfers.</p>
+
+    <div class="notice-box">
+        <strong>Local Cloud Security & Persistence:</strong> All client communications and file data are transferred using LinNAS end-to-end encryption. Unsafe path traversal (`../`) is strictly blocked. When a file is modified or deleted, the server creates timestamped copies in <code>/RecycleBin</code> and tracks rollback history inside <code>.cloud_meta/</code>.
+    </div>
+
+    <!-- Storage Directory & Control Section -->
+    <div class="section">
+        <div class="section-title">
+            <span>Cloud Service Configuration</span>
+            <button id="toggleServiceBtn" class="btn" onclick="toggleCloudService()">
+                ▶️ Start Service
+            </button>
+        </div>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Storage Root Directory</label>
+                <div class="path-input-group">
+                    <input type="text" id="cloudFolderInput" placeholder="/home/username/Cloud or /mnt/storage/cloud">
+                    <button class="btn btn-secondary" onclick="openFolderBrowser()">📂 Browse...</button>
+                </div>
+            </div>
+            <div>
+                <button class="btn btn-secondary" onclick="saveFolderConfig()">💾 Save Folder</button>
+            </div>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-card">
+                <div class="info-label">Service Status</div>
+                <div class="info-value" id="infoStatus">Stopped</div>
+            </div>
+            <div class="info-card">
+                <div class="info-label">Drive Volume UUID</div>
+                <div class="info-value" id="infoUUID">--</div>
+            </div>
+            <div class="info-card">
+                <div class="info-label">Active File Locks</div>
+                <div class="info-value" id="infoLocks">0 in-use</div>
+            </div>
+            <div class="info-card">
+                <div class="info-label">Server MAC ID</div>
+                <div class="info-value" id="infoMAC">--</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Files & Cloud Directory Preview -->
+    <div class="section">
+        <div class="section-title">
+            <span>Cloud Storage Browser</span>
+            <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;" onclick="loadCloudFiles()">🔄 Refresh</button>
+        </div>
+        <div id="fileTableContainer">
+            <p style="color: #8b949e; font-size: 0.9rem;" id="noFilesMsg">Service stopped or no files found.</p>
+            <table id="cloudFileTable" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Path</th>
+                        <th>Size</th>
+                        <th>Last Modified</th>
+                        <th>Checksum (SHA-256)</th>
+                    </tr>
+                </thead>
+                <tbody id="cloudFileTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Folder Browser Modal with New Folder Button -->
+    <div id="folderModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Select Cloud Root Directory</h3>
+                <span style="cursor:pointer; font-size: 1.5rem; color:#8b949e;" onclick="closeFolderBrowser()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                    <div style="font-size: 0.85rem; color: #8b949e; word-break: break-all;">
+                        Current: <strong id="modalPath" style="color: #58a6ff;">/</strong>
+                    </div>
+                    <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;" onclick="createNewFolder()">
+                        ➕ New Folder
+                    </button>
+                </div>
+                <div id="fileList" class="file-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeFolderBrowser()">Cancel</button>
+                <button class="btn" onclick="selectCurrentFolder()">Select Current Folder</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentBrowserPath = '/';
+        let isServiceRunning = false;
+        let lastActivityTimestamp = 0;
+
+        async function initCloudUI() {
+            await refreshStatus();
+            setInterval(refreshStatus, 3000);
+        }
+
+        async function refreshStatus() {
+            try {
+                const res = await fetch('/api/cloud/status');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                isServiceRunning = data.enabled && data.folder_exists && data.uuid_matches;
+
+                // Update Status Badge
+                const badge = document.getElementById('serviceBadge');
+                const toggleBtn = document.getElementById('toggleServiceBtn');
+                const statusText = document.getElementById('infoStatus');
+
+                if (isServiceRunning) {
+                    badge.className = 'status-badge status-online';
+                    badge.innerHTML = '<span class="status-dot dot-green"></span><span>Online</span>';
+                    toggleBtn.className = 'btn btn-danger';
+                    toggleBtn.innerHTML = '⏹️ Stop Service';
+                    statusText.innerText = 'Online / Serving';
+                    statusText.style.color = '#3fb950';
+                } else {
+                    badge.className = 'status-badge status-offline';
+                    let label = 'Stopped';
+                    if (data.enabled && !data.folder_exists) label = 'Folder Missing';
+                    if (data.enabled && !data.uuid_matches) label = 'UUID Mismatch';
+                    badge.innerHTML = `<span class="status-dot dot-red"></span><span>${label}</span>`;
+                    toggleBtn.className = 'btn';
+                    toggleBtn.innerHTML = '▶️ Start Service';
+                    statusText.innerText = label;
+                    statusText.style.color = '#f85149';
+                }
+
+                // Inputs and stats
+                if (!document.getElementById('cloudFolderInput').value && data.folder) {
+                    document.getElementById('cloudFolderInput').value = data.folder;
+                }
+                document.getElementById('infoUUID').innerText = data.current_uuid || data.configured_uuid || '--';
+                document.getElementById('infoLocks').innerText = `${data.active_file_locks || 0} in-use`;
+                document.getElementById('infoMAC').innerText = data.server_mac || '--';
+
+                // Activity LED flicker
+                const lanLed = document.getElementById('lanLed');
+                const hddLed = document.getElementById('hddLed');
+                if (data.activity_flicker) {
+                    lanLed.classList.add('active-lan');
+                    hddLed.classList.add('active-hdd');
+                    setTimeout(() => {
+                        lanLed.classList.remove('active-lan');
+                        hddLed.classList.remove('active-hdd');
+                    }, 500);
+                }
+
+                if (isServiceRunning && document.getElementById('cloudFileTable').style.display === 'none') {
+                    loadCloudFiles();
+                }
+            } catch (err) {
+                console.error('Error fetching cloud status:', err);
+            }
+        }
+
+        async function saveFolderConfig() {
+            const folder = document.getElementById('cloudFolderInput').value.trim();
+            if (!folder) {
+                alert('Please enter or select a folder path.');
+                return;
+            }
+
+            try {
+                const encBody = await encryptPayload({ folder: folder });
+                const res = await fetch('/api/cloud/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('Cloud folder configuration saved.');
+                    await refreshStatus();
+                } else {
+                    alert('Failed to save folder: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Request failed: ' + err.message);
+            }
+        }
+
+        async function toggleCloudService() {
+            const newTargetState = !isServiceRunning;
+            const folder = document.getElementById('cloudFolderInput').value.trim();
+
+            if (newTargetState && !folder) {
+                alert('Please select or specify a root storage folder first.');
+                return;
+            }
+
+            try {
+                const encBody = await encryptPayload({
+                    folder: folder,
+                    enabled: newTargetState
+                });
+                const res = await fetch('/api/cloud/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    await refreshStatus();
+                    if (newTargetState) {
+                        loadCloudFiles();
+                    } else {
+                        document.getElementById('cloudFileTable').style.display = 'none';
+                        document.getElementById('noFilesMsg').style.display = 'block';
+                        document.getElementById('noFilesMsg').innerText = 'Service stopped.';
+                    }
+                } else {
+                    alert('Operation failed: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Request failed: ' + err.message);
+            }
+        }
+
+        async function loadCloudFiles() {
+            if (!isServiceRunning) return;
+            try {
+                const res = await fetch('/api/cloud/list?recursive=true');
+                if (!res.ok) {
+                    document.getElementById('cloudFileTable').style.display = 'none';
+                    document.getElementById('noFilesMsg').style.display = 'block';
+                    document.getElementById('noFilesMsg').innerText = 'Could not read directory items.';
+                    return;
+                }
+                const data = await res.json();
+                const tbody = document.getElementById('cloudFileTableBody');
+                tbody.innerHTML = '';
+
+                if (!data.items || data.items.length === 0) {
+                    document.getElementById('cloudFileTable').style.display = 'none';
+                    document.getElementById('noFilesMsg').style.display = 'block';
+                    document.getElementById('noFilesMsg').innerText = 'No files synced yet. Storage folder is empty.';
+                    return;
+                }
+
+                document.getElementById('cloudFileTable').style.display = 'table';
+                document.getElementById('noFilesMsg').style.display = 'none';
+
+                data.items.forEach(item => {
+                    const tr = document.createElement('tr');
+                    const icon = item.is_dir ? '📁' : '📄';
+                    const isRecycle = item.rel_path.startsWith('RecycleBin');
+                    const badgeHtml = isRecycle ? '<span class="badge badge-recycle">RecycleBin</span> ' : '';
+
+                    tr.innerHTML = `
+                        <td>${icon} ${item.name}</td>
+                        <td>${badgeHtml}${item.rel_path}</td>
+                        <td>${item.is_dir ? '--' : formatBytes(item.size)}</td>
+                        <td>${new Date(item.mod_time * 1000).toLocaleString()}</td>
+                        <td style="font-family: monospace; font-size: 0.8rem; color: #8b949e;">${item.sha256 ? item.sha256.substring(0, 16) + '...' : '--'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error('Error loading cloud files:', err);
+            }
+        }
+
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Folder Browser Logic
+        async function openFolderBrowser(path) {
+            currentBrowserPath = path || document.getElementById('cloudFolderInput').value.trim() || '/';
+            document.getElementById('modalPath').innerText = currentBrowserPath;
+            document.getElementById('folderModal').style.display = 'block';
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentBrowserPath)}`);
+                const data = await res.json();
+                const container = document.getElementById('fileList');
+                container.innerHTML = '';
+
+                if (data.parent && data.parent !== currentBrowserPath) {
+                    const upDiv = document.createElement('div');
+                    upDiv.className = 'file-item';
+                    upDiv.innerHTML = '📁 .. (Parent Directory)';
+                    upDiv.onclick = () => openFolderBrowser(data.parent);
+                    container.appendChild(upDiv);
+                }
+
+                if (data.items) {
+                    data.items.forEach(item => {
+                        if (item.is_dir) {
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = 'file-item';
+                            itemDiv.innerHTML = '📁 ' + item.name;
+                            itemDiv.onclick = () => openFolderBrowser(item.path);
+                            container.appendChild(itemDiv);
+                        }
+                    });
+                }
+            } catch (err) {
+                alert('Directory listing error: ' + err.message);
+            }
+        }
+
+        async function createNewFolder() {
+            const folderName = prompt(`Create new folder inside ${currentBrowserPath}:`);
+            if (!folderName) return;
+
+            const cleanFolder = folderName.trim().replace(/[^a-zA-Z0-9_\-]/g, '_');
+            const targetPath = (currentBrowserPath === '/' ? '' : currentBrowserPath) + '/' + cleanFolder;
+
+            try {
+                const res = await fetch('/api/fs/mkdir', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: targetPath })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    openFolderBrowser(currentBrowserPath);
+                } else {
+                    alert('Failed to create folder: ' + data.error);
+                }
+            } catch (err) {
+                alert('Failed to create folder: ' + err.message);
+            }
+        }
+
+        function selectCurrentFolder() {
+            document.getElementById('cloudFolderInput').value = currentBrowserPath;
+            closeFolderBrowser();
+        }
+
+        function closeFolderBrowser() {
+            document.getElementById('folderModal').style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('folderModal');
+            if (event.target === modal) {
+                closeFolderBrowser();
+            }
+        };
+
+        window.onload = initCloudUI;
+    </script>
+</body>
+</html>

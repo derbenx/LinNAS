@@ -1,0 +1,2 @@
+<p><strong>Local Cloud Server</strong></p>
+<p>Run a private encrypted local cloud storage service. Manage the local cloud sync root folder, browse server paths, create folders, and start or stop the service. Features safe path traversal prevention, in-memory open file locking to prevent race conflicts, older-file conflict detection with rollback, automatic RecycleBin versioning, and mirrored metadata indexing (.cloud-[mac].json).</p>

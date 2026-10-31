@@ -1,0 +1,8 @@
+{
+  "id": "cloud",
+  "name": "Local Cloud",
+  "description": "Local cloud file server supporting encrypted file synchronization, folder management, date versioning, and RecycleBin history",
+  "category": "Storage",
+  "default": true,
+  "commands": {}
+}

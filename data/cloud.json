@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "folder": "/tmp/TestLocalCloudEncryptedPayloadRoundtrip1219207369/001",
+  "volume_uuid": "overlayfs:/overlay/root",
+  "updated_at": "2026-10-31T22:15:30Z"
+}

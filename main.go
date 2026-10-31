@@ -17,6 +17,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -124,7 +125,48 @@ var (
 	noncesMu      sync.Mutex
 	// Prohibit shell metacharacters $, `, |, &, ;, <, >, (, ), \, *, ?, newlines \r \n
 	safeVarReg    = regexp.MustCompile(`^[a-zA-Z0-9_\-\.\/\:\ \@\!\#\%\^\=\+\{\}\[\]\~\t]+$`)
+
+	cloudConfigMu sync.RWMutex
+	cloudConfig   CloudConfig
+	cloudFileLocks   = make(map[string]bool)
+	cloudFileLocksMu sync.Mutex
+	cloudActivityMu  sync.RWMutex
+	cloudLastActivity time.Time
 )
+
+type CloudConfig struct {
+	Enabled    bool   `json:"enabled"`
+	Folder     string `json:"folder"`
+	VolumeUUID string `json:"volume_uuid"`
+	UpdatedAt  string `json:"updated_at,omitempty"`
+}
+
+type CloudMetaFile struct {
+	Path        string `json:"path"`
+	Size        int64  `json:"size"`
+	ModTime     int64  `json:"mod_time"`
+	SHA256      string `json:"sha256"`
+	LastUpdated string `json:"last_updated"`
+}
+
+type CloudHistoryEntry struct {
+	Action      string `json:"action"` // "overwrite", "delete", "conflict_reject"
+	OrigPath    string `json:"orig_path"`
+	BackupPath  string `json:"backup_path,omitempty"`
+	Timestamp   string `json:"timestamp"`
+	ModTime     int64  `json:"mod_time,omitempty"`
+	Size        int64  `json:"size,omitempty"`
+	Details     string `json:"details,omitempty"`
+}
+
+type CloudDirMeta struct {
+	Directory   string                       `json:"directory"`
+	ServerMAC   string                       `json:"server_mac"`
+	VolumeUUID  string                       `json:"volume_uuid"`
+	LastScan    string                       `json:"last_scan"`
+	Files       map[string]CloudMetaFile     `json:"files"`
+	History     []CloudHistoryEntry          `json:"history"`
+}
 
 func initRSAKeys() {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -175,59 +217,85 @@ func checkNonceAndTimestamp(nonce string, timestamp int64) error {
 	return nil
 }
 
-func decryptPayload(body []byte) ([]byte, error) {
+func decryptPayloadWithKey(body []byte) ([]byte, []byte, error) {
 	var encPayload EncryptedPayload
 	if err := json.Unmarshal(body, &encPayload); err != nil || encPayload.EncryptedKey == "" {
 		// Return unencrypted raw body if payload isn't encrypted
-		return body, nil
+		return body, nil, nil
 	}
 
 	if err := checkNonceAndTimestamp(encPayload.Nonce, encPayload.Timestamp); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	keyBytes, err := base64.StdEncoding.DecodeString(encPayload.EncryptedKey)
 	if err != nil {
-		return nil, fmt.Errorf("invalid base64 encrypted_key")
+		return nil, nil, fmt.Errorf("invalid base64 encrypted_key")
 	}
 
 	// Decrypt AES key with RSA private key
 	aesKey, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, rsaPrivateKey, keyBytes, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt AES key with RSA: %v", err)
+		return nil, nil, fmt.Errorf("failed to decrypt AES key with RSA: %v", err)
 	}
 
 	dataBytes, err := base64.StdEncoding.DecodeString(encPayload.EncryptedData)
 	if err != nil {
-		return nil, fmt.Errorf("invalid base64 encrypted_data")
+		return nil, nil, fmt.Errorf("invalid base64 encrypted_data")
 	}
 
 	if len(dataBytes) < 12 {
-		return nil, fmt.Errorf("encrypted_data payload too short for AES-GCM nonce")
+		return nil, nil, fmt.Errorf("encrypted_data payload too short for AES-GCM nonce")
 	}
 
 	block, err := aes.NewCipher(aesKey)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	nonceSize := gcm.NonceSize()
 	if len(dataBytes) < nonceSize {
-		return nil, fmt.Errorf("ciphertext too short")
+		return nil, nil, fmt.Errorf("ciphertext too short")
 	}
 
 	aesNonce, ciphertext := dataBytes[:nonceSize], dataBytes[nonceSize:]
 	plaintext, err := gcm.Open(nil, aesNonce, ciphertext, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt AES-GCM data: %v", err)
+		return nil, nil, fmt.Errorf("failed to decrypt AES-GCM data: %v", err)
 	}
 
-	return plaintext, nil
+	return plaintext, aesKey, nil
+}
+
+func decryptPayload(body []byte) ([]byte, error) {
+	plaintext, _, err := decryptPayloadWithKey(body)
+	return plaintext, err
+}
+
+func encryptResponseWithAES(aesKey []byte, data []byte) (map[string]interface{}, error) {
+	block, err := aes.NewCipher(aesKey)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+	ciphertext := gcm.Seal(nil, nonce, data, nil)
+	combined := append(nonce, ciphertext...)
+	return map[string]interface{}{
+		"encrypted":      true,
+		"encrypted_data": base64.StdEncoding.EncodeToString(combined),
+	}, nil
 }
 
 func hashPassword(pwd string) string {
@@ -2192,6 +2260,8 @@ func main() {
 		syncSystemConfigs("smb", smbBytes)
 	}
 
+	loadCloudConfig()
+
 	mux := http.NewServeMux()
 
 	// API Endpoints protected by authMiddleware
@@ -2287,6 +2357,15 @@ func main() {
 	mux.HandleFunc("/api/cron/run", authMiddleware(handleCronRun))
 	mux.HandleFunc("/api/cron/stop", authMiddleware(handleCronStop))
 	mux.HandleFunc("/api/dns/convert", authMiddleware(handleDNSConvert))
+
+	// Local Cloud endpoints
+	mux.HandleFunc("/api/cloud/status", authMiddleware(handleCloudStatus))
+	mux.HandleFunc("/api/cloud/config", authMiddleware(handleCloudConfig))
+	mux.HandleFunc("/api/cloud/list", authMiddleware(handleCloudList))
+	mux.HandleFunc("/api/cloud/save", authMiddleware(handleCloudSave))
+	mux.HandleFunc("/api/cloud/load", authMiddleware(handleCloudLoad))
+	mux.HandleFunc("/api/cloud/delete", authMiddleware(handleCloudDelete))
+	mux.HandleFunc("/api/cloud/mkdir", authMiddleware(handleCloudMkdir))
 	mux.HandleFunc("/api/settings/get", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, map[string]interface{}{
 			"port":            appConfig.Port,
@@ -2741,4 +2820,948 @@ func handleCronStop(w http.ResponseWriter, r *http.Request) {
 
 	_ = cmd.Process.Kill()
 	jsonResponse(w, map[string]interface{}{"success": true, "message": "Process terminated"})
+}
+
+// ---------------------------------------------------------
+// Local Cloud Server Plugin Logic & Endpoints
+// ---------------------------------------------------------
+
+func loadCloudConfig() {
+	cloudConfigMu.Lock()
+	defer cloudConfigMu.Unlock()
+	b, err := os.ReadFile("data/cloud.json")
+	if err == nil && len(b) > 0 {
+		var cfg CloudConfig
+		if err := json.Unmarshal(b, &cfg); err == nil {
+			cloudConfig = cfg
+		}
+	}
+}
+
+func saveCloudConfig(cfg CloudConfig) error {
+	cloudConfigMu.Lock()
+	defer cloudConfigMu.Unlock()
+	cfg.UpdatedAt = time.Now().Format(time.RFC3339)
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	_ = os.MkdirAll("data", 0755)
+	if err := os.WriteFile("data/cloud.json", b, 0644); err != nil {
+		return err
+	}
+	cloudConfig = cfg
+	return nil
+}
+
+func getPrimaryMAC() string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "unknown"
+	}
+	// Prefer non-loopback up interfaces with hardware address
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback == 0 && iface.Flags&net.FlagUp != 0 && len(iface.HardwareAddr) > 0 {
+			mac := strings.ToLower(strings.ReplaceAll(iface.HardwareAddr.String(), ":", ""))
+			if mac != "" {
+				return mac
+			}
+		}
+	}
+	// Fallback to any interface with MAC
+	for _, iface := range ifaces {
+		if len(iface.HardwareAddr) > 0 {
+			mac := strings.ToLower(strings.ReplaceAll(iface.HardwareAddr.String(), ":", ""))
+			if mac != "" {
+				return mac
+			}
+		}
+	}
+	return "000000000000"
+}
+
+func getVolumeUUID(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "unknown"
+	}
+	out, err := exec.Command("df", "-P", abs).CombinedOutput()
+	if err != nil {
+		return "unknown"
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) < 2 {
+		return "unknown"
+	}
+	fields := strings.Fields(lines[len(lines)-1])
+	if len(fields) < 6 {
+		return "unknown"
+	}
+	dev := fields[0]
+	cmd := exec.Command("lsblk", "-no", "UUID", dev)
+	uuidOut, err := cmd.Output()
+	uuid := strings.TrimSpace(string(uuidOut))
+	if err == nil && uuid != "" {
+		return uuid
+	}
+	return dev
+}
+
+func recordCloudActivity() {
+	cloudActivityMu.Lock()
+	cloudLastActivity = time.Now()
+	cloudActivityMu.Unlock()
+}
+
+func acquireCloudFileLock(relPath string) bool {
+	clean := filepath.Clean(relPath)
+	cloudFileLocksMu.Lock()
+	defer cloudFileLocksMu.Unlock()
+	if cloudFileLocks[clean] {
+		return false
+	}
+	cloudFileLocks[clean] = true
+	return true
+}
+
+func releaseCloudFileLock(relPath string) {
+	clean := filepath.Clean(relPath)
+	cloudFileLocksMu.Lock()
+	defer cloudFileLocksMu.Unlock()
+	delete(cloudFileLocks, clean)
+}
+
+func safeCloudPath(rootFolder, userRelPath string) (string, string, error) {
+	trimmed := strings.TrimSpace(userRelPath)
+	if strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "\\") || filepath.IsAbs(trimmed) {
+		return "", "", fmt.Errorf("absolute path forbidden, relative path required: %s", userRelPath)
+	}
+
+	cleanRel := filepath.Clean(trimmed)
+	cleanRel = strings.TrimPrefix(cleanRel, "/")
+	cleanRel = strings.TrimPrefix(cleanRel, "\\")
+	if cleanRel == "." || cleanRel == "" {
+		cleanRel = ""
+	}
+	if strings.HasPrefix(cleanRel, "..") || strings.Contains(cleanRel, "/../") || strings.Contains(cleanRel, `\..\`) {
+		return "", "", fmt.Errorf("path traversal forbidden: %s", userRelPath)
+	}
+
+	absRoot, err := filepath.Abs(rootFolder)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid cloud root directory: %v", err)
+	}
+
+	target := filepath.Join(absRoot, cleanRel)
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid path: %v", err)
+	}
+
+	if absTarget != absRoot && !strings.HasPrefix(absTarget, absRoot+string(filepath.Separator)) {
+		return "", "", fmt.Errorf("path traversal escape detected: %s", userRelPath)
+	}
+
+	// Forbid access to internal metadata
+	if strings.HasPrefix(cleanRel, ".cloud_meta") || strings.Contains(cleanRel, "/.cloud_meta") || strings.Contains(cleanRel, `\.cloud_meta`) {
+		return "", "", fmt.Errorf("access to internal metadata directory forbidden")
+	}
+
+	return absTarget, cleanRel, nil
+}
+
+func getCloudMetaFilePath(rootFolder, relSubdir string) string {
+	mac := getPrimaryMAC()
+	filename := fmt.Sprintf(".cloud-%s.json", mac)
+	metaDir := filepath.Join(rootFolder, ".cloud_meta")
+	if relSubdir != "" && relSubdir != "." {
+		metaDir = filepath.Join(metaDir, relSubdir)
+	}
+	return filepath.Join(metaDir, filename)
+}
+
+func loadCloudDirMeta(rootFolder, relSubdir string) CloudDirMeta {
+	metaFile := getCloudMetaFilePath(rootFolder, relSubdir)
+	var meta CloudDirMeta
+	meta.Directory = relSubdir
+	meta.ServerMAC = getPrimaryMAC()
+	meta.VolumeUUID = getVolumeUUID(rootFolder)
+	meta.Files = make(map[string]CloudMetaFile)
+	meta.History = make([]CloudHistoryEntry, 0)
+
+	b, err := os.ReadFile(metaFile)
+	if err == nil && len(b) > 0 {
+		_ = json.Unmarshal(b, &meta)
+		if meta.Files == nil {
+			meta.Files = make(map[string]CloudMetaFile)
+		}
+		if meta.History == nil {
+			meta.History = make([]CloudHistoryEntry, 0)
+		}
+	}
+	return meta
+}
+
+func saveCloudDirMeta(rootFolder, relSubdir string, meta CloudDirMeta) error {
+	metaFile := getCloudMetaFilePath(rootFolder, relSubdir)
+	_ = os.MkdirAll(filepath.Dir(metaFile), 0755)
+	meta.LastScan = time.Now().Format(time.RFC3339)
+	b, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(metaFile, b, 0644)
+}
+
+func calculateFileSHA256(filePath string) string {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func sendCloudJSONResponse(w http.ResponseWriter, r *http.Request, aesKey []byte, data interface{}) {
+	rawJSON, err := json.Marshal(data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(aesKey) > 0 {
+		encResp, err := encryptResponseWithAES(aesKey, rawJSON)
+		if err == nil {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(encResp)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(rawJSON)
+}
+
+// HTTP Handlers for Local Cloud Server
+
+func handleCloudStatus(w http.ResponseWriter, r *http.Request) {
+	recordCloudActivity()
+	cloudConfigMu.RLock()
+	cfg := cloudConfig
+	cloudConfigMu.RUnlock()
+
+	cloudActivityMu.RLock()
+	lastAct := cloudLastActivity
+	cloudActivityMu.RUnlock()
+
+	activeSecondsAgo := -1
+	if !lastAct.IsZero() {
+		activeSecondsAgo = int(time.Since(lastAct).Seconds())
+	}
+
+	currentUUID := ""
+	folderExists := false
+	if cfg.Folder != "" {
+		if fi, err := os.Stat(cfg.Folder); err == nil && fi.IsDir() {
+			folderExists = true
+			currentUUID = getVolumeUUID(cfg.Folder)
+		}
+	}
+
+	cloudFileLocksMu.Lock()
+	activeLocksCount := len(cloudFileLocks)
+	cloudFileLocksMu.Unlock()
+
+	mac := getPrimaryMAC()
+
+	jsonResponse(w, map[string]interface{}{
+		"success":            true,
+		"enabled":            cfg.Enabled,
+		"folder":             cfg.Folder,
+		"folder_exists":      folderExists,
+		"configured_uuid":    cfg.VolumeUUID,
+		"current_uuid":       currentUUID,
+		"uuid_matches":       cfg.VolumeUUID == "" || cfg.VolumeUUID == currentUUID,
+		"server_mac":         mac,
+		"active_file_locks":  activeLocksCount,
+		"last_activity_sec":  activeSecondsAgo,
+		"activity_flicker":   activeSecondsAgo >= 0 && activeSecondsAgo < 3,
+	})
+}
+
+func handleCloudConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	decryptedBody, aesKey, err := decryptPayloadWithKey(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Folder  *string `json:"folder"`
+		Enabled *bool   `json:"enabled"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil {
+		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+		return
+	}
+
+	cloudConfigMu.RLock()
+	newCfg := cloudConfig
+	cloudConfigMu.RUnlock()
+
+	if req.Folder != nil {
+		folderPath := strings.TrimSpace(*req.Folder)
+		if folderPath != "" {
+			absFolder, err := filepath.Abs(folderPath)
+			if err != nil {
+				jsonResponse(w, map[string]interface{}{"success": false, "error": "Invalid folder path"})
+				return
+			}
+			fi, err := os.Stat(absFolder)
+			if err != nil || !fi.IsDir() {
+				jsonResponse(w, map[string]interface{}{"success": false, "error": "Folder does not exist or is not a directory"})
+				return
+			}
+			newCfg.Folder = absFolder
+			newCfg.VolumeUUID = getVolumeUUID(absFolder)
+		}
+	}
+
+	if req.Enabled != nil {
+		newCfg.Enabled = *req.Enabled
+		// If starting, ensure folder is configured and exists
+		if newCfg.Enabled {
+			if newCfg.Folder == "" {
+				jsonResponse(w, map[string]interface{}{"success": false, "error": "Cannot start cloud: no folder configured"})
+				return
+			}
+			fi, err := os.Stat(newCfg.Folder)
+			if err != nil || !fi.IsDir() {
+				newCfg.Enabled = false
+				_ = saveCloudConfig(newCfg)
+				jsonResponse(w, map[string]interface{}{"success": false, "error": "Cannot start cloud: folder does not exist or drive unmounted"})
+				return
+			}
+			// Verify volume UUID
+			curUUID := getVolumeUUID(newCfg.Folder)
+			if newCfg.VolumeUUID != "" && curUUID != "" && newCfg.VolumeUUID != curUUID {
+				newCfg.Enabled = false
+				_ = saveCloudConfig(newCfg)
+				jsonResponse(w, map[string]interface{}{"success": false, "error": fmt.Sprintf("Volume UUID mismatch (%s vs %s). Drive may have changed.", curUUID, newCfg.VolumeUUID)})
+				return
+			}
+			if newCfg.VolumeUUID == "" {
+				newCfg.VolumeUUID = curUUID
+			}
+		}
+	}
+
+	if err := saveCloudConfig(newCfg); err != nil {
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+		"success":     true,
+		"enabled":     newCfg.Enabled,
+		"folder":      newCfg.Folder,
+		"volume_uuid": newCfg.VolumeUUID,
+	})
+}
+
+// verifyCloudServiceActive checks if the cloud service is enabled, folder exists and UUID matches
+func verifyCloudServiceActive() (string, error) {
+	cloudConfigMu.RLock()
+	cfg := cloudConfig
+	cloudConfigMu.RUnlock()
+
+	if !cfg.Enabled {
+		return "", fmt.Errorf("cloud service is stopped")
+	}
+	if cfg.Folder == "" {
+		return "", fmt.Errorf("cloud root folder not configured")
+	}
+	fi, err := os.Stat(cfg.Folder)
+	if err != nil || !fi.IsDir() {
+		return "", fmt.Errorf("cloud storage drive is offline or folder missing")
+	}
+	curUUID := getVolumeUUID(cfg.Folder)
+	if cfg.VolumeUUID != "" && curUUID != "" && cfg.VolumeUUID != curUUID {
+		return "", fmt.Errorf("storage volume UUID mismatch (configured: %s, found: %s)", cfg.VolumeUUID, curUUID)
+	}
+	return cfg.Folder, nil
+}
+
+func handleCloudList(w http.ResponseWriter, r *http.Request) {
+	recordCloudActivity()
+	rootFolder, err := verifyCloudServiceActive()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error(), "cloud_stopped": true})
+		return
+	}
+
+	relPath := r.URL.Query().Get("path")
+	recursive := r.URL.Query().Get("recursive") == "true" || r.URL.Query().Get("all") == "true"
+
+	targetDir, cleanRel, err := safeCloudPath(rootFolder, relPath)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	fi, err := os.Stat(targetDir)
+	if err != nil || !fi.IsDir() {
+		w.WriteHeader(http.StatusNotFound)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": "directory not found"})
+		return
+	}
+
+	type CloudItem struct {
+		Name    string `json:"name"`
+		RelPath string `json:"rel_path"`
+		IsDir   bool   `json:"is_dir"`
+		Size    int64  `json:"size"`
+		ModTime int64  `json:"mod_time"`
+		SHA256  string `json:"sha256,omitempty"`
+	}
+
+	var items []CloudItem
+
+	if recursive {
+		err = filepath.Walk(targetDir, func(p string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return nil
+			}
+			relFromRoot, _ := filepath.Rel(rootFolder, p)
+			if relFromRoot == "." || relFromRoot == "" {
+				return nil
+			}
+			// Skip internal metadata folder
+			if strings.HasPrefix(relFromRoot, ".cloud_meta") || filepath.Base(p) == ".cloud_meta" {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.HasPrefix(filepath.Base(p), ".cloud-") && strings.HasSuffix(filepath.Base(p), ".json") {
+				return nil
+			}
+
+			item := CloudItem{
+				Name:    info.Name(),
+				RelPath: filepath.ToSlash(relFromRoot),
+				IsDir:   info.IsDir(),
+				Size:    info.Size(),
+				ModTime: info.ModTime().Unix(),
+			}
+			items = append(items, item)
+			return nil
+		})
+	} else {
+		entries, readErr := os.ReadDir(targetDir)
+		if readErr != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			jsonResponse(w, map[string]interface{}{"success": false, "error": readErr.Error()})
+			return
+		}
+
+		dirMeta := loadCloudDirMeta(rootFolder, cleanRel)
+		updatedMeta := false
+
+		for _, e := range entries {
+			name := e.Name()
+			if name == ".cloud_meta" || (strings.HasPrefix(name, ".cloud-") && strings.HasSuffix(name, ".json")) {
+				continue
+			}
+			itemPath := filepath.Join(targetDir, name)
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			itemRel := filepath.ToSlash(filepath.Join(cleanRel, name))
+			sha := ""
+			if !info.IsDir() {
+				if cached, ok := dirMeta.Files[name]; ok && cached.ModTime == info.ModTime().Unix() && cached.Size == info.Size() && cached.SHA256 != "" {
+					sha = cached.SHA256
+				} else {
+					sha = calculateFileSHA256(itemPath)
+					dirMeta.Files[name] = CloudMetaFile{
+						Path:        itemRel,
+						Size:        info.Size(),
+						ModTime:     info.ModTime().Unix(),
+						SHA256:      sha,
+						LastUpdated: time.Now().Format(time.RFC3339),
+					}
+					updatedMeta = true
+				}
+			}
+
+			items = append(items, CloudItem{
+				Name:    name,
+				RelPath: itemRel,
+				IsDir:   info.IsDir(),
+				Size:    info.Size(),
+				ModTime: info.ModTime().Unix(),
+				SHA256:  sha,
+			})
+		}
+		if updatedMeta {
+			_ = saveCloudDirMeta(rootFolder, cleanRel, dirMeta)
+		}
+	}
+
+	jsonResponse(w, map[string]interface{}{
+		"success":   true,
+		"path":      cleanRel,
+		"items":     items,
+		"timestamp": time.Now().Unix(),
+	})
+}
+
+func handleCloudSave(w http.ResponseWriter, r *http.Request) {
+	recordCloudActivity()
+	rootFolder, err := verifyCloudServiceActive()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error(), "cloud_stopped": true})
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	decryptedBody, aesKey, err := decryptPayloadWithKey(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Path        string `json:"path"`
+		ContentB64  string `json:"content_b64"`
+		ContentText string `json:"content_text"`
+		ModTime     int64  `json:"mod_time"`
+		Force       bool   `json:"force"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.Path == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": "invalid payload or missing path"})
+		return
+	}
+
+	targetFile, cleanRel, err := safeCloudPath(rootFolder, req.Path)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	// Acquire file lock
+	if !acquireCloudFileLock(cleanRel) {
+		w.WriteHeader(http.StatusConflict) // 409 Conflict / busy
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+			"success": false,
+			"error":   "file is currently open or in use by another operation",
+			"status":  "busy",
+			"path":    cleanRel,
+		})
+		return
+	}
+	defer releaseCloudFileLock(cleanRel)
+
+	// Decode incoming content
+	var fileData []byte
+	if req.ContentB64 != "" {
+		b, err := base64.StdEncoding.DecodeString(req.ContentB64)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": "invalid base64 content"})
+			return
+		}
+		fileData = b
+	} else {
+		fileData = []byte(req.ContentText)
+	}
+
+	relDir := filepath.Dir(cleanRel)
+	if relDir == "." {
+		relDir = ""
+	}
+	baseName := filepath.Base(cleanRel)
+	dirMeta := loadCloudDirMeta(rootFolder, relDir)
+
+	// Check if file already exists
+	existingInfo, err := os.Stat(targetFile)
+	if err == nil && !existingInfo.IsDir() {
+		existingModTime := existingInfo.ModTime().Unix()
+
+		// Date comparison: if incoming file is older than server's file and not forced
+		if req.ModTime > 0 && req.ModTime < existingModTime && !req.Force {
+			// Save the attempted older upload to RecycleBin
+			dateTag := time.Now().Format("2006-01-02_150405")
+			olderBackupName := fmt.Sprintf("%s.rejected_older.%s", baseName, dateTag)
+			recycleDir := filepath.Join(rootFolder, "RecycleBin", relDir)
+			_ = os.MkdirAll(recycleDir, 0755)
+			olderBackupPath := filepath.Join(recycleDir, olderBackupName)
+			_ = os.WriteFile(olderBackupPath, fileData, 0644)
+
+			// Record history in metadata
+			dirMeta.History = append(dirMeta.History, CloudHistoryEntry{
+				Action:     "conflict_reject",
+				OrigPath:   cleanRel,
+				BackupPath: filepath.ToSlash(filepath.Join("RecycleBin", relDir, olderBackupName)),
+				Timestamp:  time.Now().Format(time.RFC3339),
+				ModTime:    req.ModTime,
+				Size:       int64(len(fileData)),
+				Details:    fmt.Sprintf("Client attempted older upload (client: %d vs server: %d). Saved to RecycleBin.", req.ModTime, existingModTime),
+			})
+			_ = saveCloudDirMeta(rootFolder, relDir, dirMeta)
+
+			// Read server's current (newer) file to return to client
+			serverData, readErr := os.ReadFile(targetFile)
+			serverB64 := ""
+			if readErr == nil {
+				serverB64 = base64.StdEncoding.EncodeToString(serverData)
+			}
+
+			w.WriteHeader(http.StatusConflict) // 409
+			sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+				"success":           false,
+				"status":            "conflict_older_version",
+				"error":             "Server has a newer version of this file. Incoming older file backed up to RecycleBin.",
+				"server_mod_time":   existingModTime,
+				"client_mod_time":   req.ModTime,
+				"server_size":       existingInfo.Size(),
+				"server_sha256":     calculateFileSHA256(targetFile),
+				"server_file_b64":   serverB64,
+				"saved_recycle_bin": filepath.ToSlash(filepath.Join("RecycleBin", relDir, olderBackupName)),
+			})
+			return
+		}
+
+		// Overwrite case: Move existing version into RecycleBin
+		dateTag := existingInfo.ModTime().Format("2006-01-02_150405")
+		backupName := fmt.Sprintf("%s.%s", baseName, dateTag)
+		recycleDir := filepath.Join(rootFolder, "RecycleBin", relDir)
+		_ = os.MkdirAll(recycleDir, 0755)
+		backupPath := filepath.Join(recycleDir, backupName)
+
+		// Copy existing file to RecycleBin
+		if existingData, readErr := os.ReadFile(targetFile); readErr == nil {
+			_ = os.WriteFile(backupPath, existingData, 0644)
+			dirMeta.History = append(dirMeta.History, CloudHistoryEntry{
+				Action:     "overwrite",
+				OrigPath:   cleanRel,
+				BackupPath: filepath.ToSlash(filepath.Join("RecycleBin", relDir, backupName)),
+				Timestamp:  time.Now().Format(time.RFC3339),
+				ModTime:    existingModTime,
+				Size:       existingInfo.Size(),
+				Details:    "Overwritten by newer file save",
+			})
+		}
+	}
+
+	// Ensure parent directory exists
+	_ = os.MkdirAll(filepath.Dir(targetFile), 0755)
+
+	// Write new file
+	if err := os.WriteFile(targetFile, fileData, 0644); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": fmt.Sprintf("failed to write file: %v", err)})
+		return
+	}
+
+	// Update mod time if specified
+	if req.ModTime > 0 {
+		mTime := time.Unix(req.ModTime, 0)
+		_ = os.Chtimes(targetFile, mTime, mTime)
+	}
+
+	// Recalculate checksum and update dir metadata
+	newSha := calculateFileSHA256(targetFile)
+	newFi, _ := os.Stat(targetFile)
+	modT := time.Now().Unix()
+	size := int64(len(fileData))
+	if newFi != nil {
+		modT = newFi.ModTime().Unix()
+		size = newFi.Size()
+	}
+
+	dirMeta.Files[baseName] = CloudMetaFile{
+		Path:        cleanRel,
+		Size:        size,
+		ModTime:     modT,
+		SHA256:      newSha,
+		LastUpdated: time.Now().Format(time.RFC3339),
+	}
+	_ = saveCloudDirMeta(rootFolder, relDir, dirMeta)
+
+	sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+		"success":  true,
+		"path":     cleanRel,
+		"size":     size,
+		"mod_time": modT,
+		"sha256":   newSha,
+	})
+}
+
+func handleCloudLoad(w http.ResponseWriter, r *http.Request) {
+	recordCloudActivity()
+	rootFolder, err := verifyCloudServiceActive()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error(), "cloud_stopped": true})
+		return
+	}
+
+	var relPath string
+	var aesKey []byte
+
+	if r.Method == http.MethodPost {
+		bodyBytes, _ := io.ReadAll(r.Body)
+		decryptedBody, key, err := decryptPayloadWithKey(bodyBytes)
+		if err == nil {
+			aesKey = key
+			var req struct {
+				Path string `json:"path"`
+			}
+			_ = json.Unmarshal(decryptedBody, &req)
+			relPath = req.Path
+		}
+	}
+
+	if relPath == "" {
+		relPath = r.URL.Query().Get("path")
+	}
+
+	targetFile, cleanRel, err := safeCloudPath(rootFolder, relPath)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	// Check if file is currently locked/being written
+	cloudFileLocksMu.Lock()
+	locked := cloudFileLocks[cleanRel]
+	cloudFileLocksMu.Unlock()
+	if locked {
+		w.WriteHeader(http.StatusConflict) // 409
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+			"success": false,
+			"status":  "busy",
+			"error":   "file is currently open for writing by another operation",
+		})
+		return
+	}
+
+	fi, err := os.Stat(targetFile)
+	if err != nil || fi.IsDir() {
+		w.WriteHeader(http.StatusNotFound)
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": "file not found"})
+		return
+	}
+
+	contentBytes, err := os.ReadFile(targetFile)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	sha := calculateFileSHA256(targetFile)
+
+	respPayload := map[string]interface{}{
+		"success":     true,
+		"path":        cleanRel,
+		"size":        fi.Size(),
+		"mod_time":    fi.ModTime().Unix(),
+		"sha256":      sha,
+		"content_b64": base64.StdEncoding.EncodeToString(contentBytes),
+	}
+
+	sendCloudJSONResponse(w, r, aesKey, respPayload)
+}
+
+func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
+	recordCloudActivity()
+	rootFolder, err := verifyCloudServiceActive()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error(), "cloud_stopped": true})
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	decryptedBody, aesKey, err := decryptPayloadWithKey(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.Path == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": "missing path"})
+		return
+	}
+
+	targetFile, cleanRel, err := safeCloudPath(rootFolder, req.Path)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	// Check file lock
+	if !acquireCloudFileLock(cleanRel) {
+		w.WriteHeader(http.StatusConflict)
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+			"success": false,
+			"status":  "busy",
+			"error":   "file is currently open or in use",
+		})
+		return
+	}
+	defer releaseCloudFileLock(cleanRel)
+
+	fi, err := os.Stat(targetFile)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": "file not found"})
+		return
+	}
+
+	relDir := filepath.Dir(cleanRel)
+	if relDir == "." {
+		relDir = ""
+	}
+	baseName := filepath.Base(cleanRel)
+	dirMeta := loadCloudDirMeta(rootFolder, relDir)
+
+	// Move file or directory to RecycleBin
+	dateTag := time.Now().Format("2006-01-02_150405")
+	backupName := fmt.Sprintf("%s.deleted.%s", baseName, dateTag)
+	recycleDir := filepath.Join(rootFolder, "RecycleBin", relDir)
+	_ = os.MkdirAll(recycleDir, 0755)
+	backupPath := filepath.Join(recycleDir, backupName)
+
+	if err := os.Rename(targetFile, backupPath); err != nil {
+		// If rename fails (e.g. cross-device, or permissions), try copy and remove
+		data, readErr := os.ReadFile(targetFile)
+		if readErr == nil {
+			_ = os.WriteFile(backupPath, data, 0644)
+			_ = os.Remove(targetFile)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": err.Error()})
+			return
+		}
+	}
+
+	// Update metadata and history
+	delete(dirMeta.Files, baseName)
+	dirMeta.History = append(dirMeta.History, CloudHistoryEntry{
+		Action:     "delete",
+		OrigPath:   cleanRel,
+		BackupPath: filepath.ToSlash(filepath.Join("RecycleBin", relDir, backupName)),
+		Timestamp:  time.Now().Format(time.RFC3339),
+		ModTime:    fi.ModTime().Unix(),
+		Size:       fi.Size(),
+		Details:    "Deleted by client, moved to RecycleBin",
+	})
+	_ = saveCloudDirMeta(rootFolder, relDir, dirMeta)
+
+	sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+		"success":     true,
+		"path":        cleanRel,
+		"recycle_bin": filepath.ToSlash(filepath.Join("RecycleBin", relDir, backupName)),
+	})
+}
+
+func handleCloudMkdir(w http.ResponseWriter, r *http.Request) {
+	recordCloudActivity()
+	rootFolder, err := verifyCloudServiceActive()
+	if err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error(), "cloud_stopped": true})
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	decryptedBody, aesKey, err := decryptPayloadWithKey(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.Path == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": "missing path"})
+		return
+	}
+
+	targetDir, cleanRel, err := safeCloudPath(rootFolder, req.Path)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+		"success": true,
+		"path":    cleanRel,
+	})
 }
