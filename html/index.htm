@@ -107,9 +107,11 @@
                 <span id="globalAudioTitle" class="global-audio-title">No Audio Playing</span>
             </div>
             <div class="global-audio-controls">
-                <button class="global-audio-btn" onclick="globalAudioPrev()">◀◀</button>
+                <button class="global-audio-btn" onclick="globalAudioPrev()" title="Previous track">⏮</button>
                 <button id="globalAudioPlayBtn" class="global-audio-btn" onclick="toggleGlobalAudioPlay()">▶</button>
-                <button class="global-audio-btn" onclick="globalAudioNext()">▶▶</button>
+                <button class="global-audio-btn" onclick="globalAudioNext()" title="Next track">⏭</button>
+                <button id="globalAudioRandBtn" class="global-audio-btn" onclick="toggleGlobalAudioShuffle()" title="Toggle Random/Shuffle">🔀</button>
+                <button id="globalAudioLoopBtn" class="global-audio-btn" onclick="toggleGlobalAudioLoop()" title="Toggle Loop">🔁</button>
                 <div class="global-audio-scrubber">
                     <span id="globalAudioCurrentTime">00:00</span>
                     <input type="range" id="globalAudioSeeker" value="0" min="0" max="100" oninput="seekGlobalAudio(this.value)">
@@ -349,7 +351,9 @@
                 'ping': '📡',
                 'apache': '🌐',
                 'mysql': '🗄️',
-                'php': '🐘'
+                'php': '🐘',
+                'sources': '⚡',
+                'drives': '💽'
             };
             return icons[id] || '⚙️';
         }
@@ -358,12 +362,32 @@
         let globalPlaylist = [];
         let globalPlaylistIndex = -1;
         let globalAudioCurrentDir = '';
+        let globalAudioShuffle = false;
+        let globalAudioLoop = false;
+        let globalShuffleOrder = [];
+
+        function ensureGlobalShuffleOrder(forceReshuffle = false) {
+            const total = globalPlaylist.length;
+            if (total === 0) {
+                globalShuffleOrder = [];
+                return;
+            }
+            if (!globalShuffleOrder || globalShuffleOrder.length !== total || forceReshuffle) {
+                const arr = Array.from({ length: total }, (_, i) => i);
+                for (let i = arr.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [arr[i], arr[j]] = [arr[j], arr[i]];
+                }
+                globalShuffleOrder = arr;
+            }
+        }
 
         function playGlobalAudioQueue(playlist, startIndex, dirPath) {
             if (!playlist || playlist.length === 0) return;
             globalPlaylist = playlist;
             globalPlaylistIndex = startIndex || 0;
             if (dirPath) globalAudioCurrentDir = dirPath;
+            if (globalAudioShuffle) ensureGlobalShuffleOrder(true);
             loadAndPlayGlobalTrack();
         }
 
@@ -387,6 +411,19 @@
             });
         }
 
+        function toggleGlobalAudioShuffle() {
+            globalAudioShuffle = !globalAudioShuffle;
+            if (globalAudioShuffle) ensureGlobalShuffleOrder(true);
+            const btn = document.getElementById('globalAudioRandBtn');
+            if (btn) btn.style.background = globalAudioShuffle ? '#238636' : 'transparent';
+        }
+
+        function toggleGlobalAudioLoop() {
+            globalAudioLoop = !globalAudioLoop;
+            const btn = document.getElementById('globalAudioLoopBtn');
+            if (btn) btn.style.background = globalAudioLoop ? '#238636' : 'transparent';
+        }
+
         function toggleGlobalAudioPlay() {
             const player = document.getElementById('globalAudioPlayer');
             const btn = document.getElementById('globalAudioPlayBtn');
@@ -401,14 +438,53 @@
 
         function globalAudioPrev() {
             if (globalPlaylist.length === 0) return;
-            globalPlaylistIndex = (globalPlaylistIndex - 1 + globalPlaylist.length) % globalPlaylist.length;
+            const total = globalPlaylist.length;
+            if (globalAudioShuffle) {
+                ensureGlobalShuffleOrder();
+                const pos = globalShuffleOrder.indexOf(globalPlaylistIndex);
+                const prevPos = pos - 1;
+                globalPlaylistIndex = prevPos < 0 ? globalShuffleOrder[total - 1] : globalShuffleOrder[prevPos];
+            } else {
+                globalPlaylistIndex = (globalPlaylistIndex - 1 + total) % total;
+            }
             loadAndPlayGlobalTrack();
         }
 
-        function globalAudioNext() {
+        function globalAudioNext(fromEnd = false) {
             if (globalPlaylist.length === 0) return;
-            globalPlaylistIndex = (globalPlaylistIndex + 1) % globalPlaylist.length;
-            loadAndPlayGlobalTrack();
+            const total = globalPlaylist.length;
+            if (globalAudioShuffle) {
+                ensureGlobalShuffleOrder();
+                const pos = globalShuffleOrder.indexOf(globalPlaylistIndex);
+                const nextPos = pos + 1;
+                if (nextPos >= total) {
+                    if (globalAudioLoop) {
+                        ensureGlobalShuffleOrder(true);
+                        globalPlaylistIndex = globalShuffleOrder[0];
+                        loadAndPlayGlobalTrack();
+                    } else if (!fromEnd) {
+                        globalPlaylistIndex = globalShuffleOrder[0];
+                        loadAndPlayGlobalTrack();
+                    }
+                    return;
+                }
+                globalPlaylistIndex = globalShuffleOrder[nextPos];
+                loadAndPlayGlobalTrack();
+            } else {
+                const nextIdx = globalPlaylistIndex + 1;
+                if (nextIdx >= total) {
+                    if (globalAudioLoop) {
+                        globalPlaylistIndex = 0;
+                        loadAndPlayGlobalTrack();
+                    } else if (!fromEnd) {
+                        globalPlaylistIndex = 0;
+                        loadAndPlayGlobalTrack();
+                    }
+                    return;
+                }
+                globalPlaylistIndex = nextIdx;
+                loadAndPlayGlobalTrack();
+            }
         }
 
         function seekGlobalAudio(val) {
@@ -439,7 +515,7 @@
         });
 
         document.getElementById('globalAudioPlayer').addEventListener('ended', function() {
-            globalAudioNext();
+            globalAudioNext(true);
         });
 
         function formatAudioTime(seconds) {

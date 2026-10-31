@@ -10,9 +10,10 @@
     "list_interfaces_cmd": "ip -j link show",
     "get_ip_cmd": "ip -j addr show {iface}",
     "get_dns_cmd": "grep '^nameserver' /etc/resolv.conf | awk '{print $2}'",
-    "set_ip_sudo": "ip addr flush dev {iface} && ip addr add {ip}/{cidr} dev {iface} && ip link set {iface} up",
+    "set_ip_sudo": "ip addr flush dev {iface} && ip addr add {ip}/{cidr} dev {iface} && ip link set {iface} up && if [ -n \"{gateway}\" ]; then ip route replace default via {gateway} dev {iface}; fi",
     "dhcp_renew_sudo": "dhclient -r {iface} || true && dhclient {iface} || ip link set {iface} down && ip link set {iface} up",
     "set_dns_sudo": "echo \"nameserver {dns1}\" > /etc/resolv.conf && if [ -n \"{dns2}\" ]; then echo \"nameserver {dns2}\" >> /etc/resolv.conf; fi",
-    "restore_dhcp_dns_sudo": "resolvconf -u || dhclient {iface} || true"
+    "restore_dhcp_dns_sudo": "resolvconf -u || dhclient {iface} || true",
+    "get_gateway_cmd": "ip -j route show dev {iface} default"
   }
 }

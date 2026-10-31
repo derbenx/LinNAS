@@ -1,0 +1,7 @@
+{
+  "id": "sources",
+  "name": "Software Sources",
+  "description": "Debian APT package repository mirrors, speed benchmark tests, and source list management",
+  "category": "System",
+  "default": true
+}

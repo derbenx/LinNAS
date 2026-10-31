@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Software Sources - LinNAS</title>
+    <script src="/js/crypto.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; padding-bottom: 200px; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #21262d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+
+        .btn { padding: 0.5rem 1rem; background: #238636; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; font-size: 0.85rem; }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #30363d; color: white; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #21262d; font-size: 0.88rem; }
+        th { background: #0d1117; color: #8b949e; font-weight: 600; }
+        tr:hover { background: #1f242d; }
+
+        .speed-badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+        .speed-fast { background: #238636; color: white; }
+        .speed-med { background: #8957e5; color: white; }
+        .speed-slow { background: #da3633; color: white; }
+        .speed-testing { background: #30363d; color: #8b949e; }
+
+        .sources-editor { width: 100%; height: 160px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #7ee787; font-family: monospace; font-size: 0.85rem; padding: 0.8rem; line-height: 1.4; resize: vertical; }
+
+        .notice-banner { background: rgba(56, 139, 253, 0.1); border: 1px solid #388bfd; border-radius: 6px; padding: 1rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 12px; font-size: 0.88rem; }
+        .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h2>Software Sources</h2>
+    <p class="subtitle">Select the fastest Debian APT repository mirrors, benchmark server speed, and manage package sources.</p>
+
+    <div class="notice-banner">
+        <span style="font-size: 1.3rem;">⚡</span>
+        <div>
+            <strong>Mirror Optimization:</strong> Selecting an official mirror geographically close to your server delivers significantly faster package installation and system update speeds.
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">
+            <span>Debian Mirror Repository Speed Benchmark</span>
+            <button class="btn btn-secondary" onclick="testAllMirrors()">⚡ Test All Mirror Speeds</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Mirror Location & Provider</th>
+                    <th>Repository URL</th>
+                    <th>Country</th>
+                    <th>Latency / Speed</th>
+                    <th style="width: 140px;">Action</th>
+                </tr>
+            </thead>
+            <tbody id="mirrorTableBody">
+                <tr><td colspan="5" style="text-align:center; color:#8b949e; padding:1.5rem;">Loading mirror catalog...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <div class="section-title">
+            <span>Active APT Sources Configuration (<span id="activeFilePath">/etc/apt/sources.list</span>)</span>
+            <div style="display: flex; gap: 0.5rem;">
+                <button class="btn btn-secondary" onclick="reloadSources()">🔄 Reload</button>
+                <button class="btn" onclick="saveCustomSources()">💾 Save Configuration</button>
+            </div>
+        </div>
+        <textarea id="sourcesText" class="sources-editor" placeholder="Loading package repository sources..."></textarea>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Operation Output</div>
+        <div id="outputBox" class="output-box">Ready.</div>
+    </div>
+
+    <script>
+        let mirrorList = [];
+
+        async function loadSourcesData() {
+            try {
+                const res = await fetch('/api/sources/get');
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('activeFilePath').innerText = data.active_file;
+                    document.getElementById('sourcesText').value = data.content || '';
+                    mirrorList = data.mirrors || [];
+                    renderMirrors();
+                } else {
+                    showOutput('Failed to load sources: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Fetch error: ' + err.message);
+            }
+        }
+
+        function renderMirrors() {
+            const tbody = document.getElementById('mirrorTableBody');
+            tbody.innerHTML = '';
+
+            mirrorList.forEach((m, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${escapeHtml(m.name)}</strong></td>
+                    <td style="font-family: monospace; font-size: 0.8rem; color: #58a6ff;">${escapeHtml(m.url)}</td>
+                    <td>${escapeHtml(m.country)}</td>
+                    <td id="speed_${idx}"><span class="speed-badge speed-testing">Untested</span></td>
+                    <td>
+                        <div style="display: flex; gap: 0.4rem;">
+                            <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="testSingleMirror(${idx})">⚡ Test</button>
+                            <button class="btn" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="applyMirror(${idx})">Apply</button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function testSingleMirror(idx) {
+            const m = mirrorList[idx];
+            if (!m) return;
+            const badge = document.getElementById(`speed_${idx}`);
+            badge.innerHTML = `<span class="speed-badge speed-testing">Testing...</span>`;
+
+            try {
+                const encBody = await encryptPayload({ url: m.url });
+                const res = await fetch('/api/sources/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    let cls = 'speed-fast';
+                    if (data.latency_ms > 200) cls = 'speed-med';
+                    if (data.latency_ms > 450) cls = 'speed-slow';
+                    badge.innerHTML = `<span class="speed-badge ${cls}">${data.speed}</span>`;
+                } else {
+                    badge.innerHTML = `<span class="speed-badge speed-slow">Unreachable</span>`;
+                }
+            } catch (err) {
+                badge.innerHTML = `<span class="speed-badge speed-slow">Error</span>`;
+            }
+        }
+
+        async function testAllMirrors() {
+            showOutput('Beginning sequential latency benchmark tests across all mirrors...');
+            for (let i = 0; i < mirrorList.length; i++) {
+                await testSingleMirror(i);
+            }
+            showOutput('All mirror latency benchmarks completed.');
+        }
+
+        async function applyMirror(idx) {
+            const m = mirrorList[idx];
+            if (!m) return;
+
+            if (!confirm(`Apply mirror '${m.name}' (${m.url}) as the primary system repository source? A backup of your current sources configuration will be preserved.`)) return;
+
+            showOutput(`Applying mirror: ${m.url}...`);
+            try {
+                const encBody = await encryptPayload({ mirror_url: m.url });
+                const res = await fetch('/api/sources/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showOutput(data.message);
+                    await loadSourcesData();
+                } else {
+                    showOutput('Apply error: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function saveCustomSources() {
+            const content = document.getElementById('sourcesText').value.trim();
+            if (!content) {
+                alert('Sources content cannot be empty.');
+                return;
+            }
+
+            if (!confirm('Save modifications to APT sources list? A backup will be created automatically.')) return;
+
+            showOutput('Saving APT sources configuration...');
+            try {
+                const encBody = await encryptPayload({ content: content });
+                const res = await fetch('/api/sources/apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showOutput(data.message);
+                    await loadSourcesData();
+                } else {
+                    showOutput('Save error: ' + data.error);
+                }
+            } catch (err) {
+                showOutput('Save error: ' + err.message);
+            }
+        }
+
+        function reloadSources() {
+            loadSourcesData();
+            showOutput('Reloaded APT sources configuration.');
+        }
+
+        function showOutput(msg) {
+            const box = document.getElementById('outputBox');
+            box.innerText = `[${new Date().toLocaleTimeString()}] ${msg}\n` + box.innerText;
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        window.onload = loadSourcesData;
+    </script>
+</body>
+</html>

@@ -96,6 +96,10 @@
                 <label>Subnet Mask / CIDR (e.g. 24 or 255.255.255.0)</label>
                 <input type="text" id="cidrMask" placeholder="24 or 255.255.255.0">
             </div>
+            <div class="form-group">
+                <label>Default Gateway (e.g. 192.168.1.1)</label>
+                <input type="text" id="gateway" placeholder="192.168.1.1">
+            </div>
         </div>
 
         <!-- Custom DNS Row -->
@@ -238,6 +242,7 @@
             // Clear previous fields to default/blank hints
             document.getElementById('ipAddr').value = '';
             document.getElementById('cidrMask').value = '';
+            document.getElementById('gateway').value = '';
             document.getElementById('dns1').value = '';
             document.getElementById('dns2').value = '';
 
@@ -280,6 +285,29 @@
                 console.error('Error getting IP:', err);
             }
 
+            // Query Gateway Details
+            try {
+                const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'get_gateway_cmd', args: { iface: iface } });
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+                const data = await res.json();
+                if (data.success && data.output) {
+                    const raw = data.output.trim();
+                    const jsonStart = raw.indexOf('[');
+                    const jsonEnd = raw.lastIndexOf(']');
+                    const cleanJson = (jsonStart !== -1 && jsonEnd !== -1) ? raw.substring(jsonStart, jsonEnd + 1) : raw;
+                    const routeInfo = JSON.parse(cleanJson);
+                    if (routeInfo[0] && routeInfo[0].gateway) {
+                        document.getElementById('gateway').value = routeInfo[0].gateway;
+                    }
+                }
+            } catch (err) {
+                console.error('Error getting Gateway:', err);
+            }
+
             // Query DNS Details
             try {
                 const encBody = await encryptPayload({ plugin: 'lan', cmd_key: 'get_dns_cmd', args: {} });
@@ -304,6 +332,7 @@
             const isManual = (mode === 'manual');
             document.getElementById('ipAddr').readOnly = !isManual;
             document.getElementById('cidrMask').readOnly = !isManual;
+            document.getElementById('gateway').readOnly = !isManual;
             document.getElementById('dns1').readOnly = !isManual;
             document.getElementById('dns2').readOnly = !isManual;
         }
@@ -315,6 +344,7 @@
             const ip = document.getElementById('ipAddr').value.trim();
             const maskInput = document.getElementById('cidrMask').value.trim();
             const cidr = parseNetmaskToCidr(maskInput || '24');
+            const gateway = document.getElementById('gateway').value.trim();
             const dns1 = document.getElementById('dns1').value.trim();
             const dns2 = document.getElementById('dns2').value.trim();
 
@@ -329,7 +359,7 @@
                     const encBody = await encryptPayload({
                         plugin: 'lan',
                         cmd_key: 'set_ip_sudo',
-                        args: { iface, ip: ip, cidr: cidr.toString() }
+                        args: { iface, ip: ip, cidr: cidr.toString(), gateway: gateway }
                     });
                     const ipRes = await fetch('/api/plugin/exec', {
                         method: 'POST',

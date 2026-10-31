@@ -1,14 +1,21 @@
 {
   "id": "drives",
   "name": "Physical Drives",
-  "description": "Detect, mount, and manage physical disk partitions and boot mounts in /etc/fstab",
+  "description": "Initialize, partition, format, mount, and check physical disk drives and boot mounts in /etc/fstab",
   "category": "Storage",
   "default": true,
   "commands": {
-    "list_drives_cmd": "lsblk -J -o NAME,SIZE,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINT",
+    "list_drives_cmd": "lsblk -J -o NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,UUID,MOUNTPOINT",
     "mount_disk_sudo": "mkdir -p \"{mountpoint}\" && mount \"{device}\" \"{mountpoint}\"",
     "unmount_disk_sudo": "umount \"{mountpoint}\"",
     "fstab_add_sudo": "mkdir -p \"{mountpoint}\" && grep -q \"{uuid}\" /etc/fstab || echo \"UUID={uuid} {mountpoint} {fstype} defaults 0 2\" >> /etc/fstab",
-    "fstab_remove_sudo": "sed -i \"/{uuid}/d\" /etc/fstab"
+    "fstab_remove_sudo": "sed -i \"/{uuid}/d\" /etc/fstab",
+    "init_label_sudo": "parted -s \"{device}\" mklabel \"{table_type}\"",
+    "create_part_sudo": "parted -s \"{device}\" mkpart primary \"{fstype}\" \"{start_pos}\" \"{end_pos}\"",
+    "delete_part_sudo": "parted -s \"{device}\" rm \"{part_num}\"",
+    "format_ext4_sudo": "mkfs.ext4 -F \"{device}\"",
+    "format_vfat_sudo": "mkfs.vfat -F 32 -I \"{device}\"",
+    "format_wipe_sudo": "wipefs -a \"{device}\"",
+    "fsck_part_sudo": "fsck -y \"{device}\""
   }
 }

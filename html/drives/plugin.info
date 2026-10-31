@@ -1,2 +1,11 @@
-<p><strong>Physical Disk Devices & Partitions Manager</strong></p>
-<p>Detect, mount, and manage physical storage drives, partition volumes, and startup boot mounts configured in <code>/etc/fstab</code>.</p>
+<div class="plugin-info-content">
+    <h3>Physical Drives, Partitioning & Formatting</h3>
+    <p>Manage raw physical disks, partition tables (GPT/MBR), partitions, filesystem creation, and filesystem checks (fsck) alongside partition mounting and <code>/etc/fstab</code> boot persistence.</p>
+    <ul>
+        <li><strong>Partition Table Initialization:</strong> Create new GPT or MBR (MSDOS) partition tables on raw storage drives.</li>
+        <li><strong>Partition Creation & Deletion:</strong> Provision partitions by size/type and remove unused partitions.</li>
+        <li><strong>Quick Formatting:</strong> Format partitions with standard Linux filesystems (ext4, FAT32) or wipe partition signatures.</li>
+        <li><strong>Filesystem Check (fsck):</strong> Run filesystem consistency checks on unmounted partitions.</li>
+        <li><strong>Mount & Boot Persistence:</strong> Mount partitions to custom paths and manage automatic boot mounting via <code>/etc/fstab</code>.</li>
+    </ul>
+</div>

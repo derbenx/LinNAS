@@ -1292,12 +1292,7 @@
                 const audioEl = document.getElementById(`${winId}_audio`);
                 if (audioEl) {
                     audioEl.onended = () => {
-                        if (wData.state.isLoop) {
-                            audioEl.currentTime = 0;
-                            audioEl.play().catch(() => {});
-                        } else {
-                            audioPlayNext(winId);
-                        }
+                        audioHandleTrackEnded(winId);
                     };
                 }
 
@@ -1475,6 +1470,8 @@
                 const box = document.getElementById(`${winId}_img_box`);
                 box.style.display = 'flex';
                 const img = document.getElementById(`${winId}_img`);
+                img.style.maxWidth = '100%';
+                img.style.maxHeight = '100%';
                 img.src = rawUrl;
                 updateImageTransform(winId);
             } else if (appId === 'videoplayer') {
@@ -1541,11 +1538,26 @@
             wData.state.currentZoom = 1;
             wData.state.panX = 0;
             wData.state.panY = 0;
+            const img = document.getElementById(`${winId}_img`);
+            if (img) {
+                img.style.maxWidth = 'none';
+                img.style.maxHeight = 'none';
+            }
             updateImageTransform(winId);
         }
 
         function imageFitWindow(winId) {
-            imageZoom1to1(winId);
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            wData.state.currentZoom = 1;
+            wData.state.panX = 0;
+            wData.state.panY = 0;
+            const img = document.getElementById(`${winId}_img`);
+            if (img) {
+                img.style.maxWidth = '100%';
+                img.style.maxHeight = '100%';
+            }
+            updateImageTransform(winId);
         }
 
         function imagePlayNext(winId) {
@@ -1698,6 +1710,22 @@
             }
         }
 
+        function ensureAudioShuffleOrder(wData, forceReshuffle = false) {
+            const total = wData.state.playlist ? wData.state.playlist.length : 0;
+            if (total === 0) {
+                wData.state.shuffleOrder = [];
+                return;
+            }
+            if (!wData.state.shuffleOrder || wData.state.shuffleOrder.length !== total || forceReshuffle) {
+                const arr = Array.from({ length: total }, (_, i) => i);
+                for (let i = arr.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [arr[i], arr[j]] = [arr[j], arr[i]];
+                }
+                wData.state.shuffleOrder = arr;
+            }
+        }
+
         function renderAudioPlaylist(winId) {
             const wData = windowsMap[winId];
             if (!wData) return;
@@ -1718,19 +1746,29 @@
             if (emptyState) emptyState.style.display = 'none';
             if (playerBox) playerBox.style.display = 'flex';
 
-            list.forEach((t, idx) => {
+            if (wData.state.isShuffle) {
+                ensureAudioShuffleOrder(wData);
+            }
+
+            list.forEach((t, origIdx) => {
+                let displayNumber = origIdx + 1;
+                if (wData.state.isShuffle && wData.state.shuffleOrder) {
+                    const orderPos = wData.state.shuffleOrder.indexOf(origIdx);
+                    if (orderPos !== -1) displayNumber = orderPos + 1;
+                }
+
                 const tr = document.createElement('tr');
                 tr.style.cssText = 'cursor: pointer; border-bottom: 1px solid #21262d;';
-                if (idx === wData.state.currentTrackIndex) {
+                if (origIdx === wData.state.currentTrackIndex) {
                     tr.style.background = '#263850';
                     tr.style.color = '#79c0ff';
                     tr.style.fontWeight = 'bold';
                 }
                 tr.innerHTML = `
-                    <td style="padding: 0.4rem;">${idx + 1}</td>
+                    <td style="padding: 0.4rem;">${displayNumber}</td>
                     <td style="padding: 0.4rem;">${escapeHtml(t.name)}</td>
                 `;
-                tr.onclick = () => playAudioTrackIndex(winId, idx);
+                tr.onclick = () => playAudioTrackIndex(winId, origIdx);
                 tbody.appendChild(tr);
             });
         }
@@ -1751,24 +1789,63 @@
             saveDesktopState();
         }
 
-        function audioPlayNext(winId) {
+        function audioPlayNext(winId, fromEnd = false) {
             const wData = windowsMap[winId];
             if (!wData || !wData.state.playlist || wData.state.playlist.length === 0) return;
+            const total = wData.state.playlist.length;
 
-            let nextIdx = 0;
             if (wData.state.isShuffle) {
-                nextIdx = Math.floor(Math.random() * wData.state.playlist.length);
+                ensureAudioShuffleOrder(wData);
+                const currentPos = wData.state.shuffleOrder.indexOf(wData.state.currentTrackIndex);
+                const nextPos = currentPos + 1;
+                if (nextPos >= total) {
+                    if (wData.state.isLoop) {
+                        ensureAudioShuffleOrder(wData, true);
+                        playAudioTrackIndex(winId, wData.state.shuffleOrder[0]);
+                    } else if (!fromEnd) {
+                        playAudioTrackIndex(winId, wData.state.shuffleOrder[0]);
+                    }
+                    return;
+                }
+                playAudioTrackIndex(winId, wData.state.shuffleOrder[nextPos]);
             } else {
-                nextIdx = (wData.state.currentTrackIndex + 1) % wData.state.playlist.length;
+                const nextIdx = wData.state.currentTrackIndex + 1;
+                if (nextIdx >= total) {
+                    if (wData.state.isLoop) {
+                        playAudioTrackIndex(winId, 0);
+                    } else if (!fromEnd) {
+                        playAudioTrackIndex(winId, 0);
+                    }
+                    return;
+                }
+                playAudioTrackIndex(winId, nextIdx);
             }
-            playAudioTrackIndex(winId, nextIdx);
         }
 
         function audioPlayLast(winId) {
             const wData = windowsMap[winId];
             if (!wData || !wData.state.playlist || wData.state.playlist.length === 0) return;
-            let prevIdx = (wData.state.currentTrackIndex - 1 + wData.state.playlist.length) % wData.state.playlist.length;
-            playAudioTrackIndex(winId, prevIdx);
+            const total = wData.state.playlist.length;
+
+            if (wData.state.isShuffle) {
+                ensureAudioShuffleOrder(wData);
+                const currentPos = wData.state.shuffleOrder.indexOf(wData.state.currentTrackIndex);
+                const prevPos = currentPos - 1;
+                if (prevPos < 0) {
+                    playAudioTrackIndex(winId, wData.state.shuffleOrder[total - 1]);
+                } else {
+                    playAudioTrackIndex(winId, wData.state.shuffleOrder[prevPos]);
+                }
+            } else {
+                const prevIdx = (wData.state.currentTrackIndex - 1 + total) % total;
+                playAudioTrackIndex(winId, prevIdx);
+            }
+        }
+
+        function audioHandleTrackEnded(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            audioPlayNext(winId, true);
         }
 
         function audioDeleteSelected(winId) {
@@ -1791,8 +1868,12 @@
             const wData = windowsMap[winId];
             if (!wData) return;
             wData.state.isShuffle = !wData.state.isShuffle;
+            if (wData.state.isShuffle) {
+                ensureAudioShuffleOrder(wData, true);
+            }
             const btn = document.getElementById(`${winId}_btnRand`);
             if (btn) btn.style.background = wData.state.isShuffle ? '#238636' : '#21262d';
+            renderAudioPlaylist(winId);
             saveDesktopState();
         }
 

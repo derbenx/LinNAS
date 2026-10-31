@@ -1,0 +1,9 @@
+<div class="plugin-info-content">
+    <h3>Software Sources & APT Mirrors</h3>
+    <p>Manage Debian package repositories, benchmark mirrors for latency and download speed, and automatically update your APT configuration safely.</p>
+    <ul>
+        <li><strong>Mirror Benchmarks:</strong> Measure ping latency and throughput against official and geographic Debian mirrors.</li>
+        <li><strong>Source List Switching:</strong> Switch active repository URLs with automatic backup of original sources.</li>
+        <li><strong>Package Database Refresh:</strong> Execute <code>apt-get update</code> after applying new mirrors to ensure repository index integrity.</li>
+    </ul>
+</div>

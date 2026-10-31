@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Web Terminal Console</title>
+    <script src="/js/crypto.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: #0d1117; color: #c9d1d9; padding: 2rem; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -25,6 +26,11 @@
         .btn-danger:hover { background: #b62324; }
         .btn-secondary { background: #30363d; color: white; }
         .btn-secondary:hover { background: #484f58; }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(88, 166, 255, 0.2); border-top-color: #58a6ff; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 6px; }
+        .cli-activity-bar { display: none; background: #131922; border-top: 1px solid #30363d; padding: 0.35rem 1rem; font-family: monospace; font-size: 0.8rem; color: #58a6ff; align-items: center; justify-content: space-between; }
+
     </style>
 </head>
 <body>
@@ -48,6 +54,10 @@ Type commands below and press ENTER to execute with real-time streaming output.
 ──────────────────────────────────────────────────────────────────────────────────────────
 
 </div>
+        <div id="cliActivityBar" class="cli-activity-bar">
+            <span><span class="spinner"></span><span id="cliActivityText">Command executing... Type responses (e.g. Y/n, passwords) below and press ENTER</span></span>
+            <span style="font-size: 0.72rem; color: #8b949e;">Interactive Session Active</span>
+        </div>
         <div class="cmd-line">
             <span class="prompt-symbol">#</span>
             <input type="text" id="cmdInput" class="cmd-input" placeholder="Enter shell command (e.g. ls -la, htop, apt update, ip a)..." autofocus>
@@ -91,9 +101,33 @@ Type commands below and press ENTER to execute with real-time streaming output.
             }
         });
 
+        let isProcessRunning = false;
+
+        async function sendProcessInput(text) {
+            termBody.innerText += `${text}\n`;
+            scrollToBottom();
+            try {
+                const encBody = await encryptPayload({ input: text });
+                await fetch('/api/console/input', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: encBody
+                });
+            } catch (err) {
+                termBody.innerText += `[Input write error: ${err.message}]\n`;
+            }
+        }
+
         async function executeCommand() {
             const cmd = inputEl.value.trim();
             if (!cmd) return;
+
+            // If a command is currently streaming, send input to its stdin (e.g. Y/n or prompt answers)
+            if (isProcessRunning) {
+                inputEl.value = '';
+                await sendProcessInput(cmd);
+                return;
+            }
 
             cmdHistory.push(cmd);
             historyIdx = -1;
@@ -107,10 +141,11 @@ Type commands below and press ENTER to execute with real-time streaming output.
             activeController = new AbortController();
 
             try {
+                const encBody = await encryptPayload({ command: cmd });
                 const response = await fetch('/api/console/stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: cmd }),
+                    body: encBody,
                     signal: activeController.signal
                 });
 
@@ -159,16 +194,24 @@ Type commands below and press ENTER to execute with real-time streaming output.
         }
 
         function setRunningState(running) {
+            isProcessRunning = running;
+            const bar = document.getElementById('cliActivityBar');
             if (running) {
                 termStatus.innerText = '● Executing Stream...';
                 termStatus.style.color = '#d29922';
-                runBtn.style.display = 'none';
+                if (bar) bar.style.display = 'flex';
+                runBtn.innerText = 'Send';
+                runBtn.title = 'Send input response to running command';
                 stopBtn.style.display = 'inline-block';
+                inputEl.placeholder = 'Type response (e.g. y / n / answer) and press ENTER...';
             } else {
                 termStatus.innerText = '● Ready';
                 termStatus.style.color = '#7ee787';
-                runBtn.style.display = 'inline-block';
+                if (bar) bar.style.display = 'none';
+                runBtn.innerText = 'Run';
+                runBtn.title = 'Execute shell command';
                 stopBtn.style.display = 'none';
+                inputEl.placeholder = 'Enter shell command (e.g. ls -la, htop, apt update, ip a)...';
             }
         }
 

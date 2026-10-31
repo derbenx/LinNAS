@@ -25,7 +25,8 @@
         .btn:disabled { background: #30363d; color: #6e7681; cursor: not-allowed; border: none; }
 
         .viewer-stage { flex: 1; background: #161b22; border: 1px solid #30363d; border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; padding: 1rem; }
-        .viewer-image { max-width: 95%; max-height: 95%; object-fit: contain; border-radius: 4px; transition: transform 0.15s ease-out; box-shadow: 0 4px 20px rgba(0,0,0,0.6); position: relative; }
+        .viewer-image { object-fit: contain; border-radius: 4px; transition: transform 0.15s ease-out; box-shadow: 0 4px 20px rgba(0,0,0,0.6); position: relative; max-width: 95%; max-height: 95%; }
+        .viewer-image.is-1to1 { max-width: none !important; max-height: none !important; }
 
         .empty-placeholder { text-align: center; color: #8b949e; display: flex; flex-direction: column; align-items: center; gap: 1rem; }
         .empty-icon { font-size: 3.5rem; }
@@ -54,7 +55,8 @@
             <button id="nextBtn" class="btn btn-secondary" onclick="navigateImage(1)" disabled>Next ▶</button>
             <button class="btn btn-secondary" onclick="adjustZoom(1.2)">🔍+</button>
             <button class="btn btn-secondary" onclick="adjustZoom(0.8)">🔍-</button>
-            <button class="btn btn-secondary" onclick="resetZoom()">🔄 Reset</button>
+            <button class="btn btn-secondary" onclick="zoom1to1()">1:1 (*)</button>
+            <button class="btn btn-secondary" onclick="fitWindow()">Fit (/)</button>
             <button class="btn btn-secondary" onclick="toggleFullscreen()">📺 Fullscreen (F11)</button>
         </div>
     </div>
@@ -128,6 +130,7 @@
             const emptyView = document.getElementById('emptyView');
             const metaEl = document.getElementById('imageMeta');
 
+            imgEl.classList.remove('is-1to1');
             updateTransform();
             imgEl.src = `/api/fs/raw?path=${encodeURIComponent(filePath)}`;
             imgEl.style.display = 'block';
@@ -190,10 +193,21 @@
             updateTransform();
         }
 
-        function resetZoom() {
+        function fitWindow() {
             currentZoom = 1;
             panX = 0;
             panY = 0;
+            const imgEl = document.getElementById('mainImage');
+            if (imgEl) imgEl.classList.remove('is-1to1');
+            updateTransform();
+        }
+
+        function zoom1to1() {
+            currentZoom = 1;
+            panX = 0;
+            panY = 0;
+            const imgEl = document.getElementById('mainImage');
+            if (imgEl) imgEl.classList.add('is-1to1');
             updateTransform();
         }
 
@@ -326,6 +340,12 @@
             } else if (e.key === '-' || e.key === '_') {
                 e.preventDefault();
                 adjustZoom(0.85);
+            } else if (e.key === '*') {
+                e.preventDefault();
+                zoom1to1();
+            } else if (e.key === '/') {
+                e.preventDefault();
+                fitWindow();
             } else if (e.key === 'Escape' && isFullscreen) {
                 toggleFullscreen();
             }

@@ -117,6 +117,8 @@ var (
 	sessionsMu    sync.RWMutex
 	consoleDirs   = make(map[string]string)
 	consoleDirsMu sync.Mutex
+	activeStdinPipes   = make(map[string]io.WriteCloser)
+	activeStdinPipesMu sync.Mutex
 	rsaPrivateKey *rsa.PrivateKey
 	usedNonces    = make(map[string]time.Time)
 	noncesMu      sync.Mutex
@@ -1196,6 +1198,21 @@ func handleConsoleStream(w http.ResponseWriter, r *http.Request) {
 		cmd.Dir = currentDir
 	}
 
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "Error creating stdin pipe: %v\n", err)
+		return
+	}
+	activeStdinPipesMu.Lock()
+	activeStdinPipes[sessKey] = stdinPipe
+	activeStdinPipesMu.Unlock()
+	defer func() {
+		activeStdinPipesMu.Lock()
+		delete(activeStdinPipes, sessKey)
+		activeStdinPipesMu.Unlock()
+		_ = stdinPipe.Close()
+	}()
+
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		_, _ = fmt.Fprintf(w, "Error creating stdout pipe: %v\n", err)
@@ -2184,6 +2201,10 @@ func main() {
 		jsonResponse(w, map[string]interface{}{"success": true, "message": "Successfully restored default plugins from embedded application binary."})
 	}))
 	mux.HandleFunc("/api/console/stream", authMiddleware(handleConsoleStream))
+	mux.HandleFunc("/api/console/input", authMiddleware(handleConsoleInput))
+		mux.HandleFunc("/api/sources/get", authMiddleware(handleSourcesGet))
+	mux.HandleFunc("/api/sources/test", authMiddleware(handleSourcesTest))
+	mux.HandleFunc("/api/sources/apply", authMiddleware(handleSourcesApply))
 	mux.HandleFunc("/api/dns/convert", authMiddleware(handleDNSConvert))
 	mux.HandleFunc("/api/settings/get", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, map[string]interface{}{
@@ -2264,4 +2285,227 @@ func main() {
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
+}
+
+
+func handleConsoleInput(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Input string `json:"input"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	sessKey := "default"
+	if cookie, err := r.Cookie("session_token"); err == nil && cookie.Value != "" {
+		sessKey = cookie.Value
+	}
+
+	activeStdinPipesMu.Lock()
+	pipe, exists := activeStdinPipes[sessKey]
+	activeStdinPipesMu.Unlock()
+
+	if !exists || pipe == nil {
+		jsonResponse(w, map[string]interface{}{"success": false, "error": "No running command to receive input"})
+		return
+	}
+
+	data := []byte(req.Input + "\n")
+	if _, err := pipe.Write(data); err != nil {
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	jsonResponse(w, map[string]interface{}{"success": true})
+}
+
+
+func handleSourcesGet(w http.ResponseWriter, r *http.Request) {
+	sourcesContent := ""
+	sourcesFile := "/etc/apt/sources.list"
+	if data, err := os.ReadFile(sourcesFile); err == nil {
+		sourcesContent = string(data)
+	} else if data, err := os.ReadFile("/etc/apt/sources.list.d/ubuntu.sources"); err == nil {
+		sourcesFile = "/etc/apt/sources.list.d/ubuntu.sources"
+		sourcesContent = string(data)
+	} else if data, err := os.ReadFile("/etc/apt/sources.list.d/debian.sources"); err == nil {
+		sourcesFile = "/etc/apt/sources.list.d/debian.sources"
+		sourcesContent = string(data)
+	}
+
+	mirrors := []map[string]string{
+		{"name": "Global Official (deb.debian.org)", "url": "http://deb.debian.org/debian", "country": "Global"},
+		{"name": "Cloudflare CDN Mirror", "url": "https://mirrors.cloudflare.com/debian", "country": "Global"},
+		{"name": "Kernel.org Mirror", "url": "http://mirrors.kernel.org/debian", "country": "United States"},
+		{"name": "MIT (Massachusetts)", "url": "http://mirrors.mit.edu/debian", "country": "United States"},
+		{"name": "Princeton University (New Jersey)", "url": "http://mirror.math.princeton.edu/pub/debian", "country": "United States"},
+		{"name": "LeaseWeb US Mirror", "url": "http://mirror.us.leaseweb.net/debian", "country": "United States"},
+		{"name": "LeaseWeb NL Mirror", "url": "http://mirror.nl.leaseweb.net/debian", "country": "Netherlands"},
+		{"name": "IRCAM Mirror (France)", "url": "http://mirrors.ircam.fr/pub/debian", "country": "France"},
+		{"name": "FAU Erlangen (Germany)", "url": "http://ftp.fau.de/debian", "country": "Germany"},
+		{"name": "University of Kent (UK)", "url": "http://www.mirrorservice.org/sites/ftp.debian.org/debian", "country": "United Kingdom"},
+		{"name": "Yamagata University (Japan)", "url": "http://ftp.yz.yamagata-u.ac.jp/pub/linux/debian", "country": "Japan"},
+		{"name": "AARNet (Australia)", "url": "http://mirror.aarnet.edu.au/pub/debian", "country": "Australia"},
+	}
+
+	jsonResponse(w, map[string]interface{}{
+		"success": true,
+		"active_file": sourcesFile,
+		"content": sourcesContent,
+		"mirrors": mirrors,
+	})
+}
+
+func handleSourcesTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.URL == "" {
+		http.Error(w, "Invalid URL", http.StatusBadRequest)
+		return
+	}
+
+	// Benchmark HTTP HEAD / GET latency
+	client := http.Client{
+		Timeout: 4 * time.Second,
+	}
+	targetURL := strings.TrimRight(req.URL, "/") + "/project/trace/master"
+	start := time.Now()
+	resp, err := client.Get(targetURL)
+	if err != nil {
+		// Fallback to testing base URL
+		start = time.Now()
+		resp, err = client.Get(req.URL)
+	}
+
+	if err != nil {
+		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error(), "speed": "Timeout / Unreachable"})
+		return
+	}
+	defer resp.Body.Close()
+	elapsed := time.Since(start)
+
+	var speedRating string
+	latencyMs := elapsed.Milliseconds()
+	if latencyMs < 80 {
+		speedRating = fmt.Sprintf("%d ms (Very Fast - Excellent)", latencyMs)
+	} else if latencyMs < 200 {
+		speedRating = fmt.Sprintf("%d ms (Fast - Good)", latencyMs)
+	} else if latencyMs < 450 {
+		speedRating = fmt.Sprintf("%d ms (Moderate)", latencyMs)
+	} else {
+		speedRating = fmt.Sprintf("%d ms (Slow)", latencyMs)
+	}
+
+	jsonResponse(w, map[string]interface{}{
+		"success": true,
+		"latency_ms": latencyMs,
+		"speed": speedRating,
+		"status": resp.StatusCode,
+	})
+}
+
+func handleSourcesApply(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		MirrorURL string `json:"mirror_url"`
+		Content   string `json:"content"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Target file
+	sourcesFile := "/etc/apt/sources.list"
+	if _, err := os.Stat("/etc/apt/sources.list.d/ubuntu.sources"); err == nil && !strings.Contains(req.MirrorURL, "debian") {
+		sourcesFile = "/etc/apt/sources.list.d/ubuntu.sources"
+	}
+
+	// Backup original file
+	backupFile := sourcesFile + ".bak." + time.Now().Format("20060102150405")
+	if orig, err := os.ReadFile(sourcesFile); err == nil {
+		_ = os.WriteFile(backupFile, orig, 0644)
+	}
+
+	newContent := req.Content
+	if newContent == "" && req.MirrorURL != "" {
+		m := strings.TrimRight(req.MirrorURL, "/")
+		newContent = fmt.Sprintf(
+			"deb %s bookworm main non-free-firmware contrib non-free\n" +
+			"deb-src %s bookworm main non-free-firmware contrib non-free\n\n" +
+			"deb %s bookworm-updates main non-free-firmware contrib non-free\n" +
+			"deb-src %s bookworm-updates main non-free-firmware contrib non-free\n\n" +
+			"deb http://security.debian.org/debian-security bookworm-security main non-free-firmware contrib non-free\n" +
+			"deb-src http://security.debian.org/debian-security bookworm-security main non-free-firmware contrib non-free\n",
+			m, m, m, m,
+		)
+	}
+
+	if os.Getuid() != 0 {
+		cmd := exec.Command("sudo", "-n", "tee", sourcesFile)
+		cmd.Stdin = strings.NewReader(newContent)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			jsonResponse(w, map[string]interface{}{"success": false, "error": fmt.Sprintf("Failed to write %s: %v (%s)", sourcesFile, err, string(out))})
+			return
+		}
+	} else {
+		if err := os.WriteFile(sourcesFile, []byte(newContent), 0644); err != nil {
+			jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+			return
+		}
+	}
+
+	jsonResponse(w, map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Successfully applied new mirror source to %s. Backup created at %s", sourcesFile, backupFile),
+		"backup": backupFile,
+	})
 }
