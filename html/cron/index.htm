@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cron Tasks</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; }
+        h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
+        p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
+
+        .service-banner {
+            display: none;
+            background: rgba(218, 54, 51, 0.15);
+            border: 1px solid #da3633;
+            border-radius: 6px;
+            padding: 1rem 1.2rem;
+            margin-bottom: 1.5rem;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+        .service-banner.warning {
+            background: rgba(210, 153, 34, 0.15);
+            border-color: #d29922;
+        }
+        .service-banner-text {
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .section {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.2rem;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 0.8rem;
+        }
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #f0f6fc;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            background: #238636;
+            color: white;
+            border: 1px solid rgba(240, 246, 252, 0.1);
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.85rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: 0.2s;
+        }
+        .btn:hover { background: #2ea043; }
+        .btn-secondary { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #30363d; color: #fff; }
+        .btn-danger { background: #da3633; }
+        .btn-danger:hover { background: #b62324; }
+        .btn-sm { padding: 0.25rem 0.55rem; font-size: 0.8rem; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-size: 0.9rem; }
+        th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #30363d; }
+        th { color: #8b949e; font-weight: 600; background: #1f242d; }
+        tr:hover td { background: rgba(110, 118, 129, 0.04); }
+
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-root { background: rgba(248, 81, 73, 0.2); color: #f85149; border: 1px solid rgba(248, 81, 73, 0.4); }
+        .badge-user { background: rgba(88, 166, 255, 0.2); color: #58a6ff; border: 1px solid rgba(88, 166, 255, 0.4); }
+        .badge-active { background: rgba(46, 160, 67, 0.2); color: #3fb950; border: 1px solid rgba(46, 160, 67, 0.4); }
+        .badge-disabled { background: rgba(110, 118, 129, 0.2); color: #8b949e; border: 1px solid rgba(110, 118, 129, 0.4); }
+
+        /* Switch Toggle */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 20px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer; inset: 0;
+            background-color: #30363d; transition: .2s; border-radius: 20px;
+        }
+        .slider:before {
+            position: absolute; content: ""; height: 14px; width: 14px;
+            left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%;
+        }
+        input:checked + .slider { background-color: #238636; }
+        input:checked + .slider:before { transform: translateX(16px); }
+
+        /* Modal Overlay */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 2rem 1rem;
+        }
+        .modal-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            max-width: 650px;
+            margin: 0 auto;
+            padding: 1.5rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #30363d;
+            padding-bottom: 0.8rem;
+            margin-bottom: 1.2rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #f0f6fc;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+        .form-group label {
+            font-size: 0.85rem;
+            color: #8b949e;
+            font-weight: 600;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        .form-control {
+            padding: 0.55rem 0.75rem;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 0.9rem;
+        }
+        .form-control:focus {
+            border-color: #58a6ff;
+            outline: none;
+        }
+        .input-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .input-group input { flex: 1; }
+
+        /* Execution Drawer / Output Modal */
+        .exec-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            max-width: 750px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+        .exec-output {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 1rem;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #58a6ff;
+            min-height: 180px;
+            max-height: 380px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin-top: 1rem;
+        }
+
+        /* File Browser */
+        .file-list {
+            max-height: 320px;
+            overflow-y: auto;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            margin-top: 0.8rem;
+        }
+        .file-item {
+            padding: 0.5rem 0.8rem;
+            border-bottom: 1px solid #21262d;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-size: 0.85rem;
+        }
+        .file-item:hover { background: #1f242d; color: #58a6ff; }
+    </style>
+</head>
+<body>
+
+    <h2>Cron Tasks</h2>
+    <p class="subtitle">Schedule and automate recurring background jobs, maintenance scripts, and boot tasks with custom execution parameters.</p>
+
+    <!-- Cron Daemon Status Warning Banner -->
+    <div id="serviceBanner" class="service-banner">
+        <div class="service-banner-text" id="serviceBannerText">
+            <strong>⚠️ Cron Service Not Running:</strong> The system cron daemon is inactive or not installed on this host. Scheduled tasks will not execute automatically until the service is active.
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-sm" id="serviceActionBtn" onclick="handleServiceAction()">Install & Enable Cron</button>
+        </div>
+    </div>
+
+    <!-- Task List Section -->
+    <div class="section">
+        <div class="section-header">
+            <div class="section-title">⏱️ Configured Cron Tasks</div>
+            <div style="display: flex; gap: 0.6rem;">
+                <button class="btn btn-secondary" onclick="loadTasks()">🔄 Refresh</button>
+                <button class="btn" onclick="openNewTaskModal()">➕ New Task</button>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 50px;">Active</th>
+                    <th>Task Name</th>
+                    <th>Schedule</th>
+                    <th>Command / Script</th>
+                    <th>Run As</th>
+                    <th style="text-align: right; width: 250px;">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="taskTableBody">
+                <tr><td colspan="6" style="text-align: center; color: #8b949e; padding: 2rem;">Loading tasks...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Edit/New Task Modal -->
+    <div id="taskModal" class="modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span id="modalTitle">➕ Configure Cron Task</span>
+                <button class="btn btn-secondary btn-sm" onclick="closeTaskModal()">✕</button>
+            </div>
+
+            <input type="hidden" id="taskId">
+
+            <div class="form-group">
+                <label>Task Name</label>
+                <input type="text" id="taskName" class="form-control" placeholder="e.g. Daily Database Backup">
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Scheduling Mode</label>
+                    <select id="scheduleMode" class="form-control" onchange="toggleScheduleMode()">
+                        <option value="simple">Simple (Friendly Presets)</option>
+                        <option value="advanced">Advanced (5-Part Cron Syntax)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Run As User</label>
+                    <div style="display: flex; align-items: center; gap: 0.8rem; height: 38px;">
+                        <label class="switch">
+                            <input type="checkbox" id="taskRootToggle">
+                            <span class="slider"></span>
+                        </label>
+                        <span id="taskRootLabel" style="font-size: 0.85rem; font-weight: bold; color: #8b949e;">Standard User</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Simple Mode Schedule Controls -->
+            <div id="simpleScheduleGroup">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Frequency Preset</label>
+                        <select id="simplePreset" class="form-control" onchange="onPresetChange()">
+                            <option value="minute">Every Minute (* * * * *)</option>
+                            <option value="hourly">Every Hour (0 * * * *)</option>
+                            <option value="daily" selected>Daily (Custom Time)</option>
+                            <option value="weekly">Weekly (Custom Day & Time)</option>
+                            <option value="monthly">Monthly (1st of Month)</option>
+                            <option value="reboot">At System Boot (@reboot)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="simpleTimePickerGroup">
+                        <label>Execution Time (HH:MM)</label>
+                        <input type="time" id="simpleTime" class="form-control" value="00:00">
+                    </div>
+                </div>
+
+                <div class="form-group" id="simpleDayGroup" style="display: none;">
+                    <label>Day of Week</label>
+                    <select id="simpleDay" class="form-control">
+                        <option value="0">Sunday</option>
+                        <option value="1">Monday</option>
+                        <option value="2">Tuesday</option>
+                        <option value="3">Wednesday</option>
+                        <option value="4">Thursday</option>
+                        <option value="5">Friday</option>
+                        <option value="6">Saturday</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Advanced Mode Schedule Controls -->
+            <div id="advancedScheduleGroup" style="display: none;">
+                <div class="form-group">
+                    <label>Standard Cron Expression (Min Hour Day Month DayOfWeek)</label>
+                    <input type="text" id="advancedCron" class="form-control" placeholder="0 2 * * * (e.g. At 02:00 every day)" value="0 0 * * *">
+                    <span style="font-size: 0.75rem; color: #8b949e;">Supports standard 5-part cron syntax or special macros such as <code>@reboot</code>, <code>@daily</code>, etc.</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Script / Executable Command</label>
+                <div class="input-group">
+                    <input type="text" id="taskCommand" class="form-control" placeholder="/usr/local/bin/backup.sh">
+                    <button class="btn btn-secondary" type="button" onclick="openFileBrowser()">📂 Browse...</button>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Command Arguments / Redirects (Optional)</label>
+                <input type="text" id="taskArgs" class="form-control" placeholder="--verbose &gt;&gt; /var/log/mybackup.log 2&gt;&amp;1">
+            </div>
+
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 0.6rem;">
+                    <input type="checkbox" id="taskActiveToggle" checked>
+                    <span>Task is active and enabled</span>
+                </label>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 0.8rem; margin-top: 1.5rem; border-top: 1px solid #30363d; padding-top: 1rem;">
+                <button class="btn btn-secondary" onclick="closeTaskModal()">Cancel</button>
+                <button class="btn" onclick="saveTask()">💾 Save Task</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Browser Modal -->
+    <div id="fileModal" class="modal">
+        <div class="modal-card" style="max-width: 550px;">
+            <div class="modal-header">
+                <span id="modalBrowserPath">/</span>
+                <button class="btn btn-secondary btn-sm" onclick="closeFileBrowser()">✕</button>
+            </div>
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.8rem;">
+                <button class="btn btn-secondary btn-sm" onclick="navBrowserUp()">⬆️ Parent Directory</button>
+            </div>
+            <div id="browserList" class="file-list"></div>
+            <div style="margin-top: 1rem; display: flex; justify-content: flex-end;">
+                <button class="btn btn-secondary" onclick="closeFileBrowser()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Execution Output Modal -->
+    <div id="execModal" class="modal">
+        <div class="exec-card">
+            <div class="modal-header">
+                <span id="execModalTitle">⚡ Running Task</span>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-danger btn-sm" id="stopTaskBtn" onclick="stopCurrentTask()">⏹️ Stop Task</button>
+                    <button class="btn btn-secondary btn-sm" onclick="closeExecModal()">✕</button>
+                </div>
+            </div>
+            <div id="execStatus" style="font-size: 0.85rem; color: #8b949e; margin-bottom: 0.4rem;">Initiating execution...</div>
+            <div id="execOutputBox" class="exec-output"></div>
+        </div>
+    </div>
+
+    <script>
+        let tasks = [];
+        let currentBrowserDir = '/';
+        let currentRunAbortController = null;
+        let activeRunningTaskId = null;
+
+        // Init on DOM ready
+        window.onload = () => {
+            checkCronService();
+            loadTasks();
+
+            document.getElementById('taskRootToggle').addEventListener('change', (e) => {
+                const label = document.getElementById('taskRootLabel');
+                if (e.target.checked) {
+                    label.innerText = 'Root / Administrator';
+                    label.style.color = '#f85149';
+                } else {
+                    label.innerText = 'Standard User';
+                    label.style.color = '#8b949e';
+                }
+            });
+        };
+
+        async function checkCronService() {
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'cron', cmd_key: 'cron_status_cmd' })
+                });
+                const data = await res.json();
+                const banner = document.getElementById('serviceBanner');
+                const text = document.getElementById('serviceBannerText');
+                const btn = document.getElementById('serviceActionBtn');
+
+                const out = (data.output || '').toLowerCase();
+                const isActive = out.includes('active (running)') || out.includes('is running');
+
+                if (!isActive) {
+                    banner.style.display = 'flex';
+                    if (out.includes('inactive') || out.includes('dead')) {
+                        banner.className = 'service-banner warning';
+                        text.innerHTML = '<strong>⚠️ Cron Service Inactive:</strong> The cron daemon service is stopped. Tasks will not trigger until started.';
+                        btn.innerText = '▶️ Start Cron Service';
+                        btn.dataset.action = 'start';
+                    } else {
+                        banner.className = 'service-banner';
+                        text.innerHTML = '<strong>⚠️ Cron Daemon Missing:</strong> Cron is not installed or enabled. Install it now to run scheduled tasks.';
+                        btn.innerText = '📦 Install & Enable Cron';
+                        btn.dataset.action = 'install';
+                    }
+                } else {
+                    banner.style.display = 'none';
+                }
+            } catch (e) {
+                console.warn('Could not inspect cron service:', e);
+            }
+        }
+
+        async function handleServiceAction() {
+            const btn = document.getElementById('serviceActionBtn');
+            const action = btn.dataset.action;
+            btn.disabled = true;
+            btn.innerText = 'Processing...';
+
+            const cmdKey = action === 'start' ? 'start_cron_sudo' : 'install_cron_sudo';
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plugin: 'cron', cmd_key: cmdKey })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    await checkCronService();
+                } else {
+                    alert('Service action error: ' + (data.error || data.output));
+                }
+            } catch (err) {
+                alert('Action failed: ' + err.message);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function loadTasks() {
+            const tbody = document.getElementById('taskTableBody');
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #8b949e; padding: 2rem;">Loading tasks...</td></tr>`;
+
+            try {
+                const res = await fetch('/api/plugin/data?plugin=cron');
+                const data = await res.json();
+                tasks = (data && Array.isArray(data.tasks)) ? data.tasks : [];
+                renderTasks();
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #f85149; padding: 2rem;">Failed to load tasks: ${e.message}</td></tr>`;
+            }
+        }
+
+        function renderTasks() {
+            const tbody = document.getElementById('taskTableBody');
+            tbody.innerHTML = '';
+
+            if (tasks.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #8b949e; padding: 2rem;">No scheduled cron tasks configured yet. Click '➕ New Task' to create one.</td></tr>`;
+                return;
+            }
+
+            tasks.forEach((t, idx) => {
+                const tr = document.createElement('tr');
+                const fullCmd = (t.command || '') + (t.args ? ' ' + t.args : '');
+
+                tr.innerHTML = `
+                    <td>
+                        <label class="switch">
+                            <input type="checkbox" ${t.enabled !== false ? 'checked' : ''} onchange="toggleTaskActive(${idx}, this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </td>
+                    <td>
+                        <div style="font-weight: 600; color: #f0f6fc;">${escapeHtml(t.name || 'Untitled Task')}</div>
+                        <div style="font-size: 0.75rem; color: #8b949e;">ID: ${escapeHtml(t.id || 'task-' + idx)}</div>
+                    </td>
+                    <td>
+                        <code>${escapeHtml(t.schedule || '* * * * *')}</code>
+                        <div style="font-size: 0.75rem; color: #8b949e;">${getHumanSchedule(t)}</div>
+                    </td>
+                    <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(fullCmd)}">
+                        <code>${escapeHtml(fullCmd)}</code>
+                    </td>
+                    <td>
+                        <span class="badge ${t.is_root ? 'badge-root' : 'badge-user'}">${t.is_root ? 'ROOT' : 'USER'}</span>
+                    </td>
+                    <td style="text-align: right;">
+                        <button class="btn btn-sm btn-secondary" onclick="runTaskNow(${idx})">▶️ Run</button>
+                        <button class="btn btn-sm btn-secondary" onclick="editTask(${idx})">✏️ Edit</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteTask(${idx})">🗑️</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function getHumanSchedule(t) {
+            if (t.schedule === '@reboot') return 'At system boot';
+            if (t.schedule_mode === 'simple') {
+                if (t.simple_preset === 'minute') return 'Every minute';
+                if (t.simple_preset === 'hourly') return 'Hourly at minute 0';
+                if (t.simple_preset === 'daily') return `Daily at ${t.simple_time || '00:00'}`;
+                if (t.simple_preset === 'weekly') {
+                    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                    return `Weekly on ${days[t.simple_day || 0]} at ${t.simple_time || '00:00'}`;
+                }
+                if (t.simple_preset === 'monthly') return `Monthly on 1st at ${t.simple_time || '00:00'}`;
+            }
+            return 'Custom cron schedule';
+        }
+
+        async function toggleTaskActive(idx, isChecked) {
+            if (tasks[idx]) {
+                tasks[idx].enabled = isChecked;
+                await saveTasksToBackend();
+            }
+        }
+
+        function openNewTaskModal() {
+            document.getElementById('taskId').value = '';
+            document.getElementById('modalTitle').innerText = '➕ Configure Cron Task';
+            document.getElementById('taskName').value = '';
+            document.getElementById('scheduleMode').value = 'simple';
+            document.getElementById('simplePreset').value = 'daily';
+            document.getElementById('simpleTime').value = '00:00';
+            document.getElementById('simpleDay').value = '0';
+            document.getElementById('advancedCron').value = '0 0 * * *';
+            document.getElementById('taskCommand').value = '';
+            document.getElementById('taskArgs').value = '';
+            document.getElementById('taskRootToggle').checked = false;
+            document.getElementById('taskRootLabel').innerText = 'Standard User';
+            document.getElementById('taskRootLabel').style.color = '#8b949e';
+            document.getElementById('taskActiveToggle').checked = true;
+
+            toggleScheduleMode();
+            onPresetChange();
+            document.getElementById('taskModal').style.display = 'block';
+        }
+
+        function editTask(idx) {
+            const t = tasks[idx];
+            if (!t) return;
+
+            document.getElementById('taskId').value = idx;
+            document.getElementById('modalTitle').innerText = '✏️ Edit Cron Task';
+            document.getElementById('taskName').value = t.name || '';
+            document.getElementById('scheduleMode').value = t.schedule_mode || 'simple';
+            document.getElementById('simplePreset').value = t.simple_preset || 'daily';
+            document.getElementById('simpleTime').value = t.simple_time || '00:00';
+            document.getElementById('simpleDay').value = t.simple_day !== undefined ? t.simple_day : '0';
+            document.getElementById('advancedCron').value = t.schedule || '0 0 * * *';
+            document.getElementById('taskCommand').value = t.command || '';
+            document.getElementById('taskArgs').value = t.args || '';
+            document.getElementById('taskRootToggle').checked = !!t.is_root;
+            document.getElementById('taskActiveToggle').checked = t.enabled !== false;
+
+            const rootLabel = document.getElementById('taskRootLabel');
+            if (t.is_root) {
+                rootLabel.innerText = 'Root / Administrator';
+                rootLabel.style.color = '#f85149';
+            } else {
+                rootLabel.innerText = 'Standard User';
+                rootLabel.style.color = '#8b949e';
+            }
+
+            toggleScheduleMode();
+            onPresetChange();
+            document.getElementById('taskModal').style.display = 'block';
+        }
+
+        function closeTaskModal() {
+            document.getElementById('taskModal').style.display = 'none';
+        }
+
+        function toggleScheduleMode() {
+            const mode = document.getElementById('scheduleMode').value;
+            if (mode === 'simple') {
+                document.getElementById('simpleScheduleGroup').style.display = 'block';
+                document.getElementById('advancedScheduleGroup').style.display = 'none';
+            } else {
+                document.getElementById('simpleScheduleGroup').style.display = 'none';
+                document.getElementById('advancedScheduleGroup').style.display = 'block';
+            }
+        }
+
+        function onPresetChange() {
+            const preset = document.getElementById('simplePreset').value;
+            const timeGrp = document.getElementById('simpleTimePickerGroup');
+            const dayGrp = document.getElementById('simpleDayGroup');
+
+            if (preset === 'reboot' || preset === 'minute') {
+                timeGrp.style.display = 'none';
+                dayGrp.style.display = 'none';
+            } else if (preset === 'hourly') {
+                timeGrp.style.display = 'none';
+                dayGrp.style.display = 'none';
+            } else if (preset === 'weekly') {
+                timeGrp.style.display = 'block';
+                dayGrp.style.display = 'block';
+            } else {
+                timeGrp.style.display = 'block';
+                dayGrp.style.display = 'none';
+            }
+        }
+
+        function buildCronExpression() {
+            const mode = document.getElementById('scheduleMode').value;
+            if (mode === 'advanced') {
+                return document.getElementById('advancedCron').value.trim() || '* * * * *';
+            }
+
+            const preset = document.getElementById('simplePreset').value;
+            if (preset === 'reboot') return '@reboot';
+            if (preset === 'minute') return '* * * * *';
+            if (preset === 'hourly') return '0 * * * *';
+
+            const timeStr = document.getElementById('simpleTime').value || '00:00';
+            const [hour, min] = timeStr.split(':').map(v => parseInt(v, 10) || 0);
+
+            if (preset === 'daily') return `${min} ${hour} * * *`;
+            if (preset === 'weekly') {
+                const day = document.getElementById('simpleDay').value;
+                return `${min} ${hour} * * ${day}`;
+            }
+            if (preset === 'monthly') return `${min} ${hour} 1 * *`;
+
+            return '* * * * *';
+        }
+
+        async function saveTask() {
+            const name = document.getElementById('taskName').value.trim();
+            const cmd = document.getElementById('taskCommand').value.trim();
+            if (!name || !cmd) {
+                alert('Please enter a task name and command.');
+                return;
+            }
+
+            const scheduleExpr = buildCronExpression();
+            const mode = document.getElementById('scheduleMode').value;
+            const preset = document.getElementById('simplePreset').value;
+            const timeVal = document.getElementById('simpleTime').value;
+            const dayVal = document.getElementById('simpleDay').value;
+            const args = document.getElementById('taskArgs').value.trim();
+            const isRoot = document.getElementById('taskRootToggle').checked;
+            const isEnabled = document.getElementById('taskActiveToggle').checked;
+            const editId = document.getElementById('taskId').value;
+
+            const taskData = {
+                id: editId !== '' && tasks[editId] ? tasks[editId].id : 'cron_' + Date.now(),
+                name,
+                command: cmd,
+                args,
+                schedule: scheduleExpr,
+                schedule_mode: mode,
+                simple_preset: preset,
+                simple_time: timeVal,
+                simple_day: parseInt(dayVal, 10),
+                is_root: isRoot,
+                enabled: isEnabled
+            };
+
+            if (editId !== '') {
+                tasks[parseInt(editId, 10)] = taskData;
+            } else {
+                tasks.push(taskData);
+            }
+
+            closeTaskModal();
+            await saveTasksToBackend();
+            renderTasks();
+        }
+
+        async function deleteTask(idx) {
+            if (!confirm(`Delete task "${tasks[idx].name}"?`)) return;
+            tasks.splice(idx, 1);
+            await saveTasksToBackend();
+            renderTasks();
+        }
+
+        async function saveTasksToBackend() {
+            try {
+                const res = await fetch('/api/plugin/data?plugin=cron', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tasks })
+                });
+                const data = await res.json();
+                if (!data.success) {
+                    alert('Failed to save cron configuration: ' + data.error);
+                }
+            } catch (err) {
+                alert('Failed to save cron configuration: ' + err.message);
+            }
+        }
+
+        /* Immediate Task Execution (Run Now / Stop) */
+        async function runTaskNow(idx) {
+            const t = tasks[idx];
+            if (!t) return;
+
+            document.getElementById('execModalTitle').innerText = `⚡ Running: ${t.name || t.command}`;
+            document.getElementById('execStatus').innerText = 'Starting execution...';
+            const outputBox = document.getElementById('execOutputBox');
+            outputBox.innerText = `[${new Date().toLocaleTimeString()}] Executing: ${t.command} ${t.args || ''}\n`;
+            document.getElementById('stopTaskBtn').disabled = false;
+            document.getElementById('execModal').style.display = 'block';
+
+            activeRunningTaskId = t.id;
+            currentRunAbortController = new AbortController();
+
+            try {
+                const res = await fetch('/api/cron/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: t.id,
+                        command: t.command,
+                        args: t.args,
+                        is_root: t.is_root
+                    }),
+                    signal: currentRunAbortController.signal
+                });
+
+                if (!res.body) {
+                    const data = await res.json();
+                    outputBox.innerText += data.output || data.error || 'Execution finished.';
+                    document.getElementById('execStatus').innerText = data.success ? 'Execution completed.' : 'Execution failed.';
+                    return;
+                }
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    const chunk = decoder.decode(value, { stream: true });
+                    outputBox.innerText += chunk;
+                    outputBox.scrollTop = outputBox.scrollHeight;
+                }
+                document.getElementById('execStatus').innerText = 'Execution completed successfully.';
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    outputBox.innerText += `\n[${new Date().toLocaleTimeString()}] Task was stopped by user.\n`;
+                    document.getElementById('execStatus').innerText = 'Execution aborted.';
+                } else {
+                    outputBox.innerText += `\n[${new Date().toLocaleTimeString()}] Error: ${err.message}\n`;
+                    document.getElementById('execStatus').innerText = 'Execution encountered an error.';
+                }
+            } finally {
+                document.getElementById('stopTaskBtn').disabled = true;
+                currentRunAbortController = null;
+                activeRunningTaskId = null;
+            }
+        }
+
+        async function stopCurrentTask() {
+            if (currentRunAbortController) {
+                currentRunAbortController.abort();
+            }
+            if (activeRunningTaskId) {
+                try {
+                    await fetch('/api/cron/stop', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: activeRunningTaskId })
+                    });
+                } catch (e) {}
+            }
+            document.getElementById('stopTaskBtn').disabled = true;
+        }
+
+        function closeExecModal() {
+            if (currentRunAbortController) {
+                if (!confirm('A task is currently running. Stop it and close?')) return;
+                stopCurrentTask();
+            }
+            document.getElementById('execModal').style.display = 'none';
+        }
+
+        /* File Browser */
+        function openFileBrowser() {
+            currentBrowserDir = '/';
+            loadBrowserDirectory(currentBrowserDir);
+            document.getElementById('fileModal').style.display = 'block';
+        }
+
+        function closeFileBrowser() {
+            document.getElementById('fileModal').style.display = 'none';
+        }
+
+        async function loadBrowserDirectory(path) {
+            document.getElementById('modalBrowserPath').innerText = path;
+            const container = document.getElementById('browserList');
+            container.innerHTML = '<div style="padding: 1rem; color: #8b949e;">Loading directory...</div>';
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(path)}`);
+                const data = await res.json();
+                container.innerHTML = '';
+
+                if (!data.items || data.items.length === 0) {
+                    container.innerHTML = '<div style="padding: 1rem; color: #8b949e;">Empty directory</div>';
+                    return;
+                }
+
+                // Sort dirs first
+                const sorted = data.items.sort((a, b) => (b.is_dir - a.is_dir) || a.name.localeCompare(b.name));
+                sorted.forEach(item => {
+                    const el = document.createElement('div');
+                    el.className = 'file-item';
+                    el.innerHTML = `<span>${item.is_dir ? '📁' : '📄'}</span> <span>${escapeHtml(item.name)}</span>`;
+                    el.onclick = () => {
+                        if (item.is_dir) {
+                            currentBrowserDir = item.path;
+                            loadBrowserDirectory(currentBrowserDir);
+                        } else {
+                            document.getElementById('taskCommand').value = item.path;
+                            closeFileBrowser();
+                        }
+                    };
+                    container.appendChild(el);
+                });
+            } catch (err) {
+                container.innerHTML = `<div style="padding: 1rem; color: #f85149;">Error: ${err.message}</div>`;
+            }
+        }
+
+        function navBrowserUp() {
+            if (currentBrowserDir === '/' || !currentBrowserDir) return;
+            const parts = currentBrowserDir.split('/').filter(Boolean);
+            parts.pop();
+            currentBrowserDir = '/' + parts.join('/');
+            loadBrowserDirectory(currentBrowserDir);
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+    </script>
+</body>
+</html>

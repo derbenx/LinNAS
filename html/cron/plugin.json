@@ -1,0 +1,16 @@
+{
+  "id": "cron",
+  "name": "Cron Tasks",
+  "version": "1.0.0",
+  "description": "Manage scheduled background cron jobs with simple or advanced time controls, file browser, root toggle, and immediate execution.",
+  "category": "System",
+  "icon": "⏱️",
+  "author": "LinNAS Team",
+  "default": true,
+  "installed": true,
+  "commands": {
+    "cron_status_cmd": "systemctl status cron 2>/dev/null || systemctl status crond 2>/dev/null || service cron status 2>/dev/null || which cron 2>/dev/null || echo 'inactive'",
+    "install_cron_sudo": "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y cron && systemctl enable --now cron",
+    "start_cron_sudo": "systemctl enable --now cron 2>/dev/null || service cron start 2>/dev/null || crond -b 2>/dev/null"
+  }
+}

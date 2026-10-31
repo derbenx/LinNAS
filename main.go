@@ -964,6 +964,59 @@ func syncSystemConfigs(pluginID string, body []byte) {
 			_ = os.MkdirAll("/etc/dnsmasq.d", 0755)
 			_ = os.WriteFile("/etc/dnsmasq.d/99-server-manager-dhcp.conf", []byte(sb.String()), 0644)
 		}
+
+	case "cron":
+		var cronPayload struct {
+			Tasks []struct {
+				ID        string `json:"id"`
+				Name      string `json:"name"`
+				Command   string `json:"command"`
+				Args      string `json:"args"`
+				Schedule  string `json:"schedule"`
+				IsRoot    bool   `json:"is_root"`
+				Enabled   bool   `json:"enabled"`
+			} `json:"tasks"`
+		}
+		if err := json.Unmarshal(body, &cronPayload); err == nil {
+			var sb strings.Builder
+			sb.WriteString("# /etc/cron.d/linnas-cron\n")
+			sb.WriteString("# Generated automatically by LinNAS Cron Tasks plugin\n")
+			sb.WriteString("SHELL=/bin/bash\n")
+			sb.WriteString("PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin\n\n")
+
+			for _, t := range cronPayload.Tasks {
+				if t.Command == "" || t.Schedule == "" {
+					continue
+				}
+				user := "root"
+				if !t.IsRoot {
+					user = "linnas"
+					// check current non-root user if available
+					if u := os.Getenv("USER"); u != "" && u != "root" {
+						user = u
+					}
+				}
+				fullCmd := t.Command
+				if t.Args != "" {
+					fullCmd += " " + t.Args
+				}
+
+				if !t.Enabled {
+					sb.WriteString(fmt.Sprintf("# DISABLED_LINNAS: %s %s %s\n", t.Schedule, user, fullCmd))
+				} else {
+					sb.WriteString(fmt.Sprintf("%s %s %s\n", t.Schedule, user, fullCmd))
+				}
+			}
+
+			_ = os.MkdirAll("/etc/cron.d", 0755)
+			if os.Getuid() != 0 {
+				cmd := exec.Command("sudo", "-n", "tee", "/etc/cron.d/linnas-cron")
+				cmd.Stdin = strings.NewReader(sb.String())
+				_ = cmd.Run()
+			} else {
+				_ = os.WriteFile("/etc/cron.d/linnas-cron", []byte(sb.String()), 0644)
+			}
+		}
 	}
 }
 
@@ -2205,6 +2258,8 @@ func main() {
 		mux.HandleFunc("/api/sources/get", authMiddleware(handleSourcesGet))
 	mux.HandleFunc("/api/sources/test", authMiddleware(handleSourcesTest))
 	mux.HandleFunc("/api/sources/apply", authMiddleware(handleSourcesApply))
+	mux.HandleFunc("/api/cron/run", authMiddleware(handleCronRun))
+	mux.HandleFunc("/api/cron/stop", authMiddleware(handleCronStop))
 	mux.HandleFunc("/api/dns/convert", authMiddleware(handleDNSConvert))
 	mux.HandleFunc("/api/settings/get", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, map[string]interface{}{
@@ -2512,4 +2567,152 @@ func handleSourcesApply(w http.ResponseWriter, r *http.Request) {
 		"message": fmt.Sprintf("Successfully applied new mirror source to %s. Backup created at %s", sourcesFile, backupFile),
 		"backup": backupFile,
 	})
+}
+
+var (
+	cronProcessesLock sync.Mutex
+	cronProcesses     = make(map[string]*exec.Cmd)
+)
+
+func handleCronRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		ID      string `json:"id"`
+		Command string `json:"command"`
+		Args    string `json:"args"`
+		IsRoot  bool   `json:"is_root"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.Command == "" {
+		http.Error(w, "Invalid request or missing command", http.StatusBadRequest)
+		return
+	}
+
+	fullCmd := req.Command
+	if req.Args != "" {
+		fullCmd += " " + req.Args
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Transfer-Encoding", "chunked")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	flusher, canFlush := w.(http.Flusher)
+
+	var cmd *exec.Cmd
+	if req.IsRoot && os.Getuid() != 0 {
+		cmd = exec.Command("sudo", "-n", "bash", "-c", fullCmd)
+	} else {
+		cmd = exec.Command("bash", "-c", fullCmd)
+	}
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	taskId := req.ID
+	if taskId == "" {
+		taskId = fmt.Sprintf("cron_%d", time.Now().UnixNano())
+	}
+
+	cronProcessesLock.Lock()
+	cronProcesses[taskId] = cmd
+	cronProcessesLock.Unlock()
+
+	defer func() {
+		cronProcessesLock.Lock()
+		delete(cronProcesses, taskId)
+		cronProcessesLock.Unlock()
+	}()
+
+	if err := cmd.Start(); err != nil {
+		_, _ = fmt.Fprintf(w, "Failed to start command: %v\n", err)
+		if canFlush {
+			flusher.Flush()
+		}
+		return
+	}
+
+	multiReader := io.MultiReader(stdoutPipe, stderrPipe)
+	buf := make([]byte, 1024)
+	for {
+		n, rErr := multiReader.Read(buf)
+		if n > 0 {
+			_, _ = w.Write(buf[:n])
+			if canFlush {
+				flusher.Flush()
+			}
+		}
+		if rErr != nil {
+			break
+		}
+	}
+
+	waitErr := cmd.Wait()
+	if waitErr != nil {
+		_, _ = fmt.Fprintf(w, "\n[Process exited with error: %v]\n", waitErr)
+	} else {
+		_, _ = fmt.Fprintf(w, "\n[Process completed successfully]\n")
+	}
+	if canFlush {
+		flusher.Flush()
+	}
+}
+
+func handleCronStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	decryptedBody, err := decryptPayload(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.ID == "" {
+		http.Error(w, "Invalid request or missing ID", http.StatusBadRequest)
+		return
+	}
+
+	cronProcessesLock.Lock()
+	cmd, exists := cronProcesses[req.ID]
+	cronProcessesLock.Unlock()
+
+	if !exists || cmd == nil || cmd.Process == nil {
+		jsonResponse(w, map[string]interface{}{"success": true, "message": "No active process found for task"})
+		return
+	}
+
+	_ = cmd.Process.Kill()
+	jsonResponse(w, map[string]interface{}{"success": true, "message": "Process terminated"})
 }

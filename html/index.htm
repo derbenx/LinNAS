@@ -243,6 +243,17 @@
 
             for (const catName of sortedCategories) {
                 const plugins = categories[catName];
+
+                if (catName === 'Tools') {
+                    // Virtual Desktop first, File Manager second
+                    plugins.sort((a, b) => {
+                        const order = { 'desktop': 1, 'filemanager': 2 };
+                        const orderA = order[a.id] || 99;
+                        const orderB = order[b.id] || 99;
+                        return orderA - orderB;
+                    });
+                }
+
                 const catHeader = document.createElement('div');
                 catHeader.className = 'plugin-category';
                 catHeader.innerText = catName;
@@ -353,7 +364,8 @@
                 'mysql': '🗄️',
                 'php': '🐘',
                 'sources': '⚡',
-                'drives': '💽'
+                'drives': '💽',
+                'cron': '⏱️'
             };
             return icons[id] || '⚙️';
         }

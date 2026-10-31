@@ -1,0 +1,12 @@
+<div class="plugin-info-content">
+    <h3>Cron Tasks & Background Job Scheduler</h3>
+    <p>Configure automated system tasks, backup scripts, and periodic maintenance commands with an intuitive user interface.</p>
+    <ul>
+        <li><strong>Dual Scheduling Modes:</strong> Choose between friendly <em>Simple Mode</em> (hourly, daily, weekly, monthly, or at system boot) and <em>Advanced Mode</em> with standard 5-part cron syntax (<code>* * * * *</code>).</li>
+        <li><strong>Separate Task Isolation:</strong> Jobs are managed within an isolated LinNAS configuration file (<code>/etc/cron.d/linnas-cron</code>) rather than touching global system tables directly.</li>
+        <li><strong>Root & User Permissions:</strong> Toggle tasks to run with elevated root privileges or as the standard system user.</li>
+        <li><strong>Executable File Browser:</strong> Easily browse server directories to select scripts or binaries with one click.</li>
+        <li><strong>Run Now & Stop Controls:</strong> Test and verify tasks immediately on demand with real-time output logging and termination controls.</li>
+        <li><strong>Service Watchdog:</strong> Automatically detects whether the cron daemon is active and provides one-click installation and service start.</li>
+    </ul>
+</div>
