@@ -696,23 +696,9 @@
                 const initBtn = document.createElement('button');
                 initBtn.className = 'btn btn-danger';
                 initBtn.innerHTML = '⚡ Initialize Partition Table';
-                initBtn.onclick = () => promptInitDiskTable();
+                initBtn.onclick = () => queueInitDiskTableStep();
                 bar.appendChild(initBtn);
             } else {
-                if (seg.mount) {
-                    const unmountBtn = document.createElement('button');
-                    unmountBtn.className = 'btn btn-danger';
-                    unmountBtn.innerHTML = '⏏️ Unmount';
-                    unmountBtn.onclick = () => queueUnmountStep(seg);
-                    bar.appendChild(unmountBtn);
-                } else {
-                    const mountBtn = document.createElement('button');
-                    mountBtn.className = 'btn btn-info';
-                    mountBtn.innerHTML = '📂 Mount';
-                    mountBtn.onclick = () => mountPartitionPrompt(seg.partDev, seg.label || seg.partDev.split('/').pop(), seg.uuid, seg.fs);
-                    bar.appendChild(mountBtn);
-                }
-
                 // Single Format Button opens dialog
                 const formatBtn = document.createElement('button');
                 formatBtn.className = 'btn btn-secondary';
@@ -740,8 +726,8 @@
             }
         }
 
-        /* Direct Action Handlers */
-        async function promptInitDiskTable() {
+        /* Queue Init Partition Table Step */
+        function queueInitDiskTableStep() {
             if (!currentDiskDev) return;
             const tableType = prompt(`Initialize new partition table on ${currentDiskDev}?\n\nEnter 'gpt' (Recommended) or 'msdos' (MBR):\n\nWARNING: All existing partitions on ${currentDiskDev} will be deleted!`, 'gpt');
             if (!tableType) return;
@@ -750,23 +736,24 @@
                 return alert('Invalid partition table type. Must be gpt or msdos.');
             }
 
-            showOutput(`Initializing ${cleanType.toUpperCase()} partition table on ${currentDiskDev}...`);
-            try {
-                const res = await fetch('/api/plugin/exec', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        plugin: 'drives',
-                        cmd_key: 'init_label_sudo',
-                        args: { device: currentDiskDev, table_type: cleanType }
-                    })
-                });
-                const data = await res.json();
-                showOutput(data.success ? `Partition table initialized on ${currentDiskDev}.` : `Initialization error: ${data.error}\n${data.output}`);
-                loadDriveList();
-            } catch (err) {
-                showOutput('Execution error: ' + err.message);
-            }
+            addQueuedStep({
+                id: 'step_' + Date.now(),
+                type: 'init_table',
+                desc: `Initialize ${cleanType.toUpperCase()} partition table on ${currentDiskDev} (WIPES ALL PARTITIONS)`,
+                run: async () => {
+                    const res = await fetch('/api/plugin/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            plugin: 'drives',
+                            cmd_key: 'init_label_sudo',
+                            args: { device: currentDiskDev, table_type: cleanType }
+                        })
+                    });
+                    const data = await res.json();
+                    return data.output || data.error || `Partition table initialized on ${currentDiskDev}.`;
+                }
+            });
         }
 
         function openNewPartModal(freeSeg) {
@@ -850,6 +837,51 @@
             });
 
             closeFormatModal();
+        }
+
+        function queueMountStep(seg) {
+            const defaultPath = `/mnt/${seg.label || seg.partDev.split('/').pop()}`;
+            const target = prompt(`Enter target mount point folder for ${seg.partDev}:`, defaultPath);
+            if (!target) return;
+
+            const autoFstab = confirm(`Auto-mount this drive at server boot via UUID in /etc/fstab?\n\nUUID: ${seg.uuid || 'N/A'}\nMount Point: ${target}`);
+
+            addQueuedStep({
+                id: 'step_' + Date.now(),
+                type: 'mount',
+                desc: `Mount ${seg.partDev} to ${target}${autoFstab ? ' (with /etc/fstab boot entry)' : ''}`,
+                run: async () => {
+                    let outMsg = '';
+                    const res = await fetch('/api/plugin/exec', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            plugin: 'drives',
+                            cmd_key: 'mount_disk_sudo',
+                            args: { device: seg.partDev, mountpoint: target }
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        outMsg = `Successfully mounted ${seg.partDev} to ${target}`;
+                        if (autoFstab && seg.uuid) {
+                            await fetch('/api/plugin/exec', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    plugin: 'drives',
+                                    cmd_key: 'fstab_add_sudo',
+                                    args: { uuid: seg.uuid, mountpoint: target, fstype: seg.fs || 'auto' }
+                                })
+                            });
+                            outMsg += ` and added boot entry to /etc/fstab (UUID=${seg.uuid}).`;
+                        }
+                    } else {
+                        outMsg = `Mount error: ${data.error}\n${data.output}`;
+                    }
+                    return outMsg;
+                }
+            });
         }
 
         function queueUnmountStep(seg) {

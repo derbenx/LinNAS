@@ -271,7 +271,9 @@
         }
 
         function getRuleKey(toPort, fromSrc) {
-            return `${toPort}_${fromSrc}`.replace(/[^a-zA-Z0-9_]/g, '_');
+            const normPort = (toPort || '').trim().replace(/\s*\(v6\)/i, '').toLowerCase();
+            const normSrc = (fromSrc || '').trim().replace(/\s*\(v6\)/i, '').toLowerCase();
+            return `${normPort}_${normSrc}`.replace(/[^a-zA-Z0-9_]/g, '_');
         }
 
         function inferRuleName(toPort, fromSrc) {
@@ -292,6 +294,7 @@
             const tbody = document.getElementById('rulesTableBody');
             tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #8b949e;">Scanning rules...</td></tr>';
             currentRulesList = [];
+            const seenKeys = new Set();
 
             try {
                 const res = await fetch('/api/plugin/exec', {
@@ -307,11 +310,10 @@
 
                 lines.forEach(line => {
                     const trimmed = line.trim();
-                    if (!trimmed || trimmed.startsWith('Added user rules') || trimmed.startsWith('Status:')) return;
+                    if (!trimmed || trimmed.startsWith('Added user rules') || trimmed.startsWith('Status:') || trimmed.startsWith('--') || trimmed.startsWith('To ')) return;
 
                     // Parse ufw show added format: "ufw allow 8080/tcp" or "ufw allow from 192.168.0.0/16 to any port 445 proto tcp"
                     if (trimmed.startsWith('ufw ')) {
-                        ruleIdx++;
                         const rawCmd = trimmed;
                         const withoutUfw = trimmed.replace(/^ufw\s+/, '');
 
@@ -337,6 +339,10 @@
                         }
 
                         const ruleKey = getRuleKey(toPort, fromSrc);
+                        if (seenKeys.has(ruleKey)) return;
+                        seenKeys.add(ruleKey);
+
+                        ruleIdx++;
                         const stored = ruleMetadata[ruleKey] || {};
                         const ruleName = stored.name || inferRuleName(toPort, fromSrc);
 
@@ -356,13 +362,16 @@
                     // Fallback to numbered output format: "[ 1] 80/tcp ALLOW IN Anywhere"
                     const match = trimmed.match(/^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT|ALLOW IN|ALLOW OUT)\s+(.+)$/i);
                     if (match) {
-                        ruleIdx++;
                         const num = match[1];
                         const toPort = match[2].trim();
                         const action = match[3].trim();
                         const fromSrc = match[4].trim();
                         const rawCmd = `ufw delete ${num}`;
                         const ruleKey = getRuleKey(toPort, fromSrc);
+                        if (seenKeys.has(ruleKey)) return;
+                        seenKeys.add(ruleKey);
+
+                        ruleIdx++;
                         const stored = ruleMetadata[ruleKey] || {};
                         const ruleName = stored.name || inferRuleName(toPort, fromSrc);
 
@@ -653,7 +662,7 @@
                 showOutput(`Adding separate Samba rules (139/tcp, 445/tcp, 137/udp, 138/udp) for ${access}...`);
                 for (const sp of SAMBA_PORTS) {
                     const ruleName = `${baseName} (${sp.label} ${sp.port}/${sp.proto})`;
-                    await addQuickRule(sp.port, sp.proto, access, ruleName);
+                    await addQuickRule(sp.port, sp.proto, access, ruleName, false);
                 }
             }
             await loadUFWStatus();
@@ -675,7 +684,7 @@
             }
         }
 
-        async function addQuickRule(port, proto, access, ruleName) {
+        async function addQuickRule(port, proto, access, ruleName, autoReload = true) {
             showOutput(`Adding UFW rule for port ${port}/${proto} (${ruleName || 'Service'})...`);
             try {
                 let cmdKey = 'allow_port_sudo';
@@ -704,7 +713,9 @@
                     await saveRuleMetadata();
                 }
                 showOutput(data.success ? `Rule for ${port}/${proto} added successfully.\n` + (data.output || '') : 'Failed: ' + data.error);
-                loadUFWStatus();
+                if (autoReload) {
+                    await loadUFWStatus();
+                }
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
             }
