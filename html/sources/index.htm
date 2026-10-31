@@ -49,7 +49,15 @@
     <div class="section">
         <div class="section-title">
             <span>Debian Mirror Repository Speed Benchmark</span>
-            <button class="btn btn-secondary" onclick="testAllMirrors()">⚡ Test All Mirror Speeds</button>
+            <div style="display: flex; gap: 0.8rem; align-items: center;">
+                <label style="font-size: 0.85rem; color: #8b949e; font-weight: normal; display: flex; align-items: center; gap: 6px;">
+                    <span>Filter Country:</span>
+                    <select id="countrySelect" style="background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; padding: 0.25rem 0.5rem; font-size: 0.8rem;" onchange="onCountryFilterChange()">
+                        <option value="all" selected>All Countries</option>
+                    </select>
+                </label>
+                <button class="btn btn-secondary" onclick="testFilteredMirrors()">⚡ Test Filtered Mirrors</button>
+            </div>
         </div>
         <table>
             <thead>
@@ -94,6 +102,7 @@
                     document.getElementById('activeFilePath').innerText = data.active_file;
                     document.getElementById('sourcesText').value = data.content || '';
                     mirrorList = data.mirrors || [];
+                    populateCountryDropdown();
                     renderMirrors();
                 } else {
                     showOutput('Failed to load sources: ' + data.error);
@@ -103,17 +112,46 @@
             }
         }
 
+        let currentCountryFilter = 'all';
+
+        function populateCountryDropdown() {
+            const sel = document.getElementById('countrySelect');
+            const current = sel.value || 'all';
+            sel.innerHTML = '<option value="all">All Countries</option>';
+
+            const countries = Array.from(new Set(mirrorList.map(m => m.country))).sort();
+            countries.forEach(c => {
+                const opt = new Option(c, c);
+                if (c === current) opt.selected = true;
+                sel.add(opt);
+            });
+        }
+
+        function onCountryFilterChange() {
+            currentCountryFilter = document.getElementById('countrySelect').value;
+            renderMirrors();
+        }
+
         function renderMirrors() {
             const tbody = document.getElementById('mirrorTableBody');
             tbody.innerHTML = '';
 
-            mirrorList.forEach((m, idx) => {
+            const filtered = mirrorList.map((m, originalIdx) => ({ ...m, originalIdx }))
+                .filter(m => currentCountryFilter === 'all' || m.country === currentCountryFilter);
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#8b949e; padding:1.5rem;">No mirrors found for selected country.</td></tr>';
+                return;
+            }
+
+            filtered.forEach(m => {
+                const idx = m.originalIdx;
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td><strong>${escapeHtml(m.name)}</strong></td>
                     <td style="font-family: monospace; font-size: 0.8rem; color: #58a6ff;">${escapeHtml(m.url)}</td>
                     <td>${escapeHtml(m.country)}</td>
-                    <td id="speed_${idx}"><span class="speed-badge speed-testing">Untested</span></td>
+                    <td id="speed_${idx}"><span class="speed-badge speed-testing">${m._lastSpeed || 'Untested'}</span></td>
                     <td>
                         <div style="display: flex; gap: 0.4rem;">
                             <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="testSingleMirror(${idx})">⚡ Test</button>
@@ -143,6 +181,7 @@
                     let cls = 'speed-fast';
                     if (data.latency_ms > 200) cls = 'speed-med';
                     if (data.latency_ms > 450) cls = 'speed-slow';
+                    m._lastSpeed = data.speed;
                     badge.innerHTML = `<span class="speed-badge ${cls}">${data.speed}</span>`;
                 } else {
                     badge.innerHTML = `<span class="speed-badge speed-slow">Unreachable</span>`;
@@ -152,12 +191,15 @@
             }
         }
 
-        async function testAllMirrors() {
-            showOutput('Beginning sequential latency benchmark tests across all mirrors...');
-            for (let i = 0; i < mirrorList.length; i++) {
-                await testSingleMirror(i);
+        async function testFilteredMirrors() {
+            const targets = mirrorList.map((m, idx) => ({ ...m, idx }))
+                .filter(m => currentCountryFilter === 'all' || m.country === currentCountryFilter);
+
+            showOutput(`Beginning sequential latency benchmark tests across ${targets.length} mirror(s)...`);
+            for (let i = 0; i < targets.length; i++) {
+                await testSingleMirror(targets[i].idx);
             }
-            showOutput('All mirror latency benchmarks completed.');
+            showOutput('Mirror latency benchmarks completed.');
         }
 
         async function applyMirror(idx) {

@@ -16,6 +16,8 @@
     "format_ext4_sudo": "mkfs.ext4 -F \"{device}\"",
     "format_vfat_sudo": "mkfs.vfat -F 32 -I \"{device}\"",
     "format_wipe_sudo": "wipefs -a \"{device}\"",
-    "fsck_part_sudo": "fsck -y \"{device}\""
+    "fsck_part_sudo": "fsck -y \"{device}\"",
+    "disk_free_sudo": "parted -s -m \"{device}\" unit B print free 2>/dev/null || true",
+    "rename_part_sudo": "parted -s \"{device}\" name \"{part_num}\" \"{name}\" 2>/dev/null || e2label \"{part_dev}\" \"{name}\" 2>/dev/null || true"
   }
 }

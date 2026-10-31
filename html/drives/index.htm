@@ -10,9 +10,6 @@
         h2 { font-size: 1.5rem; color: #58a6ff; margin-bottom: 0.5rem; }
         p.subtitle { color: #8b949e; margin-bottom: 1.5rem; font-size: 0.9rem; }
 
-        .root-warning-banner { background: rgba(218, 54, 51, 0.12); border: 1px solid #da3633; border-radius: 6px; padding: 1rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 12px; font-size: 0.88rem; color: #f85149; }
-        .root-warning-banner strong { color: #ff7b72; }
-
         .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
         .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #21262d; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
 
@@ -30,18 +27,53 @@
         .btn-danger:hover { background: #b62324; }
         .btn-warning { background: #d29922; color: #0d1117; font-weight: bold; }
         .btn-warning:hover { background: #e3b341; }
+        .btn-info { background: #1f6feb; color: white; }
+        .btn-info:hover { background: #388bfd; }
 
-        .tool-card { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; }
-        .tool-header { font-weight: bold; color: #58a6ff; font-size: 0.95rem; margin-bottom: 0.6rem; display: flex; justify-content: space-between; align-items: center; }
-        .form-row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 0.8rem; }
-        .form-group { display: flex; flex-direction: column; gap: 4px; min-width: 140px; }
+        .root-warning-banner { background: rgba(218, 54, 51, 0.12); border: 1px solid #da3633; border-radius: 6px; padding: 1rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 12px; font-size: 0.88rem; color: #f85149; }
+        .root-warning-banner strong { color: #ff7b72; }
+
+        /* Graphical Partition Editor Bar */
+        .disk-select-bar { display: flex; align-items: center; gap: 1rem; background: #0d1117; border: 1px solid #30363d; padding: 0.8rem 1rem; border-radius: 6px; margin-bottom: 1.2rem; flex-wrap: wrap; }
+        .partition-visual-container { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 1.2rem; margin-bottom: 1.2rem; }
+        .partition-track { display: flex; width: 100%; height: 50px; background: #21262d; border-radius: 6px; overflow: hidden; border: 2px solid #30363d; gap: 2px; }
+        .partition-block { display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 0.75rem; font-weight: bold; cursor: pointer; transition: filter 0.15s, transform 0.15s; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: none; position: relative; }
+        .partition-block:hover { filter: brightness(1.25); }
+        .partition-block.selected { outline: 3px solid #58a6ff; outline-offset: -3px; z-index: 2; }
+
+        /* Filesystem Palette */
+        .fs-ext4 { background: #238636; color: #fff; }
+        .fs-vfat { background: #1f6feb; color: #fff; }
+        .fs-btrfs { background: #8957e5; color: #fff; }
+        .fs-xfs { background: #d29922; color: #0d1117; }
+        .fs-swap { background: #da3633; color: #fff; }
+        .fs-squashfs { background: #388bfd; color: #fff; }
+        .fs-other { background: #6e7681; color: #fff; }
+        .fs-free { background: #30363d; color: #8b949e; border: 1px dashed #484f58; }
+
+        /* Color-coded Legend */
+        .color-legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.8rem; margin-top: 0.8rem; color: #8b949e; align-items: center; }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+        /* Details Card */
+        .segment-details-card { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 1.2rem; margin-top: 1rem; }
+        .segment-header { font-size: 1rem; font-weight: bold; color: #58a6ff; margin-bottom: 0.8rem; display: flex; justify-content: space-between; align-items: center; }
+        .details-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.8rem; margin-bottom: 1rem; }
+        .detail-item { font-size: 0.85rem; }
+        .detail-item label { color: #8b949e; display: block; font-size: 0.75rem; margin-bottom: 2px; }
+        .detail-item span { font-weight: 600; color: #c9d1d9; font-family: monospace; }
+
+        .action-toolbar { display: flex; flex-wrap: wrap; gap: 0.6rem; border-top: 1px solid #21262d; padding-top: 1rem; }
+
+        /* Modal dialog for creating partition */
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); align-items: center; justify-content: center; }
+        .modal-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 90%; max-width: 520px; padding: 1.5rem; }
+        .modal-title { font-size: 1.1rem; color: #58a6ff; font-weight: bold; margin-bottom: 1rem; }
+        .form-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 0.9rem; }
         .form-group label { font-size: 0.8rem; color: #8b949e; font-weight: 600; }
-        input[type="text"], select { background: #161b22; border: 1px solid #30363d; border-radius: 4px; color: #fff; padding: 0.45rem 0.6rem; font-size: 0.85rem; outline: none; }
+        input[type="text"], input[type="number"], select { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #fff; padding: 0.5rem; font-size: 0.85rem; outline: none; }
         input[type="text"]:focus, select:focus { border-color: #58a6ff; }
-
-        .queue-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 0.8rem; margin-top: 0.8rem; font-family: monospace; font-size: 0.85rem; }
-        .queue-item { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.5rem; border-bottom: 1px solid #21262d; color: #7ee787; }
-        .queue-item:last-child { border-bottom: none; }
 
         .sticky-console { position: fixed; bottom: 0; left: 0; width: 100%; background: #161b22; border-top: 1px solid #30363d; padding: 1rem 2rem; box-shadow: 0 -4px 12px rgba(0,0,0,0.5); z-index: 10; display: none; }
         .console-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.85rem; font-weight: bold; color: #58a6ff; }
@@ -50,14 +82,7 @@
 </head>
 <body>
     <h2>Physical Drives</h2>
-    <p class="subtitle">Detect physical storage devices, initialize partition tables, manage partitions, format filesystems, run fsck, and configure persistent boot entries.</p>
-
-    <div class="root-warning-banner">
-        <span style="font-size: 1.4rem;">⚠️</span>
-        <div>
-            <strong>Root / Administrator Privileges Active:</strong> Disk initialization, partitioning, and formatting operations write directly to raw storage devices and permanently erase existing data. Always confirm device paths before applying changes.
-        </div>
-    </div>
+    <p class="subtitle">Detect physical storage devices, mount partitions into your server filesystem, and manage disk partitions with a graphical editor.</p>
 
     <!-- Section 1: Physical Disks & Mounting -->
     <div class="section">
@@ -84,127 +109,92 @@
         </table>
     </div>
 
-    <!-- Section 2: GParted / Disks Partitioning & Formatting Tools -->
+    <!-- Section 2: Graphical Disk Partition Editor -->
+    <div class="root-warning-banner">
+        <span style="font-size: 1.4rem;">⚠️</span>
+        <div>
+            <strong>Root / Administrator Privileges Active:</strong> Disk initialization, partitioning, and formatting operations write directly to raw storage devices and permanently erase existing data. Always confirm device paths before applying changes.
+        </div>
+    </div>
+
     <div class="section">
         <div class="section-title">
-            <span>Disk Partitioning & Formatting Tools (GParted / Disks)</span>
+            <span>Graphical Partition Editor</span>
         </div>
 
-        <!-- Tool 1: Initialize Partition Table -->
-        <div class="tool-card">
-            <div class="tool-header">
-                <span>1. Initialize Raw Disk Partition Table</span>
-                <span style="font-size: 0.75rem; color: #f85149;">⚠️ Destructive: Erases whole disk table</span>
-            </div>
-            <div class="form-row">
-                <div class="form-group" style="flex: 1;">
-                    <label>Target Disk Device</label>
-                    <select id="initDiskSelect"><option value="">Loading disks...</option></select>
-                </div>
-                <div class="form-group">
-                    <label>Partition Table Type</label>
-                    <select id="initTableType">
-                        <option value="gpt" selected>GPT (GUID Partition Table - Recommended)</option>
-                        <option value="msdos">MBR / MSDOS (Legacy BIOS)</option>
-                    </select>
-                </div>
-                <div>
-                    <button class="btn btn-danger" onclick="queueInitLabel()">+ Queue Initialize Disk</button>
-                </div>
-            </div>
+        <div class="disk-select-bar">
+            <strong>Select Target Drive:</strong>
+            <select id="editorDiskSelect" style="flex: 1; min-width: 250px;" onchange="onEditorDiskChange()"></select>
+            <button class="btn btn-secondary" onclick="reloadCurrentDiskLayout()">🔄 Reload Layout</button>
+            <button class="btn btn-danger" onclick="promptInitDiskTable()">Initialize Disk Table</button>
         </div>
 
-        <!-- Tool 2: Create Partition -->
-        <div class="tool-card">
-            <div class="tool-header">
-                <span>2. Create Partition</span>
-            </div>
-            <div class="form-row">
-                <div class="form-group" style="flex: 1;">
-                    <label>Target Disk Device</label>
-                    <select id="createPartDiskSelect"><option value="">Loading disks...</option></select>
-                </div>
-                <div class="form-group">
-                    <label>Filesystem / Type</label>
-                    <select id="createPartFs">
-                        <option value="ext4" selected>ext4 (Standard Linux)</option>
-                        <option value="fat32">fat32 / vfat (Compatible)</option>
-                        <option value="btrfs">btrfs</option>
-                        <option value="xfs">xfs</option>
-                        <option value="linux-swap">linux-swap</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Start (e.g. 1MiB)</label>
-                    <input type="text" id="createPartStart" value="1MiB">
-                </div>
-                <div class="form-group">
-                    <label>End (e.g. 100% or 10GiB)</label>
-                    <input type="text" id="createPartEnd" value="100%">
-                </div>
-                <div>
-                    <button class="btn btn-secondary" onclick="queueCreatePart()">+ Queue Create Partition</button>
-                </div>
+        <div class="partition-visual-container">
+            <div id="partitionTrack" class="partition-track"></div>
+
+            <div class="color-legend">
+                <div class="legend-item"><span class="legend-dot fs-ext4"></span> <span>ext4</span></div>
+                <div class="legend-item"><span class="legend-dot fs-vfat"></span> <span>FAT32 / vfat</span></div>
+                <div class="legend-item"><span class="legend-dot fs-btrfs"></span> <span>btrfs</span></div>
+                <div class="legend-item"><span class="legend-dot fs-xfs"></span> <span>xfs</span></div>
+                <div class="legend-item"><span class="legend-dot fs-swap"></span> <span>swap</span></div>
+                <div class="legend-item"><span class="legend-dot fs-squashfs"></span> <span>squashfs</span></div>
+                <div class="legend-item"><span class="legend-dot fs-other"></span> <span>other / unformatted</span></div>
+                <div class="legend-item"><span class="legend-dot fs-free"></span> <span>Unallocated Free Space</span></div>
             </div>
         </div>
 
-        <!-- Tool 3: Quick Format & Filesystem Check -->
-        <div class="tool-card">
-            <div class="tool-header">
-                <span>3. Format Partition or Run Filesystem Check (fsck)</span>
+        <!-- Selected Segment Details & Dynamic Actions -->
+        <div id="segmentDetailsCard" class="segment-details-card" style="display: none;">
+            <div class="segment-header">
+                <span id="segTitle">Partition Details</span>
+                <span id="segBadge" class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; pointer-events: none;">Active</span>
             </div>
-            <div class="form-row">
-                <div class="form-group" style="flex: 1;">
-                    <label>Target Partition Device</label>
-                    <select id="formatPartSelect"><option value="">Loading partitions...</option></select>
-                </div>
-                <div class="form-group">
-                    <label>Action / Filesystem Format</label>
-                    <select id="formatTypeSelect">
-                        <option value="ext4" selected>Quick Format: ext4 (mkfs.ext4)</option>
-                        <option value="vfat">Quick Format: FAT32 (mkfs.vfat)</option>
-                        <option value="wipe">Wipe Filesystem Signatures (wipefs)</option>
-                        <option value="fsck">Check & Repair Filesystem (fsck -y)</option>
-                    </select>
-                </div>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button class="btn btn-secondary" onclick="queueFormatAction()">+ Queue Operation</button>
-                </div>
+            <div class="details-grid">
+                <div class="detail-item"><label>Device / Path</label><span id="segPath">-</span></div>
+                <div class="detail-item"><label>Partition Number</label><span id="segPartNum">-</span></div>
+                <div class="detail-item"><label>Filesystem</label><span id="segFs">-</span></div>
+                <div class="detail-item"><label>Size</label><span id="segSize">-</span></div>
+                <div class="detail-item"><label>Volume Label / Name</label><span id="segLabel">-</span></div>
+                <div class="detail-item"><label>Mount Point</label><span id="segMount">-</span></div>
+                <div class="detail-item"><label>UUID</label><span id="segUuid">-</span></div>
+                <div class="detail-item"><label>Sector Range</label><span id="segRange">-</span></div>
             </div>
-        </div>
 
-        <!-- Tool 4: Delete Partition -->
-        <div class="tool-card">
-            <div class="tool-header">
-                <span>4. Delete Partition</span>
-                <span style="font-size: 0.75rem; color: #f85149;">⚠️ Erases selected partition</span>
-            </div>
-            <div class="form-row">
-                <div class="form-group" style="flex: 1;">
-                    <label>Disk Containing Partition</label>
-                    <select id="delDiskSelect"><option value="">Loading disks...</option></select>
-                </div>
-                <div class="form-group" style="width: 140px;">
-                    <label>Partition Number (e.g. 1)</label>
-                    <input type="text" id="delPartNum" placeholder="1">
-                </div>
-                <div>
-                    <button class="btn btn-danger" onclick="queueDeletePart()">+ Queue Delete</button>
-                </div>
-            </div>
+            <!-- Dynamic Contextual Action Buttons -->
+            <div id="actionToolbar" class="action-toolbar"></div>
         </div>
+    </div>
 
-        <!-- Queued Actions / To-Do Script -->
-        <div class="tool-card" style="border-color: #388bfd;">
-            <div class="tool-header" style="color: #58a6ff;">
-                <span>Pending Operations Queue (<span id="queueCount">0</span> actions)</span>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="clearQueue()">Clear Queue</button>
-                    <button class="btn btn-warning" style="padding: 0.25rem 0.8rem; font-size: 0.8rem;" onclick="applyQueueScript()">⚡ Apply Pending Operations</button>
-                </div>
+    <!-- Modal: New Partition Creation -->
+    <div id="newPartModal" class="modal">
+        <div class="modal-card">
+            <div class="modal-title">Create New Partition in Free Space</div>
+            <div class="form-group">
+                <label>Target Disk</label>
+                <input type="text" id="modalDiskPath" readonly style="opacity: 0.8;">
             </div>
-            <div id="queueContainer" class="queue-box">
-                <span style="color: #8b949e;">No pending operations. Add actions above to review before applying.</span>
+            <div class="form-group">
+                <label>Filesystem Format</label>
+                <select id="modalFsType">
+                    <option value="ext4" selected>ext4 (Standard Linux)</option>
+                    <option value="fat32">fat32 / vfat (Compatible)</option>
+                    <option value="btrfs">btrfs</option>
+                    <option value="xfs">xfs</option>
+                    <option value="linux-swap">linux-swap</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Start Position (Bytes or Offset)</label>
+                <input type="text" id="modalStartPos" placeholder="1MiB">
+            </div>
+            <div class="form-group">
+                <label>End Position or Size (e.g. 100% or 10GiB or Byte Offset)</label>
+                <input type="text" id="modalEndPos" placeholder="100%">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">
+                <button class="btn btn-secondary" onclick="closeNewPartModal()">Cancel</button>
+                <button class="btn" onclick="executeCreatePartitionFromModal()">Create Partition</button>
             </div>
         </div>
     </div>
@@ -219,8 +209,11 @@
     </div>
 
     <script>
-        let driveData = [];
-        let pendingOperations = [];
+        let rawBlockDevices = [];
+        let allDisks = [];
+        let currentDiskDev = null;
+        let currentDiskSegments = [];
+        let selectedSegment = null;
 
         async function loadDriveList() {
             const tbody = document.getElementById('drivesTableBody');
@@ -239,65 +232,57 @@
                 }
 
                 const parsed = JSON.parse(data.output);
-                driveData = parsed.blockdevices || [];
+                rawBlockDevices = parsed.blockdevices || [];
                 tbody.innerHTML = '';
 
-                if (driveData.length === 0) {
+                if (rawBlockDevices.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #8b949e;">No block devices found.</td></tr>';
                     return;
                 }
 
-                populateToolSelectors(driveData);
+                populateDisksDropdown();
 
-                driveData.forEach(dev => {
+                rawBlockDevices.forEach(dev => {
                     renderDeviceRow(dev, tbody, '');
                 });
+
+                if (currentDiskDev) {
+                    await reloadCurrentDiskLayout();
+                } else if (allDisks.length > 0) {
+                    currentDiskDev = allDisks[0].path;
+                    document.getElementById('editorDiskSelect').value = currentDiskDev;
+                    await reloadCurrentDiskLayout();
+                }
             } catch (err) {
                 tbody.innerHTML = `<tr><td colspan="8" style="color:#f85149;">Error scanning drives: ${err.message}</td></tr>`;
             }
         }
 
-        function populateToolSelectors(devices) {
-            const initSel = document.getElementById('initDiskSelect');
-            const createSel = document.getElementById('createPartDiskSelect');
-            const delSel = document.getElementById('delDiskSelect');
-            const formatSel = document.getElementById('formatPartSelect');
-
-            initSel.innerHTML = '';
-            createSel.innerHTML = '';
-            delSel.innerHTML = '';
-            formatSel.innerHTML = '';
-
-            const parentDisks = [];
-            const partitions = [];
+        function populateDisksDropdown() {
+            const sel = document.getElementById('editorDiskSelect');
+            sel.innerHTML = '';
+            allDisks = [];
 
             function traverse(dev) {
                 const path = dev.path || ('/dev/' + dev.name);
-                if (dev.type === 'disk') {
-                    parentDisks.push({ path, name: dev.name, size: dev.size, label: dev.label });
-                }
-                if (dev.type === 'part' || (dev.type === 'disk' && (!dev.children || dev.children.length === 0))) {
-                    partitions.push({ path, name: dev.name, size: dev.size, fstype: dev.fstype, mount: dev.mountpoint });
+                if (dev.type === 'disk' || (dev.type === 'loop' && dev.size)) {
+                    allDisks.push({
+                        path,
+                        name: dev.name,
+                        size: dev.size,
+                        label: dev.label || dev.model || 'Disk'
+                    });
                 }
                 if (dev.children) {
                     dev.children.forEach(traverse);
                 }
             }
 
-            devices.forEach(traverse);
+            rawBlockDevices.forEach(traverse);
 
-            parentDisks.forEach(d => {
-                const opt1 = new Option(`${d.path} (${d.size})`, d.path);
-                const opt2 = new Option(`${d.path} (${d.size})`, d.path);
-                const opt3 = new Option(`${d.path} (${d.size})`, d.path);
-                initSel.add(opt1);
-                createSel.add(opt2);
-                delSel.add(opt3);
-            });
-
-            partitions.forEach(p => {
-                const opt = new Option(`${p.path} [${p.size}, ${p.fstype || 'no-fs'}${p.mount ? ', mounted' : ''}]`, p.path);
-                formatSel.add(opt);
+            allDisks.forEach(d => {
+                const opt = new Option(`${d.path} (${d.size}) - ${d.label}`, d.path);
+                sel.add(opt);
             });
         }
 
@@ -361,7 +346,6 @@
             }
         }
 
-        /* Mount and Unmount */
         async function mountPartitionPrompt(device, defaultName, uuid, fstype) {
             const defaultPath = `/mnt/${defaultName || device.replace('/dev/', '')}`;
             const target = prompt(`Enter target mount point folder for ${device}:`, defaultPath);
@@ -444,128 +428,422 @@
             }
         }
 
-        /* Queue Management */
-        function addQueueItem(desc, cmdKey, args) {
-            pendingOperations.push({ desc, cmdKey, args });
-            renderQueue();
+        /* Graphical Partition Bar Logic */
+        async function onEditorDiskChange() {
+            currentDiskDev = document.getElementById('editorDiskSelect').value;
+            await reloadCurrentDiskLayout();
         }
 
-        function renderQueue() {
-            const container = document.getElementById('queueContainer');
-            document.getElementById('queueCount').innerText = pendingOperations.length;
+        async function reloadCurrentDiskLayout() {
+            if (!currentDiskDev) return;
+            const track = document.getElementById('partitionTrack');
+            track.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;width:100%;color:#8b949e;font-size:0.8rem;">Reading disk partition layout...</div>';
+            document.getElementById('segmentDetailsCard').style.display = 'none';
 
-            if (pendingOperations.length === 0) {
-                container.innerHTML = '<span style="color: #8b949e;">No pending operations. Add actions above to review before applying.</span>';
-                return;
-            }
-
-            container.innerHTML = '';
-            pendingOperations.forEach((op, idx) => {
-                const div = document.createElement('div');
-                div.className = 'queue-item';
-                div.innerHTML = `
-                    <span>${idx + 1}. ${escapeHtml(op.desc)}</span>
-                    <button class="btn btn-secondary" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; color:#f85149;" onclick="removeQueueItem(${idx})">✕</button>
-                `;
-                container.appendChild(div);
-            });
-        }
-
-        function removeQueueItem(idx) {
-            pendingOperations.splice(idx, 1);
-            renderQueue();
-        }
-
-        function clearQueue() {
-            pendingOperations = [];
-            renderQueue();
-        }
-
-        function queueInitLabel() {
-            const dev = document.getElementById('initDiskSelect').value;
-            const tableType = document.getElementById('initTableType').value;
-            if (!dev) return alert('Please select a target disk device.');
-            addQueueItem(`Initialize ${tableType.toUpperCase()} partition table on ${dev}`, 'init_label_sudo', { device: dev, table_type: tableType });
-        }
-
-        function queueCreatePart() {
-            const dev = document.getElementById('createPartDiskSelect').value;
-            const fstype = document.getElementById('createPartFs').value;
-            const start = document.getElementById('createPartStart').value.trim() || '1MiB';
-            const end = document.getElementById('createPartEnd').value.trim() || '100%';
-            if (!dev) return alert('Please select a target disk device.');
-            addQueueItem(`Create partition on ${dev} (${fstype}, start: ${start}, end: ${end})`, 'create_part_sudo', {
-                device: dev,
-                fstype: fstype,
-                start_pos: start,
-                end_pos: end
-            });
-        }
-
-        function queueFormatAction() {
-            const dev = document.getElementById('formatPartSelect').value;
-            const action = document.getElementById('formatTypeSelect').value;
-            if (!dev) return alert('Please select a target partition device.');
-
-            if (action === 'ext4') {
-                addQueueItem(`Format ${dev} with ext4 filesystem`, 'format_ext4_sudo', { device: dev });
-            } else if (action === 'vfat') {
-                addQueueItem(`Format ${dev} with FAT32 filesystem`, 'format_vfat_sudo', { device: dev });
-            } else if (action === 'wipe') {
-                addQueueItem(`Wipe filesystem signatures on ${dev}`, 'format_wipe_sudo', { device: dev });
-            } else if (action === 'fsck') {
-                addQueueItem(`Check and repair filesystem (fsck) on ${dev}`, 'fsck_part_sudo', { device: dev });
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drives',
+                        cmd_key: 'disk_free_sudo',
+                        args: { device: currentDiskDev }
+                    })
+                });
+                const data = await res.json();
+                parseAndRenderPartitions(data.output || '');
+            } catch (err) {
+                track.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;width:100%;color:#f85149;font-size:0.8rem;">Failed to read partition table: ${err.message}</div>`;
             }
         }
 
-        function queueDeletePart() {
-            const dev = document.getElementById('delDiskSelect').value;
-            const partNum = document.getElementById('delPartNum').value.trim();
-            if (!dev || !partNum) return alert('Please select a disk and specify the partition number.');
-            addQueueItem(`Delete partition ${partNum} on ${dev}`, 'delete_part_sudo', { device: dev, part_num: partNum });
-        }
+        function parseAndRenderPartitions(partedOutput) {
+            const track = document.getElementById('partitionTrack');
+            track.innerHTML = '';
+            currentDiskSegments = [];
 
-        async function applyQueueScript() {
-            if (pendingOperations.length === 0) {
-                alert('No operations in queue to apply.');
-                return;
+            // Find matching block device info from lsblk
+            let matchingDisk = null;
+            function findDisk(dev) {
+                const p = dev.path || ('/dev/' + dev.name);
+                if (p === currentDiskDev) matchingDisk = dev;
+                if (dev.children) dev.children.forEach(findDisk);
             }
+            rawBlockDevices.forEach(findDisk);
 
-            const confirmMsg = `Are you sure you want to execute ${pendingOperations.length} disk operation(s)?\n\nWARNING: Partitioning or formatting will modify device partition tables and filesystems permanently!`;
-            if (!confirm(confirmMsg)) return;
+            const lines = partedOutput.split('\n');
+            let totalBytes = 0;
 
-            showOutput(`[START] Executing batch disk operations script (${pendingOperations.length} tasks)...\n`);
-
-            for (let i = 0; i < pendingOperations.length; i++) {
-                const op = pendingOperations[i];
-                showOutput(`[${i + 1}/${pendingOperations.length}] Executing: ${op.desc}...`);
-                try {
-                    const res = await fetch('/api/plugin/exec', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            plugin: 'drives',
-                            cmd_key: op.cmdKey,
-                            args: op.args
-                        })
-                    });
-                    const data = await res.json();
-                    if (data.success) {
-                        showOutput(`✓ Succeeded: ${op.desc}\n${data.output || ''}`);
-                    } else {
-                        showOutput(`✗ Failed: ${op.desc}\nError: ${data.error}\n${data.output || ''}`);
-                        const proceed = confirm(`Operation failed on '${op.desc}'. Do you want to continue with remaining tasks?`);
-                        if (!proceed) break;
+            lines.forEach(line => {
+                const trimmed = line.trim();
+                if (trimmed.startsWith(currentDiskDev + ':')) {
+                    const parts = trimmed.split(':');
+                    if (parts[1] && parts[1].endsWith('B')) {
+                        totalBytes = parseInt(parts[1].replace('B', ''), 10) || 0;
                     }
-                } catch (err) {
-                    showOutput(`✗ Network/Execution Error: ${err.message}`);
-                    break;
+                }
+            });
+
+            // Parse individual partition rows from parted machine output: "1:1048576B:52428799B:51380224B::primary:;" or "1:17408B:1048575B:1031168B:free;"
+            lines.forEach(line => {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed.startsWith('BYT;') || trimmed.startsWith(currentDiskDev + ':')) return;
+                const parts = trimmed.split(':');
+                if (parts.length >= 5) {
+                    const partNum = parts[0];
+                    const startBytes = parseInt(parts[1].replace('B', ''), 10) || 0;
+                    const endBytes = parseInt(parts[2].replace('B', ''), 10) || 0;
+                    const sizeBytes = parseInt(parts[3].replace('B', ''), 10) || 0;
+                    const fs = parts[4];
+                    const isFree = (fs === 'free' || parts[5] === 'free' || parts[6] === 'free');
+
+                    let partDev = '';
+                    let label = '';
+                    let uuid = '';
+                    let mount = '';
+                    let detectedFs = fs;
+
+                    if (!isFree && partNum) {
+                        partDev = currentDiskDev + (currentDiskDev.match(/\d$/) ? 'p' : '') + partNum;
+                        if (matchingDisk && matchingDisk.children) {
+                            const child = matchingDisk.children.find(c => (c.path === partDev || c.name === partDev.replace('/dev/', '')));
+                            if (child) {
+                                label = child.label || '';
+                                uuid = child.uuid || '';
+                                mount = child.mountpoint || child.mountpoints?.join(', ') || '';
+                                detectedFs = child.fstype || fs || 'unformatted';
+                            }
+                        }
+                    }
+
+                    currentDiskSegments.push({
+                        partNum: isFree ? null : partNum,
+                        partDev: partDev,
+                        startBytes,
+                        endBytes,
+                        sizeBytes,
+                        isFree,
+                        fs: detectedFs || (isFree ? 'free' : 'unformatted'),
+                        label,
+                        uuid,
+                        mount
+                    });
+                }
+            });
+
+            // If parted couldn't read segments or disk has no partition table, fall back to whole disk/lsblk
+            if (currentDiskSegments.length === 0) {
+                if (matchingDisk && matchingDisk.children && matchingDisk.children.length > 0) {
+                    matchingDisk.children.forEach((c, idx) => {
+                        currentDiskSegments.push({
+                            partNum: (idx + 1).toString(),
+                            partDev: c.path || ('/dev/' + c.name),
+                            sizeBytes: 1,
+                            isFree: false,
+                            fs: c.fstype || 'ext4',
+                            label: c.label || '',
+                            uuid: c.uuid || '',
+                            mount: c.mountpoint || ''
+                        });
+                    });
+                } else if (matchingDisk) {
+                    currentDiskSegments.push({
+                        partNum: null,
+                        partDev: currentDiskDev,
+                        sizeBytes: 1,
+                        isFree: true,
+                        fs: matchingDisk.fstype || 'free',
+                        label: matchingDisk.label || '',
+                        uuid: matchingDisk.uuid || '',
+                        mount: matchingDisk.mountpoint || ''
+                    });
                 }
             }
 
-            showOutput('[FINISHED] Batch disk operations completed.');
-            clearQueue();
-            loadDriveList();
+            if (totalBytes === 0) {
+                totalBytes = currentDiskSegments.reduce((sum, s) => sum + (s.sizeBytes || 1), 0);
+            }
+
+            currentDiskSegments.forEach((seg, idx) => {
+                const block = document.createElement('div');
+                const pct = Math.max(Math.min((seg.sizeBytes / totalBytes) * 100, 100), 4);
+                block.style.flex = `${pct} 1 0%`;
+
+                const fsKey = (seg.fs || '').toLowerCase();
+                let colorCls = 'fs-other';
+                if (seg.isFree) colorCls = 'fs-free';
+                else if (fsKey.includes('ext4') || fsKey.includes('ext3') || fsKey.includes('ext2')) colorCls = 'fs-ext4';
+                else if (fsKey.includes('fat') || fsKey.includes('vfat') || fsKey.includes('ntfs')) colorCls = 'fs-vfat';
+                else if (fsKey.includes('btrfs')) colorCls = 'fs-btrfs';
+                else if (fsKey.includes('xfs')) colorCls = 'fs-xfs';
+                else if (fsKey.includes('swap')) colorCls = 'fs-swap';
+                else if (fsKey.includes('squashfs')) colorCls = 'fs-squashfs';
+
+                block.className = `partition-block ${colorCls}`;
+                block.innerHTML = `
+                    <span>${seg.isFree ? 'Free Space' : (seg.partDev.split('/').pop() || 'Part ' + seg.partNum)}</span>
+                    <span style="font-size:0.68rem;opacity:0.85;">${formatBytes(seg.sizeBytes)}</span>
+                `;
+
+                block.onclick = () => selectSegment(idx, block);
+                track.appendChild(block);
+            });
+
+            // Automatically select first non-free or free segment
+            if (currentDiskSegments.length > 0) {
+                const firstBlock = track.querySelector('.partition-block');
+                selectSegment(0, firstBlock);
+            }
+        }
+
+        function selectSegment(idx, blockEl) {
+            document.querySelectorAll('.partition-block').forEach(b => b.classList.remove('selected'));
+            if (blockEl) blockEl.classList.add('selected');
+
+            selectedSegment = currentDiskSegments[idx];
+            if (!selectedSegment) return;
+
+            const card = document.getElementById('segmentDetailsCard');
+            card.style.display = 'block';
+
+            const isFree = selectedSegment.isFree;
+
+            document.getElementById('segTitle').innerText = isFree ? 'Unallocated Free Space' : `Partition: ${selectedSegment.partDev}`;
+            document.getElementById('segBadge').innerText = isFree ? 'Unallocated' : (selectedSegment.mount ? 'Mounted' : 'Unmounted');
+            document.getElementById('segBadge').className = isFree ? 'btn btn-secondary' : (selectedSegment.mount ? 'btn btn-info' : 'btn btn-secondary');
+
+            document.getElementById('segPath').innerText = isFree ? 'N/A (Free Space)' : selectedSegment.partDev;
+            document.getElementById('segPartNum').innerText = isFree ? 'N/A' : (selectedSegment.partNum || '1');
+            document.getElementById('segFs').innerText = isFree ? 'None (Unallocated)' : (selectedSegment.fs || 'Unknown');
+            document.getElementById('segSize').innerText = formatBytes(selectedSegment.sizeBytes);
+            document.getElementById('segLabel').innerText = selectedSegment.label || 'None';
+            document.getElementById('segMount').innerText = selectedSegment.mount || 'Not Mounted';
+            document.getElementById('segUuid').innerText = selectedSegment.uuid || 'N/A';
+            document.getElementById('segRange').innerText = (selectedSegment.startBytes !== undefined && selectedSegment.endBytes !== undefined)
+                ? `${selectedSegment.startBytes} - ${selectedSegment.endBytes} Bytes` : 'N/A';
+
+            renderSegmentActions(selectedSegment);
+        }
+
+        function renderSegmentActions(seg) {
+            const bar = document.getElementById('actionToolbar');
+            bar.innerHTML = '';
+
+            if (seg.isFree) {
+                const newBtn = document.createElement('button');
+                newBtn.className = 'btn';
+                newBtn.innerHTML = '➕ New Partition Here';
+                newBtn.onclick = () => openNewPartModal(seg);
+                bar.appendChild(newBtn);
+
+                const initBtn = document.createElement('button');
+                initBtn.className = 'btn btn-danger';
+                initBtn.innerHTML = '⚡ Initialize Partition Table';
+                initBtn.onclick = () => promptInitDiskTable();
+                bar.appendChild(initBtn);
+            } else {
+                if (seg.mount) {
+                    const unmountBtn = document.createElement('button');
+                    unmountBtn.className = 'btn btn-danger';
+                    unmountBtn.innerHTML = '⏏️ Unmount Partition';
+                    unmountBtn.onclick = () => unmountPartition(seg.mount, seg.uuid);
+                    bar.appendChild(unmountBtn);
+                } else {
+                    const mountBtn = document.createElement('button');
+                    mountBtn.className = 'btn btn-info';
+                    mountBtn.innerHTML = '📂 Mount Partition';
+                    mountBtn.onclick = () => mountPartitionPrompt(seg.partDev, seg.label || seg.partDev.split('/').pop(), seg.uuid, seg.fs);
+                    bar.appendChild(mountBtn);
+                }
+
+                const fmtExt4Btn = document.createElement('button');
+                fmtExt4Btn.className = 'btn btn-secondary';
+                fmtExt4Btn.innerHTML = 'Format: ext4';
+                fmtExt4Btn.onclick = () => formatPartitionDirect(seg.partDev, 'ext4_sudo');
+                bar.appendChild(fmtExt4Btn);
+
+                const fmtFatBtn = document.createElement('button');
+                fmtFatBtn.className = 'btn btn-secondary';
+                fmtFatBtn.innerHTML = 'Format: FAT32';
+                fmtFatBtn.onclick = () => formatPartitionDirect(seg.partDev, 'vfat_sudo');
+                bar.appendChild(fmtFatBtn);
+
+                const renameBtn = document.createElement('button');
+                renameBtn.className = 'btn btn-secondary';
+                renameBtn.innerHTML = '🏷️ Rename / Label';
+                renameBtn.onclick = () => promptRenamePartition(seg);
+                bar.appendChild(renameBtn);
+
+                const fsckBtn = document.createElement('button');
+                fsckBtn.className = 'btn btn-secondary';
+                fsckBtn.innerHTML = '🛡️ Check Filesystem (fsck)';
+                fsckBtn.onclick = () => fsckPartitionDirect(seg.partDev);
+                bar.appendChild(fsckBtn);
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn btn-danger';
+                delBtn.innerHTML = '🗑️ Delete Partition';
+                delBtn.onclick = () => deletePartitionDirect(seg);
+                bar.appendChild(delBtn);
+            }
+        }
+
+        /* Direct Action Handlers */
+        async function promptInitDiskTable() {
+            if (!currentDiskDev) return;
+            const tableType = prompt(`Initialize new partition table on ${currentDiskDev}?\n\nEnter 'gpt' (Recommended) or 'msdos' (MBR):\n\nWARNING: All existing partitions on ${currentDiskDev} will be deleted!`, 'gpt');
+            if (!tableType) return;
+            const cleanType = tableType.trim().toLowerCase();
+            if (cleanType !== 'gpt' && cleanType !== 'msdos') {
+                return alert('Invalid partition table type. Must be gpt or msdos.');
+            }
+
+            showOutput(`Initializing ${cleanType.toUpperCase()} partition table on ${currentDiskDev}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drives',
+                        cmd_key: 'init_label_sudo',
+                        args: { device: currentDiskDev, table_type: cleanType }
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Partition table initialized on ${currentDiskDev}.` : `Initialization error: ${data.error}\n${data.output}`);
+                loadDriveList();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        function openNewPartModal(freeSeg) {
+            document.getElementById('modalDiskPath').value = currentDiskDev;
+            document.getElementById('modalStartPos').value = freeSeg.startBytes ? `${freeSeg.startBytes}B` : '1MiB';
+            document.getElementById('modalEndPos').value = freeSeg.endBytes ? `${freeSeg.endBytes}B` : '100%';
+            document.getElementById('newPartModal').style.display = 'flex';
+        }
+
+        function closeNewPartModal() {
+            document.getElementById('newPartModal').style.display = 'none';
+        }
+
+        async function executeCreatePartitionFromModal() {
+            const dev = document.getElementById('modalDiskPath').value;
+            const fstype = document.getElementById('modalFsType').value;
+            const start = document.getElementById('modalStartPos').value.trim() || '1MiB';
+            const end = document.getElementById('modalEndPos').value.trim() || '100%';
+
+            closeNewPartModal();
+            showOutput(`Creating partition on ${dev} (${fstype}, start: ${start}, end: ${end})...`);
+
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drives',
+                        cmd_key: 'create_part_sudo',
+                        args: { device: dev, fstype, start_pos: start, end_pos: end }
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Partition created successfully on ${dev}.\n${data.output || ''}` : `Creation failed: ${data.error}\n${data.output || ''}`);
+                loadDriveList();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function formatPartitionDirect(partDev, cmdSuffix) {
+            if (!confirm(`Format ${partDev}? All data on this partition will be permanently deleted!`)) return;
+            const cmdKey = `format_${cmdSuffix}`;
+            showOutput(`Formatting ${partDev}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drives',
+                        cmd_key: cmdKey,
+                        args: { device: partDev }
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Partition ${partDev} formatted successfully.\n${data.output || ''}` : `Format failed: ${data.error}\n${data.output || ''}`);
+                loadDriveList();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function promptRenamePartition(seg) {
+            const newName = prompt(`Enter new label / name for ${seg.partDev}:`, seg.label || 'Storage');
+            if (!newName) return;
+
+            showOutput(`Setting label '${newName}' on ${seg.partDev}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drives',
+                        cmd_key: 'rename_part_sudo',
+                        args: {
+                            device: currentDiskDev,
+                            part_num: seg.partNum || '1',
+                            name: newName,
+                            part_dev: seg.partDev
+                        }
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Partition label updated.` : `Rename notice: ${data.output || data.error}`);
+                loadDriveList();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function fsckPartitionDirect(partDev) {
+            showOutput(`Running filesystem check (fsck) on ${partDev}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drives',
+                        cmd_key: 'fsck_part_sudo',
+                        args: { device: partDev }
+                    })
+                });
+                const data = await res.json();
+                showOutput(`fsck completed on ${partDev}:\n${data.output || data.error}`);
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
+        }
+
+        async function deletePartitionDirect(seg) {
+            if (!confirm(`Delete partition ${seg.partDev} (Partition #${seg.partNum})?\n\nWARNING: All partition contents will be removed!`)) return;
+
+            showOutput(`Deleting partition #${seg.partNum} on ${currentDiskDev}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'drives',
+                        cmd_key: 'delete_part_sudo',
+                        args: { device: currentDiskDev, part_num: seg.partNum }
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Partition #${seg.partNum} deleted.` : `Delete failed: ${data.error}\n${data.output}`);
+                loadDriveList();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
+            }
         }
 
         function showOutput(text) {
@@ -579,8 +857,12 @@
             document.getElementById('stickyConsole').style.display = 'none';
         }
 
-        function escapeHtml(str) {
-            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        function formatBytes(bytes) {
+            if (!bytes || bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
         window.onload = loadDriveList;

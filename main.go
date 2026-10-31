@@ -2354,6 +2354,10 @@ func handleSourcesGet(w http.ResponseWriter, r *http.Request) {
 	mirrors := []map[string]string{
 		{"name": "Global Official (deb.debian.org)", "url": "http://deb.debian.org/debian", "country": "Global"},
 		{"name": "Cloudflare CDN Mirror", "url": "https://mirrors.cloudflare.com/debian", "country": "Global"},
+		{"name": "University of Waterloo (Ontario)", "url": "http://mirror.cs.uwaterloo.ca/debian", "country": "Canada"},
+		{"name": "Simon Fraser University (Burnaby, BC)", "url": "http://mirror.its.sfu.ca/mirror/debian", "country": "Canada"},
+		{"name": "Dalhousie University (Nova Scotia)", "url": "http://debian.mirror.rafal.ca/debian", "country": "Canada"},
+		{"name": "CIX (Toronto, Ontario)", "url": "http://debian.mirror.iweb.ca/debian", "country": "Canada"},
 		{"name": "Kernel.org Mirror", "url": "http://mirrors.kernel.org/debian", "country": "United States"},
 		{"name": "MIT (Massachusetts)", "url": "http://mirrors.mit.edu/debian", "country": "United States"},
 		{"name": "Princeton University (New Jersey)", "url": "http://mirror.math.princeton.edu/pub/debian", "country": "United States"},

@@ -1,2 +1,3 @@
 <p><strong>VeraCrypt / TrueCrypt Container Config (tcplay)</strong></p>
 <p>Mount encrypted volume files using <code>tcplay</code> and export mounted containers over SMB shares restricted to registered SMB users.</p>
+<p style="margin-top: 8px; color: #8b949e;"><strong>Security Notice:</strong> Mounted encrypted containers and temporary SMB shares do not mount or share again on system reboot for security reasons.</p>

@@ -338,6 +338,8 @@
                         openImageViewer(item.path);
                     } else if (isText) {
                         openTextEditor(item.path);
+            } else {
+                showOutput('Cannot open unknown file type: ' + item.name);
                     }
                 };
 
@@ -823,8 +825,10 @@
                 openVideoPlayer(rightClickedItem.path);
             } else if (isImageFile(rightClickedItem.name)) {
                 openImageViewer(rightClickedItem.path);
-            } else {
+            } else if (isTextFile(rightClickedItem.name)) {
                 openTextEditor(rightClickedItem.path);
+            } else {
+                showOutput('Cannot open unknown file type: ' + rightClickedItem.name);
             }
             hideContextMenu();
         }

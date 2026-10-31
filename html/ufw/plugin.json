@@ -10,11 +10,12 @@
   "remove_sudo": "apt-get remove -y ufw",
   "commands": {
     "get_status_sudo": "ufw status verbose",
-    "get_rules_sudo": "ufw status numbered",
+    "get_rules_sudo": "ufw show added 2>/dev/null || ufw status numbered",
     "enable_ufw_sudo": "echo y | ufw enable",
     "disable_ufw_sudo": "ufw disable",
     "allow_port_sudo": "ufw allow {port}/{proto}",
     "allow_subnet_port_sudo": "ufw allow from {subnet} to any port {port} proto {proto}",
-    "delete_rule_sudo": "echo y | ufw delete {rule_num}"
+    "delete_rule_sudo": "echo y | ufw delete {rule_num} 2>/dev/null || true",
+    "delete_rule_cmd_sudo": "echo y | {rule_cmd}"
   }
 }

@@ -73,6 +73,10 @@
     <h2>VeraCrypt & TrueCrypt</h2>
     <p class="subtitle">Mount encrypted volume files using <code>tcplay</code> (Debian APT compatible) and optionally export them over SMB shares.</p>
 
+    <div style="background: rgba(88, 166, 255, 0.1); border: 1px solid rgba(88, 166, 255, 0.3); border-radius: 6px; padding: 0.8rem 1rem; margin-bottom: 1.5rem; font-size: 0.85rem; color: #8b949e; line-height: 1.4;">
+        🔒 <strong style="color: #58a6ff;">Security Notice:</strong> Mounted encrypted containers and their temporary SMB shares do not persist or re-mount automatically upon system reboot for security reasons. Containers must be manually remounted and authenticated with passphrase/keyfiles after a reboot.
+    </div>
+
     <!-- Mount Container Form -->
     <div class="section">
         <div class="section-title">Mount Encrypted Volume</div>

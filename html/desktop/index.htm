@@ -2788,38 +2788,1081 @@
             let mx = can.width = window.innerWidth;
             let my = can.height = window.innerHeight;
 
+            // Ported Modules Definition
             const ssModulesList = [
-                {
-                    name: "Starfield",
-                    interval: 30,
-                    init() {
-                        this.stars = 1000;
-                        this.stx = []; this.sty = []; this.sth = []; this.stv = [];
-                        this.stz = []; this.stw = []; this.stc = [];
-                        this.fr = Math.floor(Math.random() * 2) ? 1 : -1;
-                    },
-                    frame() {
-                        ctx.fillStyle = "#000000";
-                        ctx.fillRect(0, 0, mx, my);
-                        for (let i = 0; i < this.stars; i++) {
-                            if (this.fr == 1 && (this.sty[i] === undefined || this.sty[i] > my || this.sty[i] < 0 || this.stx[i] > mx || this.stx[i] < 0)) {
-                                this.stx[i] = mx / 2; this.sty[i] = my / 2;
-                                this.sth[i] = ((Math.random() * 2) - 1) * 9; this.stv[i] = ((Math.random() * 2) - 1) * 9;
-                                this.stz[i] = 1; this.stw[i] = 1;
-                                this.stc[i] = "rgba(" + Math.random() * 255 + "," + Math.random() * 255 + "," + Math.random() * 255 + ",200)";
-                            }
-                            this.stx[i] = this.stx[i] + (this.sth[i] * this.stw[i]);
-                            this.sty[i] = this.sty[i] + (this.stv[i] * this.stw[i]);
-                            ctx.fillStyle = this.stc[i] || "#fff";
-                            ctx.fillRect(this.stx[i], this.sty[i], this.stz[i] || 2, this.stz[i] || 2);
+    // Module 1: Starfield / Space Warp
+    {
+        name: "Starfield",
+        interval: 30,
+        init() {
+            this.stars = 1000;
+            this.stx = []; this.sty = []; this.sth = []; this.stv = [];
+            this.stz = []; this.stw = []; this.stc = [];
+            this.fr = Math.floor(Math.random() * 2) ? 1 : -1;
+        },
+        frame() {
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, mx, my);
+
+            for (let i = 0; i < this.stars; i++) {
+                if (this.fr == 1 && (this.sty[i] === undefined || this.sty[i] > my || this.sty[i] < 0 || this.stx[i] > mx || this.stx[i] < 0)) {
+                    this.stx[i] = mx / 2;
+                    this.sty[i] = my / 2;
+                    this.sth[i] = ((Math.random() * 2) - 1) * 9;
+                    this.stv[i] = ((Math.random() * 2) - 1) * 9;
+                    this.stz[i] = 1; this.stw[i] = 1;
+                    this.stc[i] = "rgba(" + Math.random() * 255 + "," + Math.random() * 255 + "," + Math.random() * 255 + ",200)";
+                }
+
+                // PATCH: Check if reverse stars hit the center OR drift off-screen due to a window resize
+                if (this.fr == -1 && (
+                    (this.sty[i] <= (my / 2) + 5 && this.sty[i] >= (my / 2) - 5) ||
+                    this.stx[i] < 0 || this.stx[i] > mx || this.sty[i] < 0 || this.sty[i] > my
+                )) {
+                    this.sty[i] = undefined;
+                }
+
+                if (this.fr == -1 && (this.sty[i] === undefined)) {
+                    let flip = Math.floor(Math.random() * 2);
+                    if (flip) {
+                        this.stx[i] = Math.floor(Math.random() * mx - 1) + 1;
+                        this.sty[i] = Math.floor(Math.random() * 2) ? 1 : my - 5;
+                    } else {
+                        this.stx[i] = Math.floor(Math.random() * 2) ? 1 : mx - 5;
+                        this.sty[i] = Math.floor(Math.random() * my - 1) + 1;
+                    }
+
+                    let tmpx = this.stx[i] > (mx / 2) ? this.stx[i] - (mx / 2) : (mx / 2) - this.stx[i];
+                    let tmpy = this.sty[i] > (my / 2) ? this.sty[i] - (my / 2) : (my / 2) - this.sty[i];
+
+                    if (!flip) {
+                        this.stv[i] = tmpx > 0 ? tmpy / tmpx : 0;
+                        this.sth[i] = 1;
+                    } else {
+                        this.stv[i] = 1;
+                        this.sth[i] = tmpy > 0 ? tmpx / tmpy : 0;
+                    }
+
+                    this.sth[i] = this.stx[i] > (mx / 2) ? -this.sth[i] : this.sth[i];
+                    this.stv[i] = this.sty[i] > (my / 2) ? -this.stv[i] : this.stv[i];
+
+                    this.stz[i] = 3; this.stw[i] = Math.random() * 5 + 1;
+                    this.stc[i] = "rgba(" + Math.random() * 255 + "," + Math.random() * 255 + "," + Math.random() * 255 + ",200)";
+                }
+
+                this.stx[i] = this.stx[i] + (this.sth[i] * this.stw[i]);
+                this.sty[i] = this.sty[i] + (this.stv[i] * this.stw[i]);
+
+                if (this.fr == 1) {
+                    this.stz[i] = this.stz[i] < 5 ? this.stz[i] + .02 : 5;
+                    this.stw[i] = this.stw[i] * 1.01234;
+                } else {
+                    let tmpx = this.stx[i] > (mx / 2) ? this.stx[i] - (mx / 2) : (mx / 2) - this.stx[i];
+                    let tmpy = this.sty[i] > (my / 2) ? this.sty[i] - (my / 2) : (my / 2) - this.sty[i];
+                    this.stz[i] = tmpx > tmpy ? 1 + 2 * (tmpx / (mx / 2)) : 1 + 2 * (tmpy / (my / 2));
+                    this.stw[i] = this.stw[i] / 1.001;
+                }
+                ctx.fillStyle = this.stc[i];
+                ctx.fillRect(this.stx[i], this.sty[i], this.stz[i], this.stz[i]);
+            }
+        }
+    },
+    // Module 2: Floating Bubbles
+    {
+        name: "Bubbles",
+        interval: 25,
+        init() {
+            this.arrx = []; this.arry = []; this.arrz = []; this.arrc = [];
+            this.num = 50 + Math.random() * 80;
+            this.d = 15;
+            this.grd = "#000";
+
+            for (let i = 0; i < this.num; i++) {
+                this.arry.push(0);
+            }
+        },
+        frame() {
+            ctx.fillStyle = this.grd;
+            ctx.fillRect(0, 0, mx, my);
+
+            ctx.strokeStyle = '#555555';
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i < this.num; i++) {
+                if (this.arry[i] <= 0) {
+                    this.arry[i] = my + this.d;
+                    this.arrx[i] = (Math.random() * (mx)) + this.d;
+                    this.arrz[i] = (Math.random() * (this.d)) + (this.d / 2);
+                    this.arrc[i] = 'rgba(' + (150 + Math.random() * 105) + ',' + (150 + Math.random() * 105) + ',' + (150 + Math.random() * 105) + ',.1)';
+                }
+                this.arry[i] = this.arry[i] - (this.arrz[i] / 8);
+                this.arrx[i] = this.arrx[i] + (Math.random() * 2) - 1;
+                ctx.beginPath();
+                ctx.arc(this.arrx[i], this.arry[i], this.arrz[i], 0, 2 * Math.PI);
+                ctx.stroke();
+                ctx.fillStyle = this.arrc[i];
+                ctx.fill();
+            }
+        }
+    },
+    // Module 3: Neon Abstract Lines
+    {
+        name: "Qix",
+        interval: 1000 / 30,
+        init() {
+            this.step = 8; this.stmn = 4; this.stmx = this.step;
+            this.cc = 1; this.chg = 500;
+            this.la = []; this.lb = []; this.lc = []; this.ld = []; this.lz = [];
+            this.lines = Math.floor(Math.random() * 25) + 50;
+            this.vr = []; this.vg = []; this.vb = [];
+
+            this.vr.push([255,255,255,  0,  0]);
+            this.vg.push([  0,128,255,255,  0]);
+            this.vb.push([  0,  0,  0,  0,255]);
+
+            this.vr.push([255,255,255,  0,  0,  0,255,255]);
+            this.vg.push([  0,128,255,255,  0,255,255,128]);
+            this.vb.push([  0,  0,  0,  0,255,  0,  0,  0]);
+
+            this.vr.push([250,200,150,100, 50,100,150,200]);
+            this.vg.push([  0,  0,  0,  0,  0,  0,  0,  0]);
+            this.vb.push([  0,  0,  0,  0,  0,  0,  0,  0]);
+
+            this.vr.push([  0,  0,  0,  0,  0,  0,  0,  0]);
+            this.vg.push([250,200,150,100, 50,100,150,200]);
+            this.vb.push([  0,  0,  0,  0,  0,  0,  0,  0]);
+
+            this.vr.push([  0,  0,  0,  0,  0,  0,  0,  0]);
+            this.vg.push([  0,  0,  0,  0,  0,  0,  0,  0]);
+            this.vb.push([250,200,150,100, 50,100,150,200]);
+
+            this.vr.push([ 50,100,150,200,250,200,150,100, 50,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0]);
+            this.vg.push([  0,  0,  0,  0,  0,  0,  0,  0, 50,100,150,200,250,200,150,100, 50,  0,  0,  0,  0,  0,  0,  0,  0]);
+            this.vb.push([  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 50,100,150,200,250,200,150,100, 50]);
+
+            let rnd = this.rand(0,1) + this.rand(0,1,1) + this.rand(0,1);
+            rnd = rnd == "000" ? "010" : rnd;
+            this.vr.push([]); this.vg.push([]); this.vb.push([]);
+            for (let i = 1; i < 255; i = i + (255 / this.lines)){
+                this.vr[this.vr.length-1].push(rnd[0] == "1" ? i : 0);
+                this.vg[this.vg.length-1].push(rnd[1] == "1" ? i : 0);
+                this.vb[this.vb.length-1].push(rnd[2] == "1" ? i : 0);
+            }
+
+            this.rgb = this.rand(0, this.vr.length - 1);
+            this.r = this.vr[this.rgb]; this.g = this.vg[this.rgb]; this.b = this.vb[this.rgb];
+
+            if (this.rgb == this.vr.length - 1){ this.rgb = -1; this.ch(); }
+        },
+        rand(lo, hi = 1, st = 0) {
+            let out;
+            if (lo == "t") { out = Math.round(Math.random()) ? -1 : 1; } else { out = (Math.round(Math.random() * (hi - lo))) + lo; }
+            return st ? String(out) : out;
+        },
+        ch() {
+            this.r = []; this.g = []; this.b = [];
+            let rnd = this.rand(0,1) + this.rand(0,1,1) + this.rand(0,1);
+            rnd = rnd == "000" ? "010" : rnd;
+            for (let i = 1; i < 255; i = i + (255 / this.lines)){
+                this.r.push(rnd[0] == "1" ? i : 0);
+                this.g.push(rnd[1] == "1" ? i : 0);
+                this.b.push(rnd[2] == "1" ? i : 0);
+            }
+        },
+        frame() {
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, mx, my);
+            ctx.lineWidth = 4;
+
+            for (let i = 0; i < this.lines; i++){
+                if (this.la[i] == undefined && i != 0){
+                    this.la[i] = this.la[i] + this.step;
+                    this.lb[i] = this.lb[i] + this.step;
+                    this.lc[i] = this.lc[i] + this.step;
+                    this.ld[i] = this.ld[i] + this.step;
+                    this.lz[i] = 0;
+                }
+                if (this.la[i] == undefined && i == 0){
+                    this.la[i] = (Math.random() * (mx - 9)) + 9;
+                    this.lb[i] = (Math.random() * (my - 9)) + 9;
+                    this.lc[i] = (Math.random() * (mx - 9)) + 9;
+                    this.ld[i] = (Math.random() * (my - 9)) + 9;
+                    this.lz[i] = "rgba(" + Math.random() * 255 + "," + Math.random() * 255 + "," + Math.random() * 255 + ",200)";
+                    this.le = Math.floor(Math.random() * 2) ? 1 : -1;
+                    this.lf = Math.floor(Math.random() * 2) ? 1 : -1;
+                    this.lg = Math.floor(Math.random() * 2) ? 1 : -1;
+                    this.lh = Math.floor(Math.random() * 2) ? 1 : -1;
+                }
+                if (i == 0){
+                    if (this.la[i] > 5 && this.la[i] < mx - 5){
+                        this.le = Math.floor(Math.random() * 199) != 1 ? this.le : this.le * -1;
+                    }
+                    if (this.lb[i] > 5 && this.lb[i] < my - 5){
+                        this.lf = Math.floor(Math.random() * 199) != 1 ? this.lf : this.lf * -1;
+                    }
+                    if (this.lc[i] > 5 && this.lc[i] < mx - 5){
+                        this.lg = Math.floor(Math.random() * 199) != 1 ? this.lg : this.lg * -1;
+                    }
+                    if (this.ld[i] > 5 && this.ld[i] < my - 5){
+                        this.lh = Math.floor(Math.random() * 199) != 1 ? this.lh : this.lh * -1;
+                    }
+                    if (this.rgb > -1){
+                        this.lz.unshift("rgba(" + this.r[this.rgb] + "," + this.g[this.rgb] + "," + this.b[this.rgb] + "," + 255 + ")");
+                        this.rgb = this.rgb + 1 >= this.r.length ? 0 : this.rgb + 1;
+                        this.lz.pop();
+                    }
+
+                    if(this.la[i] > mx){ this.le = -1; }
+                    if(this.la[i] < 0) { this.le = 1; }
+                    if(this.lb[i] > my){ this.lf = -1; }
+                    if(this.lb[i] < 0) { this.lf = 1; }
+                    if(this.lc[i] > mx){ this.lg = -1; }
+                    if(this.lc[i] < 0) { this.lg = 1; }
+                    if(this.ld[i] > my){ this.lh = -1; }
+                    if(this.ld[i] < 0) { this.lh = 1; }
+                    this.la.unshift(this.la[i] + this.le * this.step);
+                    this.la.pop();
+                    this.lb.unshift(this.lb[i] + this.lf * this.step);
+                    this.lb.pop();
+                    this.lc.unshift(this.lc[i] + this.lg * this.step);
+                    this.lc.pop();
+                    this.ld.unshift(this.ld[i] + this.lh * this.step);
+                    this.ld.pop();
+                }
+                this.step = Math.floor(Math.random() * 199) != 1 ? this.step : this.step + Math.floor(Math.random() * 3) - 1;
+                this.step = this.step < this.stmn ? this.stmn : this.step;
+                this.step = this.step > this.stmx ? this.stmx : this.step;
+                if (this.la[this.lines - i] != undefined){
+                    if (this.rgb == -1){
+                        ctx.strokeStyle = "rgba(" + this.r[i] + "," + this.g[i] + "," + this.b[i] + ",200)";
+                    } else {
+                        ctx.strokeStyle = this.lz[this.lines - i];
+                    }
+                    ctx.beginPath();
+                    ctx.moveTo(this.la[this.lines - i], this.lb[this.lines - i]);
+                    ctx.lineTo(this.lc[this.lines - i], this.ld[this.lines - i]);
+                    ctx.stroke();
+                }
+            }
+            this.cc++;
+            if (this.rgb == -1 && this.cc > this.chg){ this.cc = 0; this.ch(); }
+        }
+    },
+    // Module 4: Digital Rain / Cyber Matrix
+    {
+        name: "DigitalRain",
+        interval: 40,
+        init() {
+            this.fontSize = 16;
+            this.columns = Math.floor(mx / this.fontSize) + 1;
+            this.drops = [];
+
+            // Initialize the drop positions just above the screen top
+            for (let i = 0; i < this.columns; i++) {
+                this.drops[i] = Math.random() * -100;
+            }
+
+            // A string of characters to pull randomly from
+            //this.chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZコンニチハアカサタナハマヤラワ";
+            this.chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()~<>";
+
+            const randomChannel = () => {
+             const min = 86;
+             const max = 255;
+             const value = Math.floor(Math.random() * (max - min + 1)) + min;
+             return value.toString(16).padStart(2, '0');
+            };
+
+            const r = randomChannel();
+            const g = randomChannel();
+            const b = randomChannel();
+
+            this.colorz = `#${r}${g}${b}`;
+
+            //this.colorz = "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+        },
+        frame() {
+            // Re-calculate column count dynamically if screen layout changes
+            const currentColumns = Math.floor(mx / this.fontSize) + 1;
+            if (this.columns !== currentColumns) {
+                // Adjust array length matching new columns count
+                while (this.drops.length < currentColumns) {
+                    this.drops.push(Math.random() * -100);
+                }
+                this.columns = currentColumns;
+            }
+
+            // Draw a semi-transparent black background to create a trailing fade effect
+            ctx.fillStyle = "rgba(0, 0, 0, 0.06)";
+            ctx.fillRect(0, 0, mx, my);
+
+            ctx.font = `${this.fontSize}px monospace`;
+
+            for (let i = 0; i < this.columns; i++) {
+                // Select a random character
+                const char = this.chars[Math.floor(Math.random() * this.chars.length)];
+
+                // Leading character is brighter white/green, trailing is matrix green
+                ctx.fillStyle = Math.random() > 0.98 ? "#ffffff" : this.colorz;
+
+                const x = i * this.fontSize;
+                const y = this.drops[i] * this.fontSize;
+
+                ctx.fillText(char, x, y);
+
+                // If the drop has scrolled off-screen, randomly send it back to top
+                if (y > my && Math.random() > 0.975) {
+                    this.drops[i] = 0;
+                }
+
+                // Move the drop down the screen
+                this.drops[i]++;
+            }
+        }
+    },
+    // Module 5: Lightning Storm with Variable Rain
+    {
+        name: "Lightning",
+        interval: 30,
+        init() {
+            // Rain configuration
+            this.rainDrops = [];
+            this.maxRain = 900;
+            this.targetRainIntensity = Math.random() * this.maxRain;
+            this.currentRainIntensity = 0;
+            this.rainAngle = (Math.random() * 0.4) - 0.2; // Radians drift
+            this.targetRainAngle = this.rainAngle;
+
+            // Flash & Bolt states
+            this.flashOpacity = 0;
+            this.lightningBolts = [];
+            this.ticksSinceLastStrike = 0;
+            this.strikeCooldown = Math.random() * 100 + 50;
+        },
+        // Helper to generate a recursive branching lightning tree
+        createLightningPath(startX, startY, endX, endY, displace, branchProb) {
+            let path = [];
+            const generateSegment = (x1, y1, x2, y2, disp) => {
+                if (disp < 1.5) {
+                    path.push({ x1, y1, x2, y2 });
+                    return;
+                }
+
+                // Displace the midpoint to create an organic, jagged look
+                let midX = (x1 + x2) / 2 + ((Math.random() - 0.5) * disp);
+                let midY = (y1 + y2) / 2;
+
+                generateSegment(x1, y1, midX, midY, disp / 2);
+                generateSegment(midX, midY, x2, y2, disp / 2);
+
+                // Probability to spawn a smaller, splitting branch
+                if (Math.random() < branchProb && disp > 8) {
+                    let branchX = midX + ((Math.random() - 0.5) * disp * 2);
+                    let branchY = midY + (Math.random() * (y2 - midY));
+                    generateSegment(midX, midY, branchX, branchY, disp / 2);
+                }
+            };
+            generateSegment(startX, startY, endX, endY, displace);
+            return path;
+        },
+        frame() {
+            // 1. ENVIRONMENT TIMERS & WEATHER CHANGES
+            this.ticksSinceLastStrike++;
+
+            // Periodically shift target rain counts and wind angle
+            if (Math.random() < 0.005) {
+                this.targetRainIntensity = Math.random() * this.maxRain;
+            }
+            if (Math.random() < 0.002) {
+                this.targetRainAngle = (Math.random() * 0.6) - 0.3;
+            }
+
+            // Smoothly interpolate current values toward targets
+            this.currentRainIntensity += (this.targetRainIntensity - this.currentRainIntensity) * 0.02;
+            this.rainAngle += (this.targetRainAngle - this.rainAngle) * 0.01;
+
+            // Update flash decay
+            if (this.flashOpacity > 0) {
+                this.flashOpacity -= 0.08;
+            }
+
+            // 2. TRIGGER LIGHTNING STRIKES
+            if (this.ticksSinceLastStrike > this.strikeCooldown && Math.random() < 0.03) {
+                this.flashOpacity = Math.random() * 0.4 + 0.3; // Trigger ambient sky flash
+                this.ticksSinceLastStrike = 0;
+                this.strikeCooldown = Math.random() * 120 + 60;
+
+                // Create main bolt segments
+                const startX = Math.random() * mx;
+                const endX = startX + ((Math.random() - 0.5) * (mx * 0.3));
+                const segments = this.createLightningPath(startX, 0, endX, my * (Math.random() * 0.4 + 0.6), mx * 0.15, 0.25);
+
+                this.lightningBolts.push({
+                    segments: segments,
+                    life: Math.floor(Math.random() * 10) + 8 // Number of frames it persists
+                });
+            }
+
+            // 3. RENDER BACKGROUND & SKY FLASHES
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, mx, my);
+
+            if (this.flashOpacity > 0) {
+                ctx.fillStyle = `rgba(180, 210, 255, ${this.flashOpacity})`;
+                ctx.fillRect(0, 0, mx, my);
+            }
+
+            // 4. RENDER LIGHTNING BOLTS
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "rgba(0, 180, 255, 1)";
+
+            for (let b = this.lightningBolts.length - 1; b >= 0; b--) {
+                const bolt = this.lightningBolts[b];
+
+                // Flicker effect: skip drawing on arbitrary frames
+                if (Math.random() > 0.2) {
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+                    ctx.lineWidth = Math.random() * 3 + 1;
+
+                    bolt.segments.forEach(seg => {
+                        ctx.beginPath();
+                        ctx.moveTo(seg.x1, seg.y1);
+                        ctx.lineTo(seg.x2, seg.y2);
+                        ctx.stroke();
+                    });
+                }
+
+                bolt.life--;
+                if (bolt.life <= 0) this.lightningBolts.splice(b, 1);
+            }
+
+            // Clear glow settings so they don't impact rain performance
+            ctx.shadowBlur = 0;
+
+            // 5. MANAGE AND RENDER DYNAMIC RAIN DROPS
+            // Add drops if below current dynamic threshold
+            while (this.rainDrops.length < Math.floor(this.currentRainIntensity)) {
+                this.rainDrops.push({
+                    x: Math.random() * (mx + 200) - 100,
+                    y: Math.random() * -my,
+                    speed: Math.random() * 15 + 15,
+                    length: Math.random() * 12 + 8
+                });
+            }
+            // Trim drops if intensity dropped significantly
+            if (this.rainDrops.length > Math.floor(this.currentRainIntensity)) {
+                this.rainDrops.length = Math.floor(this.currentRainIntensity);
+            }
+
+            ctx.strokeStyle = "rgba(174, 194, 224, 0.35)";
+            ctx.lineWidth = 1;
+
+            const cosAngle = Math.cos(this.rainAngle + Math.PI / 2);
+            const sinAngle = Math.sin(this.rainAngle + Math.PI / 2);
+
+            for (let i = 0; i < this.rainDrops.length; i++) {
+                let drop = this.rainDrops[i];
+
+                // Translate position using custom wind angles
+                drop.x += cosAngle * (drop.speed * 0.15);
+                drop.y += sinAngle * drop.speed;
+
+                // Draw the angled raindrop segment
+                ctx.beginPath();
+                ctx.moveTo(drop.x, drop.y);
+                ctx.lineTo(
+                    drop.x + cosAngle * drop.length,
+                    drop.y + sinAngle * drop.length
+                );
+                ctx.stroke();
+
+                // Recycle drops that slip off-bounds or below the window floor
+                if (drop.y > my || drop.x < -100 || drop.x > mx + 100) {
+                    this.rainDrops[i] = {
+                        x: Math.random() * (mx + 200) - 100,
+                        y: Math.random() * -50,
+                        speed: Math.random() * 15 + 15,
+                        length: Math.random() * 12 + 8
+                    };
+                }
+            }
+        }
+    },
+    // Cite: Color probabilities and pseudo-3D travel logic custom-written to user specs
+    {
+        name: "Gravity",
+        interval: 1000 / 30, // 30 FPS
+        init() {
+            this.planets = [];
+            this.maxPlanets = 20;
+            this.G = 0.08;         // Softened gravitational constant for elegant slingshots
+            this.spawnTimer = 0;
+            this.spawnInterval = 90;
+
+            // Seed initial agile wanderers
+            for (let i = 0; i < 5; i++) {
+                this.spawnPlanet(true);
+            }
+        },
+        spawnPlanet(inSystem = false) {
+            if (this.planets.length >= this.maxPlanets) return;
+
+            let x, y, vx, vy;
+
+            // Shifted probabilities to generate medium-heavy anchor masses more often (25% chance instead of 10%)
+            const mass = Math.random() > 0.75 ? Math.random() * 160 + 120 : Math.random() * 35 + 8;
+            const radius = Math.max(3, Math.sqrt(mass) * 1.2);
+
+            const colors = ["#4ea8de", "#56cfe1", "#72efdd", "#f72585", "#7209b7", "#4361ee", "#ffb703", "#06d6a0", "#ff0000", "#00ff00", "#0000ff"];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            if (inSystem) {
+                x = Math.random() * (mx * 0.7) + (mx * 0.15);
+                y = Math.random() * (my * 0.7) + (my * 0.15);
+                vx = (Math.random() * 1.1 - 0.55); // Centered vectors
+                vy = (Math.random() * 1.1 - 0.55);
+            } else {
+                // Rogue body arriving from off-screen margins
+                const side = Math.floor(Math.random() * 4);
+                if (side === 0) { x = -40; y = Math.random() * my; }
+                else if (side === 1) { x = mx + 40; y = Math.random() * my; }
+                else if (side === 2) { x = Math.random() * mx; y = -40; }
+                else { x = Math.random() * mx; y = my + 40; }
+
+                // --- DYNAMIC SLINGSHOT TARGET ENGINE ---
+                const isGlancingBlow = Math.random() > 0.5;
+                const offsetRange = isGlancingBlow ? 450 : 60;
+
+                const targetX = mx / 2 + (Math.random() * (offsetRange * 2) - offsetRange);
+                const targetY = my / 2 + (Math.random() * (offsetRange * 2) - offsetRange);
+
+                const angle = Math.atan2(targetY - y, targetX - x);
+                const speed = isGlancingBlow ? (Math.random() * 1.2 + 1.2) : (Math.random() * 1.1 + 0.5);
+
+                vx = Math.cos(angle) * speed;
+                vy = Math.sin(angle) * speed;
+            }
+
+            this.planets.push({ x, y, vx, vy, mass, radius, color, destroyed: false, spawnDelay: 0 });
+        },
+        explodePlanet(parent) {
+            // Cap fragments to a strict window (e.g., 3 to 6 max) to prevent exponential screen crowding
+            let pm = (parent.mass / 100) / 2;
+            let fragments = Math.floor((Math.random() * pm) + pm);
+            fragments = Math.max(3, Math.min(6, fragments)); // Strict safety cap
+
+            const fragmentMass = parent.mass / fragments;
+            const fragmentRadius = Math.max(3, Math.sqrt(fragmentMass) * 1.0); // Tighter fragment profile
+
+            for (let k = 0; k < fragments; k++) {
+                const angle = (k / fragments) * Math.PI * 2 + (Math.random() * 0.4 - 0.2);
+                //const speed = Math.min(15, (parent.mass / 100) * 1.3 + 2); // Safely scale blast speeds
+                const speed = (parent.mass/100)*.8; // High blast speed
+
+                this.planets.push({
+                    x: parent.x + Math.cos(angle) * (parent.radius * 0.8),
+                    y: parent.y + Math.sin(angle) * (parent.radius * 0.8),
+                    vx: parent.vx + Math.cos(angle) * speed,
+                    vy: parent.vy + Math.sin(angle) * speed,
+                    mass: fragmentMass,
+                    radius: fragmentRadius,
+                    color: parent.color,
+                    destroyed: false,
+                    spawnDelay: 30 // Extended protective window while they fly clear
+                });
+            }
+        },
+        frame() {
+            // 1. ACTIVE AUTO-RESPAWNER RE-SEEDING
+            if (this.planets.length <= 2) {
+                const countToSpawn = Math.floor(Math.random() * 4) + 1;
+                for (let k = 0; k < countToSpawn; k++) {
+                    this.spawnPlanet(false);
+                }
+            }
+
+            this.spawnTimer++;
+            if (this.spawnTimer >= this.spawnInterval) {
+                this.spawnTimer = 0;
+                this.spawnPlanet(false);
+            }
+
+            // Keep track of any planets slated to explode after the physics loops complete
+            let pendingExplosions = [];
+
+            // 2. MUTUAL ATTREACTION AND FUSION PROCESSING
+            for (let i = 0; i < this.planets.length; i++) {
+                let p1 = this.planets[i];
+                if (p1.destroyed) continue;
+
+                for (let j = i + 1; j < this.planets.length; j++) {
+                    let p2 = this.planets[j];
+                    if (p2.destroyed) continue;
+
+                    let dx = p2.x - p1.x;
+                    let dy = p2.y - p1.y;
+                    let distSq = dx * dx + dy * dy;
+                    let dist = Math.sqrt(distSq);
+
+// A: FUSION arrangement (Overlapping boundaries)
+                    // Comment: Consolidates colliding masses while scaling down density to allow stable post-explosion reforming
+                    if (dist < (p1.radius + p2.radius) && (!p1.spawnDelay && !p2.spawnDelay)) {
+                        let larger = p1.mass >= p2.mass ? p1 : p2;
+                        let smaller = p1.mass < p2.mass ? p1 : p2;
+
+                        larger.vx = (larger.mass * larger.vx + smaller.mass * smaller.vx) / (larger.mass + smaller.mass);
+                        larger.vy = (larger.mass * larger.vy + smaller.mass * smaller.vy) / (larger.mass + smaller.mass);
+
+                        larger.mass += smaller.mass;
+
+                        // Dynamic profile: Reforming fragments pull into a denser core (0.95 multiplier)
+                        // so they don't instantly re-trigger the max size threshold right away
+                        larger.radius = Math.max(3, Math.sqrt(larger.mass) * 0.95);
+
+                        smaller.destroyed = true;
+
+                        const maxAllowedRadius = Math.min(mx, my) * 0.06;
+                        if (larger.radius > maxAllowedRadius) {
+                            // Queue the explosion safely instead of mutating the running array mid-loop
+                            pendingExplosions.push(larger);
+                            larger.destroyed = true;
                         }
+                        continue;
+                    }
+
+                    // B: DYNAMIC PULL FORCES
+                    if (dist < 15) dist = 15;
+
+                    // Chaotic Orbital Bouncer Helper
+                    if (dist < (p1.radius + p2.radius) * 4.0) {
+                        let rvx = p2.vx - p1.vx;
+                        let rvy = p2.vy - p1.vy;
+                        let massFactor = Math.max(p1.mass, p2.mass);
+                        let dampIntensity = massFactor > 400 ? -0.004 : 0.0015;
+
+                        p1.vx += rvx * dampIntensity;
+                        p1.vy += rvy * dampIntensity;
+                        p2.vx -= rvx * dampIntensity;
+                        p2.vy -= rvy * dampIntensity;
+                    }
+
+                    let forceMag = this.G / (dist * dist);
+
+                    p1.vx += dx * forceMag * p2.mass;
+                    p1.vy += dy * forceMag * p2.mass;
+
+                    p2.vx -= dx * forceMag * p1.mass;
+                    p2.vy -= dy * forceMag * p1.mass;
+                }
+            }
+
+            // 3. MOTION TRACKING & OUT-OF-BOUNDS PURGE
+            const pad = 100;
+            const maxSpeed = 10;
+            for (let i = this.planets.length - 1; i >= 0; i--) {
+                let p = this.planets[i];
+
+                if (p.destroyed) {
+                    this.planets.splice(i, 1);
+                    continue;
+                }
+
+                // Speed limiter applies only when not in an explosion frame state
+                if (!p.spawnDelay || p.spawnDelay === 0) {
+                    let currentSpeedSq = p.vx * p.vx + p.vy * p.vy;
+                    if (currentSpeedSq > maxSpeed * maxSpeed) {
+                        let currentSpeed = Math.sqrt(currentSpeedSq);
+                        p.vx = (p.vx / currentSpeed) * maxSpeed;
+                        p.vy = (p.vy / currentSpeed) * maxSpeed;
                     }
                 }
-            ];
 
-            const chosenMod = ssModulesList[0];
+                p.x += p.vx;
+                p.y += p.vy;
+
+                if (p.spawnDelay > 0) p.spawnDelay--;
+
+                if (p.x < -pad || p.x > mx + pad || p.y < -pad || p.y > my + pad) {
+                    this.planets.splice(i, 1);
+                }
+            }
+
+            // Execute pending explosions safely down here now that all arrays are static
+            for (let e = 0; e < pendingExplosions.length; e++) {
+                this.explodePlanet(pendingExplosions[e]);
+            }
+
+            // 4. CANVAS RENDERING
+            ctx.fillStyle = "rgba(0, 0, 0, 0.30)";
+            ctx.fillRect(0, 0, mx, my);
+
+            for (let i = 0; i < this.planets.length; i++) {
+                let p = this.planets[i];
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.fill();
+            }
+        }
+    },
+    // Module 9: Atmospheric Fireworks Visualizer
+// Comment: Dynamically scales initial blast speeds and fading constants per shell to generate mega booms alongside small pops
+    {
+        name: "Fireworks",
+        interval: 1000 / 40,
+        init() {
+            this.shells = [];
+            this.particles = [];
+            this.spawnTimer = 0;
+            this.spawnInterval = 18;
+            this.gravity = 0.18;
+
+            this.colors = ["#ff0055", "#00ffcc", "#ffcc00", "#ff33aa", "#33ff00", "#9900ff", "#ff5500", "#ffff00", "#00ffff"];
+        },
+        spawnShell() {
+            const x = Math.random() * (mx * 0.9) + (mx * 0.05);
+            const y = my + 10;
+
+            const targetX = mx / 2 + (Math.random() * 600 - 300);
+            const targetY = my * 0.08 + (Math.random() * (my * 0.45));
+
+            const dx = targetX - x;
+            const dy = targetY - y;
+
+            const speed = Math.sqrt(2 * this.gravity * (y - targetY)) * (Math.random() * 0.08 + 0.96);
+            const angle = Math.atan2(dy, dx);
+
+            const vx = Math.cos(angle) * speed;
+            const vy = Math.sin(angle) * speed;
+
+            // --- DESTRUCTIVE INTENSITY POOLS ---
+            // Roll a randomized explosive energy configuration for each launcher
+            const sizeRoll = Math.random();
+            let blastPower = 1.0;
+            let particleDensity = 14;
+            let burnRateModifier = 1.0;
+
+            if (sizeRoll > 0.93) {
+                // Rare Massive Mega Boom (Screen filling sweep)
+                blastPower = Math.random() * 3.5 + 3;
+                particleDensity = 45;
+                burnRateModifier = 0.55; // Long burning trails
+            } else if (sizeRoll > 0.65) {
+                // Medium Solid Display Burst
+                blastPower = Math.random() * 1.5 + 2.2;
+                particleDensity = 22;
+                burnRateModifier = 0.9;
+            } else {
+                // Miniature rapid spark pops
+                blastPower = Math.random() * 0.6 + 0.7;
+                particleDensity = 10;
+                burnRateModifier = 1.4;  // Flash burns instantly
+            }
+
+            const isMulticolor = Math.random() > 0.65;
+            const color = isMulticolor ? "multicolor" : this.colors[Math.floor(Math.random() * this.colors.length)];
+
+            this.shells.push({ x, y, vx, vy, color, targetY, blastPower, particleDensity, burnRateModifier });
+        },
+        explodeShell(x, y, shell) {
+            for (let i = 0; i < shell.particleDensity; i++) {
+                const angle = (i / shell.particleDensity) * Math.PI * 2 + (Math.random() * 0.4 - 0.2);
+
+                // Scale outward physics velocities directly by the shell's unique blast power
+                const speed = (Math.random() * 2.5 + 1.5) * shell.blastPower;
+
+                const particleColor = (shell.color === "multicolor") ? this.colors[Math.floor(Math.random() * this.colors.length)] : shell.color;
+
+                this.particles.push({
+                    x: x, y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    color: particleColor,
+                    alpha: 1.0,
+                    // Trail duration is calculated from the parent shell's burning rate modifier
+                    fade: (Math.random() * 0.02 + 0.015) * shell.burnRateModifier,
+                    resistance: shell.blastPower > 4 ? 0.965 : 0.94 // Mega booms travel farther with less drag
+                });
+            }
+        },
+        frame() {
+            this.spawnTimer++;
+            if (this.spawnTimer >= this.spawnInterval) {
+                this.spawnTimer = 0;
+                this.spawnShell();
+            }
+
+            for (let i = this.shells.length - 1; i >= 0; i--) {
+                let s = this.shells[i];
+                s.x += s.vx; s.y += s.vy; s.vy += this.gravity;
+
+                if (s.vy >= -0.2 || s.y <= s.targetY) {
+                    this.explodeShell(s.x, s.y, s);
+                    this.shells.splice(i, 1);
+                }
+            }
+
+            for (let i = this.particles.length - 1; i >= 0; i--) {
+                let p = this.particles[i];
+                p.vx *= p.resistance; p.vy *= p.resistance;
+                p.vy += this.gravity * 0.35;
+                p.x += p.vx; p.y += p.vy;
+                p.alpha -= p.fade;
+
+                if (p.alpha <= 0) {
+                    this.particles.splice(i, 1);
+                }
+            }
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
+            ctx.fillRect(0, 0, mx, my);
+
+            for (let i = 0; i < this.shells.length; i++) {
+                let s = this.shells[i];
+                ctx.beginPath(); ctx.arc(s.x, s.y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = "#ffffff"; ctx.fill();
+            }
+
+            for (let i = 0; i < this.particles.length; i++) {
+                let p = this.particles[i];
+                ctx.save();
+                ctx.globalAlpha = p.alpha;
+                ctx.beginPath();
+
+                // Tie sizes to remaining trail alpha so they degrade seamlessly into fine dust
+                let dynamicRadius = (p.alpha * 2.4) + 0.5;
+                ctx.arc(p.x, p.y, dynamicRadius, 0, Math.PI * 2);
+
+                ctx.fillStyle = p.color; ctx.fill();
+                ctx.restore();
+            }
+        }
+    },
+    // Module 10: Autonomous Flocking (Boids Engine with Quantum Scatter)
+    // Comment: Implements collective flocking mechanics where triangles scatter to random edges upon hitting the central spark
+    {
+        name: "Flocking",
+        interval: 1000 / 30, // 30 FPS
+        init() {
+            this.boids = [];
+            this.numBoids = 180;
+
+            // Visual tuning parameters
+            this.maxSpeed = 5.0;
+            this.maxForce = 0.15;
+            this.perceptionRadius = 60;
+
+            // Dynamic Attractor ("The Spark")
+            this.attractor = {
+                x: mx / 2,
+                y: my / 2,
+                vx: (Math.random() * 4 - 2),
+                vy: (Math.random() * 4 - 2),
+                radius: 12
+            };
+
+            // Setup the flock with random positions and velocities
+            for (let i = 0; i < this.numBoids; i++) {
+                this.boids.push({
+                    x: Math.random() * mx,
+                    y: Math.random() * my,
+                    vx: (Math.random() * 2 - 1) * this.maxSpeed,
+                    vy: (Math.random() * 2 - 1) * this.maxSpeed,
+                    hue: Math.random() * 360
+                });
+            }
+        },
+        frame() {
+            // 1. UPDATE AND BOUNDS-CHECK THE ATTRACTOR
+            this.attractor.x += this.attractor.vx;
+            this.attractor.y += this.attractor.vy;
+
+            if (this.attractor.x < 50 || this.attractor.x > mx - 50) this.attractor.vx *= -1;
+            if (this.attractor.y < 50 || this.attractor.y > my - 50) this.attractor.vy *= -1;
+
+            if (Math.random() < 0.04) {
+                this.attractor.vx += (Math.random() * 1.0 - 0.5);
+                this.attractor.vy += (Math.random() * 1.0 - 0.5);
+
+                let aSpeed = Math.sqrt(this.attractor.vx * this.attractor.vx + this.attractor.vy * this.attractor.vy);
+                if (aSpeed > 6) {
+                    this.attractor.vx = (this.attractor.vx / aSpeed) * 6;
+                    this.attractor.vy = (this.attractor.vy / aSpeed) * 6;
+                }
+            }
+
+            // 2. RE-CALCULATE BOID VELOCITIES & SCATTER LOGIC
+            let nextStates = [];
+
+            for (let i = 0; i < this.boids.length; i++) {
+                let b = this.boids[i];
+
+                // Check distance from current triangle to the central white spark ball
+                let adx = this.attractor.x - b.x;
+                let ady = this.attractor.y - b.y;
+                let adist = Math.sqrt(adx * adx + ady * ady);
+
+                // TRIANGLE SCATTER: If a triangle touches the spark ball, teleport the triangle away
+                if (adist < 50) {
+                    // Force the triangle to a completely new random spot on the screen
+                    let randomAngle = Math.random() * Math.PI * 2;
+                    nextStates.push({
+                        x: Math.random() * mx,
+                        y: Math.random() * my,
+                        // Give it an immediate outward blast velocity so it moves instantly
+                        vx: Math.cos(randomAngle) * this.maxSpeed,
+                        vy: Math.sin(randomAngle) * this.maxSpeed,
+                        hue: (b.hue + 60) % 360 // Give it a striking color pop upon being scattered
+                    });
+                    continue; // Skip normal neighborhood steering calculations for this frame
+                }
+
+                let sepX = 0, sepY = 0;
+                let aliX = 0, aliY = 0;
+                let cohX = 0, cohY = 0;
+                let totalNeighbors = 0;
+
+                for (let j = 0; j < this.boids.length; j++) {
+                    if (i === j) continue;
+                    let other = this.boids[j];
+
+                    let dx = other.x - b.x;
+                    let dy = other.y - b.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < this.perceptionRadius && dist > 0) {
+                        if (dist < 25) {
+                            sepX -= (dx / dist);
+                            sepY -= (dy / dist);
+                        }
+
+                        aliX += other.vx;
+                        aliY += other.vy;
+
+                        cohX += other.x;
+                        cohY += other.y;
+
+                        totalNeighbors++;
+                    }
+                }
+
+                let steerX = 0, steerY = 0;
+
+                if (totalNeighbors > 0) {
+                    aliX /= totalNeighbors; aliY /= totalNeighbors;
+                    cohX /= totalNeighbors; cohY /= totalNeighbors;
+
+                    cohX -= b.x; cohY -= b.y;
+
+                    let desiredAliSpeed = Math.sqrt(aliX * aliX + aliY * aliY);
+                    if (desiredAliSpeed > 0) {
+                        aliX = (aliX / desiredAliSpeed) * this.maxSpeed - b.vx;
+                        aliY = (aliY / desiredAliSpeed) * this.maxSpeed - b.vy;
+                    }
+
+                    let desiredCohSpeed = Math.sqrt(cohX * cohX + cohY * cohY);
+                    if (desiredCohSpeed > 0) {
+                        cohX = (cohX / desiredCohSpeed) * this.maxSpeed - b.vx;
+                        cohY = (cohY / desiredCohSpeed) * this.maxSpeed - b.vy;
+                    }
+
+                    let desiredSepSpeed = Math.sqrt(sepX * sepX + sepY * sepY);
+                    if (desiredSepSpeed > 0) {
+                        sepX = (sepX / desiredSepSpeed) * this.maxSpeed - b.vx;
+                        sepY = (sepY / desiredSepSpeed) * this.maxSpeed - b.vy;
+                    }
+
+                    steerX += sepX * 1.5 + aliX * 1.0 + cohX * 1.0;
+                    steerY += sepY * 1.5 + aliY * 1.0 + cohY * 1.0;
+                }
+
+                // Add regular steering gravity pulling them toward the moving spark
+                if (adist > 0) {
+                    let attX = (adx / adist) * this.maxSpeed - b.vx;
+                    let attY = (ady / adist) * this.maxSpeed - b.vy;
+                    steerX += attX * 0.4;
+                    steerY += attY * 0.4;
+                }
+
+                let forceMag = Math.sqrt(steerX * steerX + steerY * steerY);
+                if (forceMag > this.maxForce) {
+                    steerX = (steerX / forceMag) * this.maxForce;
+                    steerY = (steerY / forceMag) * this.maxForce;
+                }
+
+                let nvx = b.vx + steerX;
+                let nvy = b.vy + steerY;
+
+                let nSpeed = Math.sqrt(nvx * nvx + nvy * nvy);
+                if (nSpeed > this.maxSpeed) {
+                    nvx = (nvx / nSpeed) * this.maxSpeed;
+                    nvy = (nvy / nSpeed) * this.maxSpeed;
+                }
+
+                // Pacman Edge-Wrapping logic
+                let nx = b.x + nvx;
+                let ny = b.y + nvy;
+                if (nx < -10) nx = mx + 10; if (nx > mx + 10) nx = -10;
+                if (ny < -10) ny = my + 10; if (ny > my + 10) ny = -10;
+
+                nextStates.push({ x: nx, y: ny, vx: nvx, vy: nvy, hue: (b.hue + 0.2) % 360 });
+            }
+
+            this.boids = nextStates;
+
+            // 3. CANVAS ENVIRONMENT RENDERING
+            ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
+            ctx.fillRect(0, 0, mx, my);
+
+            // Draw Central Attractor Spark Ball (Stays stable, wanders calmly)
+            ctx.save();
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = "#ffffff";
+            ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+            ctx.beginPath();
+            ctx.arc(this.attractor.x, this.attractor.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Draw individual Triangles angled relative to their velocity headings
+            for (let i = 0; i < this.boids.length; i++) {
+                let b = this.boids[i];
+                let angle = Math.atan2(b.vy, b.vx);
+
+                ctx.save();
+                ctx.translate(b.x, b.y);
+                ctx.rotate(angle);
+
+                ctx.beginPath();
+                ctx.moveTo(8, 0);
+                ctx.lineTo(-6, 4);
+                ctx.lineTo(-3, 0);
+                ctx.lineTo(-6, -4);
+                ctx.closePath();
+
+                ctx.fillStyle = `hsla(${Math.floor(b.hue)}, 85%, 60%, 0.85)`;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+    },
+    ];
+
+// Select and execute a random module
+;
+            // Resolve module choice
+            let chosenMod = null;
+            if (moduleName === 'Random') {
+                chosenMod = ssModulesList[Math.floor(Math.random() * ssModulesList.length)];
+            } else {
+                chosenMod = ssModulesList.find(m => m.name === moduleName) || ssModulesList[0];
+            }
+
             chosenMod.init();
-            ssIntervalId = setInterval(() => { chosenMod.frame(); }, chosenMod.interval);
+            ssIntervalId = setInterval(() => {
+                chosenMod.frame();
+            }, chosenMod.interval);
+        }
         }
 
         function stopScreensaver() {

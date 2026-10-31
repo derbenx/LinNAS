@@ -67,7 +67,7 @@
         let allPlugins = [];
         let helpData = {}; // pluginId -> htmlContent
 
-        const categoryOrder = ['System', 'Tools', 'Network', 'Storage'];
+        const categoryOrder = ['System', 'Tools', 'Network', 'Storage', 'Games'];
 
         async function loadHelpDocs() {
             try {
@@ -182,7 +182,7 @@
         }
 
         function getCategoryIcon(cat) {
-            const icons = { 'System': '⚙️', 'Tools': '🛠️', 'Network': '🌐', 'Storage': '💾' };
+            const icons = { 'System': '⚙️', 'Tools': '🛠️', 'Network': '🌐', 'Storage': '💾', 'Games': '🎮' };
             return icons[cat] || '📁';
         }
 

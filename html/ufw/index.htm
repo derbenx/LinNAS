@@ -36,6 +36,15 @@
         .sticky-console { position: fixed; bottom: 0; left: 0; right: 0; background: #161b22; border-top: 2px solid #58a6ff; box-shadow: 0 -4px 20px rgba(0,0,0,0.5); padding: 1rem 1.5rem; display: none; z-index: 1000; }
         .console-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-weight: bold; color: #58a6ff; font-size: 0.95rem; }
         .output-box { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.8rem; font-family: monospace; font-size: 0.85rem; color: #7ee787; max-height: 140px; overflow-y: auto; white-space: pre-wrap; }
+
+        .switch-container { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #30363d; transition: .3s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+        input:checked + .slider { background-color: #238636; }
+        input:checked + .slider:before { transform: translateX(20px); }
+
     </style>
 </head>
 <body>
@@ -46,13 +55,18 @@
     <div class="section">
         <div class="section-title">
             <span>UFW Service Status</span>
-            <span id="ufwBadge" class="badge-inactive">checking...</span>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <label class="switch-container">
+                    <span class="switch">
+                        <input type="checkbox" id="ufwToggleCheckbox" onchange="onUfwToggleChanged(this.checked)">
+                        <span class="slider"></span>
+                    </span>
+                    <span id="ufwBadge" class="badge-inactive">checking...</span>
+                </label>
+                <button class="btn btn-secondary" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;" onclick="loadUFWStatus()">🔄 Refresh Status & Rules</button>
+            </div>
         </div>
-        <div style="display: flex; gap: 0.8rem; margin-bottom: 1rem;">
-            <button class="btn" onclick="toggleUFW(true)">Enable Firewall (UFW)</button>
-            <button class="btn btn-danger" onclick="toggleUFW(false)">Disable Firewall (UFW)</button>
-            <button class="btn btn-secondary" onclick="loadUFWStatus()">Refresh Status & Rules</button>
-        </div>
+        <div style="font-size: 0.85rem; color: #8b949e;">Configure rules, view active policies, and toggle firewall enforcement. Rules can be added, reviewed, and deleted whether the firewall is active or inactive.</div>
     </div>
 
     <!-- Protected Server Port Rule -->
@@ -74,29 +88,29 @@
             <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
                 <div><strong>HTTP & HTTPS Web Server (Ports 80, 443/tcp)</strong></div>
                 <div style="display: flex; gap: 0.5rem;">
-                    <button class="btn btn-secondary" onclick="addQuickRule('80', 'tcp', 'any')">Allow 80 Anywhere</button>
-                    <button class="btn btn-secondary" onclick="addQuickRule('443', 'tcp', 'any')">Allow 443 Anywhere</button>
+                    <button id="btn_p80" data-label="Allow 80 Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('80', 'tcp', 'any')">+ Allow 80 Anywhere</button>
+                    <button id="btn_p443" data-label="Allow 443 Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('443', 'tcp', 'any')">+ Allow 443 Anywhere</button>
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
                 <div><strong>Samba File Sharing (Ports 139, 445/tcp, 137, 138/udp)</strong></div>
                 <div style="display: flex; gap: 0.5rem;">
-                    <button class="btn btn-secondary" onclick="addQuickRule('445', 'tcp', 'lan')">Allow SMB LAN Subnet</button>
-                    <button class="btn btn-secondary" onclick="addQuickRule('445', 'tcp', 'any')">Allow SMB Anywhere</button>
+                    <button id="btn_smb_lan" data-label="Allow SMB LAN Subnet" class="btn btn-secondary" onclick="toggleQuickPreset('445', 'tcp', 'lan')">+ Allow SMB LAN Subnet</button>
+                    <button id="btn_smb_any" data-label="Allow SMB Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('445', 'tcp', 'any')">+ Allow SMB Anywhere</button>
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
                 <div><strong>NTP Time Synchronization (Port 123/udp)</strong></div>
                 <div style="display: flex; gap: 0.5rem;">
-                    <button class="btn btn-secondary" onclick="addQuickRule('123', 'udp', 'lan')">Allow NTP LAN Subnet</button>
-                    <button class="btn btn-secondary" onclick="addQuickRule('123', 'udp', 'any')">Allow NTP Anywhere</button>
+                    <button id="btn_ntp_lan" data-label="Allow NTP LAN Subnet" class="btn btn-secondary" onclick="toggleQuickPreset('123', 'udp', 'lan')">+ Allow NTP LAN Subnet</button>
+                    <button id="btn_ntp_any" data-label="Allow NTP Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('123', 'udp', 'any')">+ Allow NTP Anywhere</button>
                 </div>
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; background: #0d1117; border: 1px solid #21262d; padding: 0.8rem; border-radius: 6px;">
                 <div><strong>SSH Remote Console (Port 22/tcp)</strong></div>
                 <div style="display: flex; gap: 0.5rem;">
-                    <button class="btn btn-secondary" onclick="addQuickRule('22', 'tcp', 'lan')">Allow SSH LAN Subnet</button>
-                    <button class="btn btn-secondary" onclick="addQuickRule('22', 'tcp', 'any')">Allow SSH Anywhere</button>
+                    <button id="btn_ssh_lan" data-label="Allow SSH LAN Subnet" class="btn btn-secondary" onclick="toggleQuickPreset('22', 'tcp', 'lan')">+ Allow SSH LAN Subnet</button>
+                    <button id="btn_ssh_any" data-label="Allow SSH Anywhere" class="btn btn-secondary" onclick="toggleQuickPreset('22', 'tcp', 'any')">+ Allow SSH Anywhere</button>
                 </div>
             </div>
         </div>
@@ -172,10 +186,12 @@
             }
         }
 
+        let currentRulesList = [];
+
         async function loadUFWStatus() {
             await loadSettings();
             const badge = document.getElementById('ufwBadge');
-            const tbody = document.getElementById('rulesTableBody');
+            const toggle = document.getElementById('ufwToggleCheckbox');
 
             try {
                 const res = await fetch('/api/plugin/exec', {
@@ -189,16 +205,22 @@
                 const isActive = output.includes('Status: active');
                 badge.innerText = isActive ? 'Active / Enabled' : 'Inactive / Disabled';
                 badge.className = isActive ? 'badge-active' : 'badge-inactive';
+                if (toggle) toggle.checked = isActive;
 
-                loadUFWNumberedRules();
+                await loadAllUFWRules();
             } catch (err) {
                 console.error('Failed to load UFW status:', err);
             }
         }
 
-        async function loadUFWNumberedRules() {
+        async function onUfwToggleChanged(checked) {
+            await toggleUFW(checked);
+        }
+
+        async function loadAllUFWRules() {
             const tbody = document.getElementById('rulesTableBody');
-            tbody.innerHTML = '';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #8b949e;">Scanning rules...</td></tr>';
+            currentRulesList = [];
 
             try {
                 const res = await fetch('/api/plugin/exec', {
@@ -210,41 +232,150 @@
                 const output = data.output || '';
 
                 const lines = output.split('\n');
-                let foundRules = false;
+                tbody.innerHTML = '';
+                let ruleIdx = 0;
 
                 lines.forEach(line => {
-                    const match = line.match(/^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT|ALLOW IN|ALLOW OUT)\s+(.+)$/i);
+                    const trimmed = line.trim();
+                    if (!trimmed || trimmed.startsWith('Added user rules') || trimmed.startsWith('Status:')) return;
+
+                    // Parse ufw show added format: "ufw allow 8080/tcp" or "ufw allow from 192.168.0.0/16 to any port 445 proto tcp"
+                    if (trimmed.startsWith('ufw ')) {
+                        ruleIdx++;
+                        const rawCmd = trimmed;
+                        const withoutUfw = trimmed.replace(/^ufw\s+/, '');
+
+                        let action = 'ALLOW';
+                        if (withoutUfw.startsWith('deny')) action = 'DENY';
+                        else if (withoutUfw.startsWith('reject')) action = 'REJECT';
+
+                        let toPort = '-';
+                        let fromSrc = 'Anywhere';
+
+                        if (withoutUfw.includes('to any port')) {
+                            const portMatch = withoutUfw.match(/port\s+([0-9]+)(?:\s+proto\s+(\w+))?/i);
+                            if (portMatch) {
+                                toPort = portMatch[1] + (portMatch[2] ? '/' + portMatch[2] : '');
+                            }
+                            const fromMatch = withoutUfw.match(/from\s+([^\s]+)/i);
+                            if (fromMatch) {
+                                fromSrc = fromMatch[1];
+                            }
+                        } else {
+                            const parts = withoutUfw.split(' ');
+                            if (parts[1]) toPort = parts[1];
+                        }
+
+                        currentRulesList.push({ idx: ruleIdx, rawCmd, toPort, fromSrc, action });
+                        return;
+                    }
+
+                    // Fallback to numbered output format: "[ 1] 80/tcp ALLOW IN Anywhere"
+                    const match = trimmed.match(/^\[\s*(\d+)\]\s+(.+?)\s+(ALLOW|DENY|REJECT|ALLOW IN|ALLOW OUT)\s+(.+)$/i);
                     if (match) {
-                        foundRules = true;
-                        const ruleNum = match[1];
+                        ruleIdx++;
+                        const num = match[1];
                         const toPort = match[2].trim();
                         const action = match[3].trim();
                         const fromSrc = match[4].trim();
-
-                        const isAppPortRule = toPort.includes(currentAppPort.toString());
-
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td><strong>[${ruleNum}]</strong></td>
-                            <td>${toPort}</td>
-                            <td><span class="badge-active">${action}</span></td>
-                            <td>${fromSrc}</td>
-                            <td>
-                                ${isAppPortRule
-                                    ? `<span class="badge-protected">PROTECTED</span>`
-                                    : `<button class="btn btn-danger" style="padding:0.22rem 0.5rem; font-size:0.75rem;" onclick="deleteRule(${ruleNum})">Delete</button>`
-                                }
-                            </td>
-                        `;
-                        tbody.appendChild(tr);
+                        const rawCmd = `ufw delete ${num}`;
+                        currentRulesList.push({ idx: ruleIdx, ruleNum: num, rawCmd, toPort, fromSrc, action });
                     }
                 });
 
-                if (!foundRules) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #8b949e;">No active numbered rules configured in UFW.</td></tr>';
+                if (currentRulesList.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #8b949e;">No rules configured. Add rules above to view them here.</td></tr>';
+                    return;
                 }
+
+                updatePresetBadges();
+
+                currentRulesList.forEach(rule => {
+                    const isAppPortRule = rule.toPort.includes(currentAppPort.toString());
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><strong>[${rule.idx}]</strong></td>
+                        <td>${escapeHtml(rule.toPort)}</td>
+                        <td><span class="badge-active">${escapeHtml(rule.action)}</span></td>
+                        <td>${escapeHtml(rule.fromSrc)}</td>
+                        <td>
+                            ${isAppPortRule
+                                ? `<span class="badge-protected">PROTECTED</span>`
+                                : `<button class="btn btn-danger" style="padding:0.22rem 0.5rem; font-size:0.75rem;" onclick="removeConfiguredRule('${encodeURIComponent(rule.rawCmd)}')">Delete</button>`
+                            }
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
             } catch (err) {
                 tbody.innerHTML = `<tr><td colspan="5" style="color:#f85149;">Failed to load rules: ${err.message}</td></tr>`;
+            }
+        }
+
+
+        function isRuleConfigured(port, proto, access) {
+            return currentRulesList.some(r => {
+                const portMatch = r.toPort.includes(port.toString()) && (!proto || r.toPort.includes(proto));
+                if (!portMatch) return false;
+                if (access === 'lan') return r.fromSrc.includes('192.168.');
+                if (access === 'any') return r.fromSrc.toLowerCase().includes('any') || r.fromSrc.includes('0.0.0.0/0');
+                return true;
+            });
+        }
+
+        function updatePresetBadges() {
+            const presets = [
+                { id: 'btn_p80', port: '80', proto: 'tcp', access: 'any' },
+                { id: 'btn_p443', port: '443', proto: 'tcp', access: 'any' },
+                { id: 'btn_smb_lan', port: '445', proto: 'tcp', access: 'lan' },
+                { id: 'btn_smb_any', port: '445', proto: 'tcp', access: 'any' },
+                { id: 'btn_ntp_lan', port: '123', proto: 'udp', access: 'lan' },
+                { id: 'btn_ntp_any', port: '123', proto: 'udp', access: 'any' },
+                { id: 'btn_ssh_lan', port: '22', proto: 'tcp', access: 'lan' },
+                { id: 'btn_ssh_any', port: '22', proto: 'tcp', access: 'any' }
+            ];
+
+            presets.forEach(p => {
+                const el = document.getElementById(p.id);
+                if (el) {
+                    const active = isRuleConfigured(p.port, p.proto, p.access);
+                    if (active) {
+                        el.style.background = '#238636';
+                        el.style.color = '#fff';
+                        el.style.borderColor = '#2ea043';
+                        el.innerText = '✓ ' + el.dataset.label;
+                    } else {
+                        el.style.background = '#21262d';
+                        el.style.color = '#c9d1d9';
+                        el.style.borderColor = '#30363d';
+                        el.innerText = '+ ' + el.dataset.label;
+                    }
+                }
+            });
+        }
+
+        async function removeConfiguredRule(encRuleCmd) {
+            const rawCmd = decodeURIComponent(encRuleCmd);
+            const deleteCmd = rawCmd.startsWith('ufw ') ? rawCmd.replace(/^ufw\s+/, 'ufw delete ') : rawCmd;
+
+            showOutput(`Deleting rule: ${deleteCmd}...`);
+            try {
+                const res = await fetch('/api/plugin/exec', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plugin: 'ufw',
+                        cmd_key: 'delete_rule_cmd_sudo',
+                        args: { rule_cmd: deleteCmd }
+                    })
+                });
+                const data = await res.json();
+                showOutput(data.success ? `Rule deleted successfully.
+` + (data.output || '') : 'Delete failed: ' + data.error);
+                loadUFWStatus();
+            } catch (err) {
+                showOutput('Execution error: ' + err.message);
             }
         }
 
@@ -272,6 +403,23 @@
                 loadUFWStatus();
             } catch (err) {
                 showOutput('Execution error: ' + err.message);
+            }
+        }
+
+
+        async function toggleQuickPreset(port, proto, access) {
+            const found = currentRulesList.find(r => {
+                const portMatch = r.toPort.includes(port.toString()) && (!proto || r.toPort.includes(proto));
+                if (!portMatch) return false;
+                if (access === 'lan') return r.fromSrc.includes('192.168.');
+                if (access === 'any') return r.fromSrc.toLowerCase().includes('any') || r.fromSrc.includes('0.0.0.0/0');
+                return true;
+            });
+
+            if (found) {
+                await removeConfiguredRule(encodeURIComponent(found.rawCmd));
+            } else {
+                await addQuickRule(port, proto, access);
             }
         }
 
@@ -337,6 +485,10 @@
 
         function closeConsole() {
             document.getElementById('stickyConsole').style.display = 'none';
+        }
+
+                function escapeHtml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
         window.onload = loadUFWStatus;
