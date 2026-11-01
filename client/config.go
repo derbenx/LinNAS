@@ -45,13 +45,17 @@ func getDefaultConfig() ClientConfig {
 }
 
 func getConfigPath() string {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		configDir = "."
+	// Saved data should be saved in the folder where the binary is
+	exePath, err := os.Executable()
+	if err == nil {
+		resolved, rErr := filepath.EvalSymlinks(exePath)
+		if rErr == nil {
+			exePath = resolved
+		}
+		binDir := filepath.Dir(exePath)
+		return filepath.Join(binDir, "config.json")
 	}
-	appDir := filepath.Join(configDir, "LinNASClient")
-	_ = os.MkdirAll(appDir, 0755)
-	return filepath.Join(appDir, "config.json")
+	return "config.json"
 }
 
 func LoadConfig() ClientConfig {

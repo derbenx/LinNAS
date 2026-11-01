@@ -1,0 +1,7 @@
+linnas
+linnas.data
+*.exe
+client/linnas-client
+client/*.exe
+client/config.json
+client/test_config.json
