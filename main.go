@@ -3174,16 +3174,22 @@ func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
 				}
 				sOut, sErr := sCmd.CombinedOutput()
 				sStr := string(sOut)
-				if sErr == nil || strings.Contains(sStr, "PASSED") || strings.Contains(sStr, "OK") {
-					if strings.Contains(sStr, "FAILED") {
-						info.Health = "FAILED"
-						overallHealthy = false
-					} else if strings.Contains(sStr, "PASSED") || strings.Contains(sStr, "OK") {
-						info.Health = "PASSED"
-					}
-				} else if strings.Contains(sStr, "FAILED") {
+				upperStr := strings.ToUpper(sStr)
+
+				// Only flag FAILED if SMART self-assessment explicitly reports failure
+				if strings.Contains(upperStr, "SELF-ASSESSMENT TEST RESULT: FAILED") ||
+					strings.Contains(upperStr, "SMART HEALTH STATUS: FAILURE") ||
+					strings.Contains(upperStr, "SMART OVERALL-HEALTH SELF-ASSESSMENT TEST RESULT: FAILED") {
 					info.Health = "FAILED"
 					overallHealthy = false
+				} else if strings.Contains(upperStr, "SELF-ASSESSMENT TEST RESULT: PASSED") ||
+					strings.Contains(upperStr, "SMART HEALTH STATUS: OK") ||
+					strings.Contains(upperStr, "SMART HEALTH STATUS: PASSED") ||
+					(sErr == nil && (strings.Contains(upperStr, "PASSED") || strings.Contains(upperStr, "OK"))) {
+					info.Health = "PASSED"
+				} else {
+					// Missing smartmontools, device lacks SMART capability, or virtual disk
+					info.Health = "UNKNOWN"
 				}
 
 				info.RawInfo = strings.TrimSpace(sStr)

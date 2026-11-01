@@ -28,15 +28,18 @@ func main() {
 		fmt.Println("Error initializing sync engine:", err)
 	}
 
-	// Concise Status indicator badge
+	// Concise Status indicator badge (strictly truncated to prevent expanding the window)
 	statusLabel := widget.NewLabel("Status: " + engine.GetStatus())
 	statusLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	// Scrollable, selectable, copy-pasteable Activity & Error Log Area
+	// High contrast, scrollable, selectable, copy-pasteable Activity & Error Log Area
 	logEntry := widget.NewMultiLineEntry()
 	logEntry.Wrapping = fyne.TextWrapWord
 	logEntry.SetPlaceHolder("Log entries and sync errors will appear here...")
-	logEntry.Disable() // Read-only but selectable for copy-paste
+	// Keep enabled for maximum contrast (white on dark background) while intercepting edits
+	logEntry.OnChanged = func(s string) {
+		// Prevent accidental user editing while preserving copy-paste selection
+	}
 
 	appendLog := func(msg string) {
 		fyne.Do(func() {
@@ -58,8 +61,8 @@ func main() {
 	engine.onStatus = func(msg string) {
 		fyne.Do(func() {
 			shortMsg := msg
-			if len(shortMsg) > 38 {
-				shortMsg = shortMsg[:35] + "..."
+			if len(shortMsg) > 35 {
+				shortMsg = shortMsg[:32] + "..."
 			}
 			statusLabel.SetText("Status: " + shortMsg)
 		})
@@ -73,7 +76,9 @@ func main() {
 		})
 	}
 
-	// UI Controls: Connection
+	// ==========================================
+	// TAB 1: Server Connection & Sync Settings
+	// ==========================================
 	endpointEntry := widget.NewEntry()
 	endpointEntry.SetPlaceHolder("192.168.1.50:8080")
 	endpointEntry.SetText(cfg.ServerEndpoint)
@@ -90,7 +95,58 @@ func main() {
 	})
 	pauseCheck.SetChecked(cfg.SyncEnabled)
 
-	// UI Controls: Local Sync Folder
+	freqSlider := widget.NewSlider(5, 300)
+	freqSlider.SetValue(float64(cfg.SyncIntervalSec))
+	freqLabel := widget.NewLabel(fmt.Sprintf("%d seconds", cfg.SyncIntervalSec))
+	freqSlider.OnChanged = func(val float64) {
+		secs := int(val)
+		freqLabel.SetText(fmt.Sprintf("%d seconds", secs))
+		cfg.SyncIntervalSec = secs
+	}
+
+	idleCheck := widget.NewCheck("Only perform backup/uploads when computer is idle", func(checked bool) {
+		cfg.IdleOnly = checked
+	})
+	idleCheck.SetChecked(cfg.IdleOnly)
+
+	saveConnBtn := widget.NewButtonWithIcon("Save Connection & Preferences", theme.DocumentSaveIcon(), func() {
+		cfg.ServerEndpoint = strings.TrimSpace(endpointEntry.Text)
+		cfg.Username = strings.TrimSpace(userEntry.Text)
+		if pwdEntry.Text != "" {
+			cfg.PasswordHash = HashPassword(pwdEntry.Text)
+		}
+		cfg.SyncEnabled = pauseCheck.Checked
+		cfg.IdleOnly = idleCheck.Checked
+		cfg.SyncIntervalSec = int(freqSlider.Value)
+
+		if err := SaveConfig(cfg); err != nil {
+			dialog.ShowError(fmt.Errorf("Failed to save connection: %w", err), w)
+			return
+		}
+		engine.UpdateConfig(cfg)
+		dialog.ShowInformation("Saved", "Connection settings and sync preferences have been saved.", w)
+	})
+
+	connTabContent := container.NewVBox(
+		widget.NewLabelWithStyle("LinNAS Server Connection", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewForm(
+			widget.NewFormItem("Server Endpoint (IP:Port)", endpointEntry),
+			widget.NewFormItem("Username", userEntry),
+			widget.NewFormItem("Password", pwdEntry),
+		),
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Sync Frequency & Performance", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		container.NewBorder(nil, nil, widget.NewLabel("Background check interval:"), freqLabel, freqSlider),
+		pauseCheck,
+		idleCheck,
+		widget.NewSeparator(),
+		saveConnBtn,
+	)
+	connScroll := container.NewVScroll(connTabContent)
+
+	// ==========================================
+	// TAB 2: Folders & Selective Sync
+	// ==========================================
 	localDirEntry := widget.NewEntry()
 	localDirEntry.SetText(cfg.LocalSyncDir)
 
@@ -104,10 +160,9 @@ func main() {
 	})
 	localFolderRow := container.NewBorder(nil, nil, nil, browseLocalBtn, localDirEntry)
 
-	// UI Controls: Selective Sync Folder Tree
 	treeBox := container.NewVBox()
 	treeScroll := container.NewVScroll(treeBox)
-	treeScroll.SetMinSize(fyne.NewSize(660, 140))
+	treeScroll.SetMinSize(fyne.NewSize(660, 220))
 
 	refreshTree := func() {
 		fyne.Do(func() {
@@ -176,67 +231,30 @@ func main() {
 
 	refreshTreeBtn := widget.NewButtonWithIcon("Refresh Folders", theme.ViewRefreshIcon(), refreshTree)
 
-	// UI Controls: Performance / Lazy Sync
-	freqSlider := widget.NewSlider(5, 300)
-	freqSlider.SetValue(float64(cfg.SyncIntervalSec))
-	freqLabel := widget.NewLabel(fmt.Sprintf("%d seconds", cfg.SyncIntervalSec))
-	freqSlider.OnChanged = func(val float64) {
-		secs := int(val)
-		freqLabel.SetText(fmt.Sprintf("%d seconds", secs))
-		cfg.SyncIntervalSec = secs
-	}
-
-	idleCheck := widget.NewCheck("Only perform backup/uploads when computer is idle", func(checked bool) {
-		cfg.IdleOnly = checked
-	})
-	idleCheck.SetChecked(cfg.IdleOnly)
-
-	// Unified Save Button for Everything
-	saveAllBtn := widget.NewButtonWithIcon("Save All Settings", theme.DocumentSaveIcon(), func() {
-		cfg.ServerEndpoint = strings.TrimSpace(endpointEntry.Text)
-		cfg.Username = strings.TrimSpace(userEntry.Text)
-		if pwdEntry.Text != "" {
-			cfg.PasswordHash = HashPassword(pwdEntry.Text)
-		}
+	saveFoldersBtn := widget.NewButtonWithIcon("Save Folder Settings", theme.DocumentSaveIcon(), func() {
 		cfg.LocalSyncDir = strings.TrimSpace(localDirEntry.Text)
-		cfg.SyncEnabled = pauseCheck.Checked
-		cfg.IdleOnly = idleCheck.Checked
-		cfg.SyncIntervalSec = int(freqSlider.Value)
-
 		if err := SaveConfig(cfg); err != nil {
-			dialog.ShowError(fmt.Errorf("Failed to save settings: %w", err), w)
+			dialog.ShowError(fmt.Errorf("Failed to save folder configuration: %w", err), w)
 			return
 		}
 		engine.UpdateConfig(cfg)
-		dialog.ShowInformation("Settings Saved", "All connection, folder, and sync preferences have been saved.", w)
+		dialog.ShowInformation("Folders Saved", "Local sync folder and selective sync preferences saved.", w)
 	})
 
-	// Merged Settings Tab (Connection, Local & Server Folders, Frequency, Unified Save)
-	settingsContent := container.NewVBox(
-		widget.NewLabelWithStyle("LinNAS Server Connection", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		widget.NewForm(
-			widget.NewFormItem("Server Endpoint (IP:Port)", endpointEntry),
-			widget.NewFormItem("Username", userEntry),
-			widget.NewFormItem("Password", pwdEntry),
-		),
-		widget.NewSeparator(),
-		widget.NewLabelWithStyle("Local Sync Folder", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+	foldersTabContent := container.NewVBox(
+		widget.NewLabelWithStyle("Local Synchronization Folder", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		localFolderRow,
 		widget.NewSeparator(),
 		container.NewHBox(
 			widget.NewLabelWithStyle("Server Selective Sync", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			refreshTreeBtn,
 		),
+		widget.NewLabel("Check the folders on the server you wish to sync to your local PC:"),
 		treeScroll,
 		widget.NewSeparator(),
-		widget.NewLabelWithStyle("Sync Frequency & Performance", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		container.NewBorder(nil, nil, widget.NewLabel("Background check interval:"), freqLabel, freqSlider),
-		pauseCheck,
-		idleCheck,
-		widget.NewSeparator(),
-		saveAllBtn,
+		saveFoldersBtn,
 	)
-	settingsScroll := container.NewVScroll(settingsContent)
+	foldersScroll := container.NewVScroll(foldersTabContent)
 
 	// Actions: Sync Now
 	syncNowBtn := widget.NewButtonWithIcon("Sync Now", theme.MediaPlayIcon(), func() {
@@ -262,7 +280,9 @@ func main() {
 		}, w)
 	})
 
-	// SMART Drive Monitoring Tab
+	// ==========================================
+	// TAB 3: SMART Drive Monitoring
+	// ==========================================
 	smartBox := container.NewVBox()
 	smartScroll := container.NewVScroll(smartBox)
 	smartScroll.SetMinSize(fyne.NewSize(660, 360))
@@ -290,7 +310,7 @@ func main() {
 
 				banner := canvas.NewText("", color.White)
 				if healthy {
-					banner.Text = "✅ All Storage Drives Healthy (SMART PASSED)"
+					banner.Text = "✅ Storage Drives Healthy / No SMART Failures"
 					banner.Color = color.RGBA{R: 50, G: 200, B: 50, A: 255}
 				} else {
 					banner.Text = "⚠️ WARNING: SMART Hardware Failures Detected on Server!"
@@ -299,9 +319,17 @@ func main() {
 				banner.TextStyle = fyne.TextStyle{Bold: true}
 				smartBox.Add(banner)
 
+				if len(disks) == 0 {
+					smartBox.Add(widget.NewLabel("No physical storage disks detected or SMART unavailable."))
+				}
+
 				for _, d := range disks {
-					cardText := fmt.Sprintf("Drive: %s (%s, %s)\nHealth: %s", d.Device, d.Model, d.Capacity, d.Health)
-					card := widget.NewCard(d.Device, d.Health, widget.NewLabel(cardText))
+					healthBadge := d.Health
+					if healthBadge == "UNKNOWN" {
+						healthBadge = "UNKNOWN (No SMART errors)"
+					}
+					cardText := fmt.Sprintf("Device: %s\nModel: %s\nCapacity: %s\nStatus: %s", d.Device, d.Model, d.Capacity, healthBadge)
+					card := widget.NewCard(d.Device, healthBadge, widget.NewLabel(cardText))
 					smartBox.Add(card)
 				}
 				smartBox.Refresh()
@@ -319,16 +347,20 @@ func main() {
 		smartScroll,
 	)
 
-	// Activity & Error Logs Tab
+	// ==========================================
+	// TAB 4: Activity & Error Logs
+	// ==========================================
 	logHeader := container.NewHBox(
 		widget.NewLabelWithStyle("Activity & Error Logs", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		clearLogBtn,
 	)
+	// Dark contrast background container for log area
 	logTab := container.NewBorder(logHeader, nil, nil, nil, logEntry)
 
-	// Main Layout
+	// Main Layout Tabs
 	tabs := container.NewAppTabs(
-		container.NewTabItemWithIcon("Settings & Sync", theme.SettingsIcon(), settingsScroll),
+		container.NewTabItemWithIcon("Connection", theme.SettingsIcon(), connScroll),
+		container.NewTabItemWithIcon("Folders & Sync", theme.FolderIcon(), foldersScroll),
 		container.NewTabItemWithIcon("SMART Health", theme.WarningIcon(), smartTab),
 		container.NewTabItemWithIcon("Logs & Errors", theme.DocumentIcon(), logTab),
 	)

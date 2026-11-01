@@ -137,30 +137,62 @@ func (s *SyncEngine) EnsureAuthenticated(password string) error {
 	return nil
 }
 
+func (s *SyncEngine) writeClientDebugLog(format string, args ...interface{}) {
+	entry := fmt.Sprintf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprintf(format, args...))
+	binDir := filepath.Dir(s.cfg.LocalSyncDir)
+	if execPath, err := os.Executable(); err == nil {
+		binDir = filepath.Dir(execPath)
+	}
+	logFile := filepath.Join(binDir, "debug.log")
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		_, _ = f.WriteString(entry)
+		_ = f.Close()
+	}
+}
+
 // FetchServerFolderTree retrieves directory items from server for selective sync
 func (s *SyncEngine) FetchServerFolderTree() ([]ServerItem, error) {
 	serverURL := s.crypto.serverURL
 	listURL := serverURL + "/api/cloud/list?recursive=true"
 
+	s.writeClientDebugLog("Fetching server folder tree from %s", listURL)
 	resp, err := s.httpClient.Get(listURL)
 	if err != nil {
+		s.writeClientDebugLog("FetchServerFolderTree HTTP error: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.writeClientDebugLog("FetchServerFolderTree ReadAll error: %v", err)
+		return nil, err
+	}
+	s.writeClientDebugLog("FetchServerFolderTree status=%d body_len=%d", resp.StatusCode, len(bodyBytes))
+
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		return nil, fmt.Errorf("server cloud service is currently stopped")
 	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("unauthorized - please check username and password")
+	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server returned error %d", resp.StatusCode)
+		return nil, fmt.Errorf("server returned error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var data struct {
 		Success bool         `json:"success"`
 		Items   []ServerItem `json:"items"`
+		Error   string       `json:"error,omitempty"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, err
+	if err := json.Unmarshal(bodyBytes, &data); err != nil {
+		s.writeClientDebugLog("FetchServerFolderTree JSON unmarshal failed on body '%s': %v", string(bodyBytes), err)
+		return nil, fmt.Errorf("failed to parse folder tree JSON: %w (raw response: %s)", err, string(bodyBytes))
+	}
+
+	if !data.Success && data.Error != "" {
+		return nil, fmt.Errorf("server error: %s", data.Error)
 	}
 
 	var dirsOnly []ServerItem
@@ -232,25 +264,49 @@ func (s *SyncEngine) PerformSync(password string) error {
 	s.SetStatus("Fetching server file index...")
 	serverURL := s.crypto.serverURL
 	listURL := serverURL + "/api/cloud/list?recursive=true"
+	s.writeClientDebugLog("PerformSync listURL: %s", listURL)
 	resp, err := s.httpClient.Get(listURL)
 	if err != nil {
+		s.writeClientDebugLog("PerformSync contact error: %v", err)
 		s.SetStatus("Failed to contact server: " + err.Error())
 		return err
 	}
 	defer resp.Body.Close()
 
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.writeClientDebugLog("PerformSync ReadAll error: %v", err)
+		s.SetStatus("Failed to read server response: " + err.Error())
+		return err
+	}
+	s.writeClientDebugLog("PerformSync list resp: status=%d len=%d body=%s", resp.StatusCode, len(bodyBytes), string(bodyBytes))
+
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		s.SetStatus("Cloud Service Offline (Stopped on Server)")
 		return fmt.Errorf("server cloud service is stopped")
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		s.SetStatus("Unauthorized: Invalid credentials")
+		return fmt.Errorf("server returned 401 unauthorized")
+	}
+	if resp.StatusCode != http.StatusOK {
+		s.SetStatus(fmt.Sprintf("Server error %d: %s", resp.StatusCode, string(bodyBytes)))
+		return fmt.Errorf("server error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	var listData struct {
 		Success bool         `json:"success"`
 		Items   []ServerItem `json:"items"`
+		Error   string       `json:"error,omitempty"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&listData); err != nil {
+	if err := json.Unmarshal(bodyBytes, &listData); err != nil {
+		s.writeClientDebugLog("PerformSync unmarshal error on '%s': %v", string(bodyBytes), err)
 		s.SetStatus("Failed to parse server list: " + err.Error())
 		return err
+	}
+	if !listData.Success && listData.Error != "" {
+		s.SetStatus("Server error: " + listData.Error)
+		return fmt.Errorf("server reported error: %s", listData.Error)
 	}
 
 	serverMap := make(map[string]ServerItem)
