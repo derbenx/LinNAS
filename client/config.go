@@ -13,7 +13,8 @@ import (
 type ClientConfig struct {
 	ServerEndpoint  string          `json:"server_endpoint"`  // e.g. "192.168.1.50:8080"
 	Username        string          `json:"username"`
-	PasswordHash    string          `json:"password_hash"`
+	PasswordHash    string          `json:"password_hash"`     // SHA-256 hash (never store plaintext password)
+	SessionToken    string          `json:"session_token,omitempty"` // Long-lived auth session token
 	LocalSyncDir    string          `json:"local_sync_dir"`
 	SyncEnabled     bool            `json:"sync_enabled"`
 	SyncIntervalSec int             `json:"sync_interval_sec"` // Default 30s

@@ -1,5 +1,5 @@
 {
-  "active": false,
-  "folder_path": "",
+  "enabled": false,
+  "folder": "",
   "volume_uuid": ""
 }

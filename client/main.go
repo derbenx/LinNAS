@@ -88,7 +88,11 @@ func main() {
 	userEntry.SetText(cfg.Username)
 
 	pwdEntry := widget.NewPasswordEntry()
-	pwdEntry.SetPlaceHolder("Enter password (or leave blank if saved)")
+	if cfg.PasswordHash != "" || cfg.SessionToken != "" {
+		pwdEntry.SetPlaceHolder("•••••••• (Credentials Saved)")
+	} else {
+		pwdEntry.SetPlaceHolder("Enter password to connect")
+	}
 
 	pauseCheck := widget.NewCheck("Enable Background Syncing", func(checked bool) {
 		cfg.SyncEnabled = checked
@@ -112,8 +116,12 @@ func main() {
 	saveConnBtn := widget.NewButtonWithIcon("Save Connection & Preferences", theme.DocumentSaveIcon(), func() {
 		cfg.ServerEndpoint = strings.TrimSpace(endpointEntry.Text)
 		cfg.Username = strings.TrimSpace(userEntry.Text)
-		if pwdEntry.Text != "" {
+		if strings.TrimSpace(pwdEntry.Text) != "" {
+			// Hash password immediately so plaintext password is never written to disk
 			cfg.PasswordHash = HashPassword(pwdEntry.Text)
+			cfg.SessionToken = "" // Invalidate old session token for new password
+			pwdEntry.SetText("")
+			pwdEntry.SetPlaceHolder("•••••••• (Credentials Saved)")
 		}
 		cfg.SyncEnabled = pauseCheck.Checked
 		cfg.IdleOnly = idleCheck.Checked
@@ -124,7 +132,7 @@ func main() {
 			return
 		}
 		engine.UpdateConfig(cfg)
-		dialog.ShowInformation("Saved", "Connection settings and sync preferences have been saved.", w)
+		dialog.ShowInformation("Saved", "Connection settings and sync preferences have been saved securely.", w)
 	})
 
 	connTabContent := container.NewVBox(

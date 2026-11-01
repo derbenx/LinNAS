@@ -107,15 +107,20 @@ func (s *SyncEngine) EnsureAuthenticated(password string) error {
 	serverURL := s.crypto.serverURL
 	loginURL := serverURL + "/api/login"
 
-	pwdToSend := password
-	if pwdToSend == "" && s.cfg.PasswordHash != "" {
-		// Use saved credentials
-		pwdToSend = s.cfg.PasswordHash
-	}
-
 	payload := map[string]string{
 		"username": s.cfg.Username,
-		"password": pwdToSend,
+	}
+
+	if password != "" {
+		// If user typed a password in this session
+		payload["password"] = password
+	} else if s.cfg.PasswordHash != "" {
+		// Use saved SHA-256 hash (no plaintext password stored)
+		payload["password_hash"] = s.cfg.PasswordHash
+	}
+
+	if s.cfg.SessionToken != "" {
+		payload["session_token"] = s.cfg.SessionToken
 	}
 
 	encBody, _, err := s.crypto.EncryptPayload(payload)
@@ -129,8 +134,21 @@ func (s *SyncEngine) EnsureAuthenticated(password string) error {
 	}
 	defer resp.Body.Close()
 
+	bodyBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
+		s.writeClientDebugLog("EnsureAuthenticated failed HTTP %d: %s", resp.StatusCode, string(bodyBytes))
 		return fmt.Errorf("login failed with HTTP %d", resp.StatusCode)
+	}
+
+	var loginData struct {
+		Success      bool   `json:"success"`
+		SessionToken string `json:"session_token"`
+	}
+	if json.Unmarshal(bodyBytes, &loginData) == nil && loginData.SessionToken != "" {
+		if s.cfg.SessionToken != loginData.SessionToken {
+			s.cfg.SessionToken = loginData.SessionToken
+			_ = SaveConfig(s.cfg)
+		}
 	}
 
 	s.isLoggedIn = true

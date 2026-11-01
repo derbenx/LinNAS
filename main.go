@@ -468,19 +468,48 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var creds struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username     string `json:"username"`
+		Password     string `json:"password"`
+		PasswordHash string `json:"password_hash"`
+		SessionToken string `json:"session_token"`
 	}
 	if err := json.Unmarshal(decryptedBody, &creds); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	providedHash := hashPassword(creds.Password)
-	if creds.Username == appConfig.Username && (providedHash == appConfig.PasswordHash || creds.Password == appConfig.Password) {
-		token := generateToken()
+	authenticated := false
+
+	// Check if already authenticated by valid existing session token
+	if creds.SessionToken != "" {
+		sessionsMu.RLock()
+		exp, ok := sessions[creds.SessionToken]
+		sessionsMu.RUnlock()
+		if ok && time.Now().Before(exp) {
+			authenticated = true
+		}
+	}
+
+	// Check credentials (accepts plaintext password OR pre-hashed password_hash)
+	if !authenticated && creds.Username == appConfig.Username {
+		if creds.PasswordHash != "" && strings.EqualFold(creds.PasswordHash, appConfig.PasswordHash) {
+			authenticated = true
+		} else if creds.Password != "" {
+			providedHash := hashPassword(creds.Password)
+			if strings.EqualFold(providedHash, appConfig.PasswordHash) || creds.Password == appConfig.Password {
+				authenticated = true
+			}
+		}
+	}
+
+	if authenticated {
+		token := creds.SessionToken
+		if token == "" {
+			token = generateToken()
+		}
+		// Refresh session expiry (30 days for API/desktop clients)
 		sessionsMu.Lock()
-		sessions[token] = time.Now().Add(24 * time.Hour)
+		sessions[token] = time.Now().Add(30 * 24 * time.Hour)
 		sessionsMu.Unlock()
 
 		http.SetCookie(w, &http.Cookie{
@@ -488,9 +517,13 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 			Value:    token,
 			Path:     "/",
 			HttpOnly: true,
-			Expires:  time.Now().Add(24 * time.Hour),
+			Expires:  time.Now().Add(30 * 24 * time.Hour),
 		})
-		jsonResponse(w, map[string]interface{}{"success": true})
+		jsonResponse(w, map[string]interface{}{
+			"success":       true,
+			"session_token": token,
+			"expires_in":    30 * 24 * 3600,
+		})
 	} else {
 		http.Error(w, `{"error":"invalid credentials"}`, http.StatusUnauthorized)
 	}
