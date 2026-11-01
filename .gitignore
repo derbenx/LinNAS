@@ -1,7 +1,10 @@
 linnas
 linnas.data
 *.exe
+*.log
 client/linnas-client
 client/*.exe
+client/*.log
 client/config.json
 client/test_config.json
+data/cloud.json
