@@ -166,25 +166,25 @@ func main() {
 
 			titleText := canvas.NewText("", color.White)
 			titleText.TextStyle = fyne.TextStyle{Bold: true}
-			titleText.TextSize = 15
+			titleText.TextSize = 14
 
-			subText := canvas.NewText("", color.White)
-			subText.TextSize = 11
+			subLabel := widget.NewLabel("")
+			subLabel.Wrapping = fyne.TextWrapWord
 
 			if isTest {
 				titleText.Text = "⚠️ THIS IS A TEST! Simulated SMART Drive Failure"
 				titleText.Color = color.RGBA{R: 255, G: 220, B: 0, A: 255}
-				subText.Text = "Test mode active: The following drives are simulating critical hardware failures:"
-				subText.Color = color.RGBA{R: 240, G: 240, B: 180, A: 255}
+				subLabel.SetText("Test mode active: Simulated hardware failures detected:")
 			} else {
 				titleText.Text = "❌ CRITICAL DRIVE FAILURE DETECTED"
 				titleText.Color = color.RGBA{R: 255, G: 60, B: 60, A: 255}
-				subText.Text = "Immediate attention required! The following drives have failed SMART diagnostics:"
-				subText.Color = color.RGBA{R: 255, G: 180, B: 180, A: 255}
+				subLabel.SetText("Attention required: The following drives failed SMART:")
 			}
 
-			msgLabel := widget.NewLabel(alert)
-			msgLabel.Wrapping = fyne.TextWrapWord
+			// Scrollable, selectable, word-wrapped text area so text never forces window expansion
+			msgEntry := widget.NewMultiLineEntry()
+			msgEntry.Wrapping = fyne.TextWrapWord
+			msgEntry.SetText(alert)
 
 			muteBtn := widget.NewButtonWithIcon("Mute SMART Alerts (12h)", theme.VolumeMuteIcon(), func() {
 				engine.MuteSmartAlerts(12 * time.Hour)
@@ -192,14 +192,11 @@ func main() {
 				alertWin.Close()
 			})
 
-			contentScroll := container.NewVScroll(msgLabel)
-			contentScroll.SetMinSize(fyne.NewSize(toastW-20, 150))
-
 			alertWin.SetContent(container.NewBorder(
-				container.NewVBox(titleText, subText, widget.NewSeparator()),
+				container.NewVBox(titleText, subLabel, widget.NewSeparator()),
 				container.NewVBox(widget.NewSeparator(), muteBtn),
 				nil, nil,
-				contentScroll,
+				msgEntry,
 			))
 
 			alertWin.SetOnClosed(func() {
@@ -348,7 +345,11 @@ func main() {
 				treeBox.Objects = nil
 
 				if err != nil {
-					treeBox.Add(widget.NewLabel("Could not load server folders: " + err.Error()))
+					errShort := err.Error()
+					if len(errShort) > 35 {
+						errShort = errShort[:32] + "..."
+					}
+					treeBox.Add(widget.NewLabel("Could not load folders: " + errShort))
 					treeBox.Refresh()
 					return
 				}
@@ -452,7 +453,11 @@ func main() {
 				smartTilesContainer.Objects = nil
 
 				if err != nil {
-					smartTilesContainer.Add(widget.NewLabel("Could not fetch SMART status: " + err.Error()))
+					errShort := err.Error()
+					if len(errShort) > 35 {
+						errShort = errShort[:32] + "..."
+					}
+					smartTilesContainer.Add(widget.NewLabel("SMART status error: " + errShort))
 					smartTilesContainer.Refresh()
 					return
 				}
@@ -510,26 +515,36 @@ func main() {
 		fyne.Do(func() {
 			localSmartBannerBox.Objects = nil
 			localSmartTilesContainer.Objects = nil
-			localHealthy, localDisks, _ := CheckLocalSMARTHealth()
-
-			if !localHealthy {
-				failBanner := canvas.NewText("❌ Local Drive Failure Detected!", color.RGBA{R: 255, G: 60, B: 60, A: 255})
-				failBanner.TextStyle = fyne.TextStyle{Bold: true}
-				localSmartBannerBox.Add(failBanner)
-				localSmartBannerBox.Add(widget.NewSeparator())
-			} else {
-				okBanner := canvas.NewText("✅ All Local Disks Healthy", color.RGBA{R: 50, G: 205, B: 50, A: 255})
-				okBanner.TextStyle = fyne.TextStyle{Bold: true}
-				localSmartBannerBox.Add(okBanner)
-				localSmartBannerBox.Add(widget.NewSeparator())
-			}
-
-			for _, ld := range localDisks {
-				localSmartTilesContainer.Add(createCompactSmartTile(ld))
-			}
-			localSmartBannerBox.Refresh()
+			localSmartTilesContainer.Add(widget.NewLabel("Checking local drive health..."))
 			localSmartTilesContainer.Refresh()
 		})
+
+		go func() {
+			localHealthy, localDisks, _ := CheckLocalSMARTHealth()
+
+			fyne.Do(func() {
+				localSmartBannerBox.Objects = nil
+				localSmartTilesContainer.Objects = nil
+
+				if !localHealthy {
+					failBanner := canvas.NewText("❌ Local Drive Failure Detected!", color.RGBA{R: 255, G: 60, B: 60, A: 255})
+					failBanner.TextStyle = fyne.TextStyle{Bold: true}
+					localSmartBannerBox.Add(failBanner)
+					localSmartBannerBox.Add(widget.NewSeparator())
+				} else {
+					okBanner := canvas.NewText("✅ All Local Disks Healthy", color.RGBA{R: 50, G: 205, B: 50, A: 255})
+					okBanner.TextStyle = fyne.TextStyle{Bold: true}
+					localSmartBannerBox.Add(okBanner)
+					localSmartBannerBox.Add(widget.NewSeparator())
+				}
+
+				for _, ld := range localDisks {
+					localSmartTilesContainer.Add(createCompactSmartTile(ld))
+				}
+				localSmartBannerBox.Refresh()
+				localSmartTilesContainer.Refresh()
+			})
+		}()
 	}
 
 	refreshLocalSmartBtn := widget.NewButtonWithIcon("Refresh Local Disks", theme.ViewRefreshIcon(), refreshLocalSmart)
@@ -585,6 +600,7 @@ func main() {
 			fyne.NewMenuItem("Sync Now", func() {
 				var pwd string
 				fyne.DoAndWait(func() {
+					defer func() { _ = recover() }()
 					pwd = pwdEntry.Text
 				})
 				go func() { _ = engine.PerformSync(pwd) }()
@@ -627,6 +643,7 @@ func main() {
 			if cfg.SyncEnabled {
 				var pwd string
 				fyne.DoAndWait(func() {
+					defer func() { _ = recover() }()
 					pwd = pwdEntry.Text
 				})
 				_ = engine.PerformSync(pwd)
