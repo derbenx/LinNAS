@@ -3095,9 +3095,11 @@ func safeCloudPath(rootFolder, userRelPath string) (string, string, error) {
 		return "", "", fmt.Errorf("path traversal escape detected: %s", userRelPath)
 	}
 
-	// Forbid access to internal metadata
-	if strings.HasPrefix(cleanRel, ".cloud_meta") || strings.Contains(cleanRel, "/.cloud_meta") || strings.Contains(cleanRel, `\.cloud_meta`) {
-		return "", "", fmt.Errorf("access to internal metadata directory forbidden")
+	// Forbid access to internal metadata and tracking database files
+	baseTarget := filepath.Base(cleanRel)
+	if strings.HasPrefix(cleanRel, ".cloud_meta") || strings.Contains(cleanRel, "/.cloud_meta") || strings.Contains(cleanRel, `\.cloud_meta`) ||
+		baseTarget == ".cloud_data" || strings.HasPrefix(baseTarget, ".cloud-") {
+		return "", "", fmt.Errorf("access to internal metadata/tracking database forbidden")
 	}
 
 	return absTarget, cleanRel, nil
@@ -3113,8 +3115,9 @@ func getCloudMetaFilePath(rootFolder, relSubdir string) string {
 	return filepath.Join(metaDir, filename)
 }
 
+const cloudDataHeader = "# DO NOT DELETE - this file is used by LinNAS Cloud #\n"
+
 func loadCloudDirMeta(rootFolder, relSubdir string) CloudDirMeta {
-	metaFile := getCloudMetaFilePath(rootFolder, relSubdir)
 	var meta CloudDirMeta
 	meta.Directory = relSubdir
 	meta.ServerMAC = getPrimaryMAC()
@@ -3123,9 +3126,25 @@ func loadCloudDirMeta(rootFolder, relSubdir string) CloudDirMeta {
 	meta.Deleted = make(map[string]int64)
 	meta.History = make([]CloudHistoryEntry, 0)
 
-	b, err := os.ReadFile(metaFile)
+	// Check .cloud_data in the actual directory first
+	targetDir := rootFolder
+	if relSubdir != "" && relSubdir != "." {
+		targetDir = filepath.Join(rootFolder, relSubdir)
+	}
+	cloudDataPath := filepath.Join(targetDir, ".cloud_data")
+	b, err := os.ReadFile(cloudDataPath)
+	if err != nil || len(b) == 0 {
+		// Fallback to .cloud_meta path
+		metaFile := getCloudMetaFilePath(rootFolder, relSubdir)
+		b, err = os.ReadFile(metaFile)
+	}
+
 	if err == nil && len(b) > 0 {
-		_ = json.Unmarshal(b, &meta)
+		raw := string(b)
+		if strings.HasPrefix(raw, cloudDataHeader) {
+			raw = strings.TrimPrefix(raw, cloudDataHeader)
+		}
+		_ = json.Unmarshal([]byte(raw), &meta)
 		if meta.Files == nil {
 			meta.Files = make(map[string]CloudMetaFile)
 		}
@@ -3140,14 +3159,26 @@ func loadCloudDirMeta(rootFolder, relSubdir string) CloudDirMeta {
 }
 
 func saveCloudDirMeta(rootFolder, relSubdir string, meta CloudDirMeta) error {
-	metaFile := getCloudMetaFilePath(rootFolder, relSubdir)
-	_ = os.MkdirAll(filepath.Dir(metaFile), 0755)
 	meta.LastScan = time.Now().Format(time.RFC3339)
 	b, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(metaFile, b, 0644)
+
+	// 1. Save hidden .cloud_data in the directory itself with the requested header
+	targetDir := rootFolder
+	if relSubdir != "" && relSubdir != "." {
+		targetDir = filepath.Join(rootFolder, relSubdir)
+	}
+	_ = os.MkdirAll(targetDir, 0755)
+	cloudDataFile := filepath.Join(targetDir, ".cloud_data")
+	contentWithHeader := append([]byte(cloudDataHeader), b...)
+	_ = os.WriteFile(cloudDataFile, contentWithHeader, 0644)
+
+	// 2. Also save in .cloud_meta/ for mirrored history
+	metaFile := getCloudMetaFilePath(rootFolder, relSubdir)
+	_ = os.MkdirAll(filepath.Dir(metaFile), 0755)
+	return os.WriteFile(metaFile, contentWithHeader, 0644)
 }
 
 func calculateFileSHA256(filePath string) string {
@@ -3530,14 +3561,15 @@ func handleCloudList(w http.ResponseWriter, r *http.Request) {
 			if relFromRoot == "." || relFromRoot == "" {
 				return nil
 			}
-			// Skip internal metadata folder
-			if strings.HasPrefix(relFromRoot, ".cloud_meta") || filepath.Base(p) == ".cloud_meta" {
+			// Skip internal metadata folder and .cloud_data database
+			baseName := filepath.Base(p)
+			if strings.HasPrefix(relFromRoot, ".cloud_meta") || baseName == ".cloud_meta" {
 				if info.IsDir() {
 					return filepath.SkipDir
 				}
 				return nil
 			}
-			if strings.HasPrefix(filepath.Base(p), ".cloud-") && strings.HasSuffix(filepath.Base(p), ".json") {
+			if baseName == ".cloud_data" || (strings.HasPrefix(baseName, ".cloud-") && strings.HasSuffix(baseName, ".json")) {
 				return nil
 			}
 
@@ -3592,7 +3624,7 @@ func handleCloudList(w http.ResponseWriter, r *http.Request) {
 
 		for _, e := range entries {
 			name := e.Name()
-			if name == ".cloud_meta" || (strings.HasPrefix(name, ".cloud-") && strings.HasSuffix(name, ".json")) {
+			if name == ".cloud_meta" || name == ".cloud_data" || (strings.HasPrefix(name, ".cloud-") && strings.HasSuffix(name, ".json")) {
 				continue
 			}
 			itemPath := filepath.Join(targetDir, name)
@@ -3788,9 +3820,22 @@ func handleCloudSave(w http.ResponseWriter, r *http.Request) {
 		_ = os.MkdirAll(recycleDir, 0755)
 		backupPath := filepath.Join(recycleDir, backupName)
 
-		// Copy existing file to RecycleBin
+		// Copy existing file to RecycleBin and record restore origin metadata
 		if existingData, readErr := os.ReadFile(targetFile); readErr == nil {
 			_ = os.WriteFile(backupPath, existingData, 0644)
+			restoreMeta := map[string]interface{}{
+				"original_path": cleanRel,
+				"archived_path": filepath.ToSlash(filepath.Join("RecycleBin", relDir, backupName)),
+				"reason":        "overwrite",
+				"archived_at":   time.Now().Format(time.RFC3339),
+				"mod_time":      existingModTime,
+				"size":          existingInfo.Size(),
+				"sha256":        calculateFileSHA256(targetFile),
+			}
+			if rBytes, mErr := json.MarshalIndent(restoreMeta, "", "  "); mErr == nil {
+				_ = os.WriteFile(backupPath+".restore_info.json", rBytes, 0644)
+			}
+
 			dirMeta.History = append(dirMeta.History, CloudHistoryEntry{
 				Action:     "overwrite",
 				OrigPath:   cleanRel,
@@ -3994,9 +4039,25 @@ func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
 		relDir = ""
 	}
 	baseName := filepath.Base(cleanRel)
+
+	// If the file is already inside RecycleBin, PERMANENTLY delete it without re-recycling
+	if strings.HasPrefix(cleanRel, "RecycleBin") || strings.HasPrefix(cleanRel, "RecycleBin/") {
+		if err := os.RemoveAll(targetFile); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": err.Error()})
+			return
+		}
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+			"success":   true,
+			"path":      cleanRel,
+			"permanent": true,
+		})
+		return
+	}
+
 	dirMeta := loadCloudDirMeta(rootFolder, relDir)
 
-	// Move file or directory to RecycleBin
+	// Move file or directory to RecycleBin in the shared root folder
 	dateTag := time.Now().Format("2006-01-02_150405")
 	backupName := fmt.Sprintf("%s.deleted.%s", baseName, dateTag)
 	recycleDir := filepath.Join(rootFolder, "RecycleBin", relDir)
@@ -4016,6 +4077,19 @@ func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Record restore origin info so the user knows where to restore the file
+	restoreMeta := map[string]interface{}{
+		"original_path": cleanRel,
+		"archived_path": filepath.ToSlash(filepath.Join("RecycleBin", relDir, backupName)),
+		"reason":        "deleted",
+		"deleted_at":    time.Now().Format(time.RFC3339),
+		"mod_time":      fi.ModTime().Unix(),
+		"size":          fi.Size(),
+	}
+	if rBytes, mErr := json.MarshalIndent(restoreMeta, "", "  "); mErr == nil {
+		_ = os.WriteFile(backupPath+".restore_info.json", rBytes, 0644)
+	}
+
 	// Update metadata, tombstone deleted map, and history
 	delete(dirMeta.Files, baseName)
 	if dirMeta.Deleted == nil {
@@ -4030,7 +4104,7 @@ func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
 		Timestamp:  time.Now().Format(time.RFC3339),
 		ModTime:    fi.ModTime().Unix(),
 		Size:       fi.Size(),
-		Details:    "Deleted by client, moved to RecycleBin",
+		Details:    "Deleted, moved to RecycleBin",
 	})
 	_ = saveCloudDirMeta(rootFolder, relDir, dirMeta)
 

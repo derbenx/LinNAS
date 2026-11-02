@@ -15,3 +15,6 @@ cloud.json
 sync_manifest.json
 linnas-cron
 *.data
+.cloud_data
+.cloud_meta/
+RecycleBin/

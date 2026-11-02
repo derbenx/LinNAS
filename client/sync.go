@@ -43,11 +43,12 @@ type SyncEngine struct {
 }
 
 type TrackedFile struct {
-	RelPath string `json:"rel_path"`
-	ModTime int64  `json:"mod_time"`
-	Size    int64  `json:"size"`
-	SHA256  string `json:"sha256,omitempty"`
-	Deleted bool   `json:"deleted,omitempty"`
+	RelPath   string `json:"rel_path"`
+	ModTime   int64  `json:"mod_time"`
+	Size      int64  `json:"size"`
+	SHA256    string `json:"sha256,omitempty"`
+	Deleted   bool   `json:"deleted,omitempty"`
+	DeletedAt int64  `json:"deleted_at,omitempty"`
 }
 
 type ServerItem struct {
@@ -91,7 +92,13 @@ func NewSyncEngine(cfg ClientConfig) (*SyncEngine, error) {
 	return engine, nil
 }
 
+const clientCloudDataHeader = "# DO NOT DELETE - this file is used by LinNAS Cloud #\n"
+
 func (s *SyncEngine) getManifestPath() string {
+	// Store in .cloud_data at root of the local sync directory with "# DO NOT DELETE..." header
+	if s.cfg.LocalSyncDir != "" {
+		return filepath.Join(s.cfg.LocalSyncDir, ".cloud_data")
+	}
 	binDir := filepath.Dir(s.cfg.LocalSyncDir)
 	if execPath, err := os.Executable(); err == nil {
 		binDir = filepath.Dir(execPath)
@@ -102,10 +109,26 @@ func (s *SyncEngine) getManifestPath() string {
 func (s *SyncEngine) loadManifest() {
 	s.manifestMu.Lock()
 	defer s.manifestMu.Unlock()
-	data, err := os.ReadFile(s.getManifestPath())
-	if err == nil && len(data) > 0 {
+	p := s.getManifestPath()
+	data, err := os.ReadFile(p)
+	if err != nil || len(data) == 0 {
+		// fallback to .cloud_meta/.client_meta.json or sync_manifest.json
+		if s.cfg.LocalSyncDir != "" {
+			data, _ = os.ReadFile(filepath.Join(s.cfg.LocalSyncDir, ".cloud_meta", ".client_meta.json"))
+		}
+		if len(data) == 0 {
+			if execPath, err2 := os.Executable(); err2 == nil {
+				data, _ = os.ReadFile(filepath.Join(filepath.Dir(execPath), "sync_manifest.json"))
+			}
+		}
+	}
+	if len(data) > 0 {
+		raw := string(data)
+		if strings.HasPrefix(raw, clientCloudDataHeader) {
+			raw = strings.TrimPrefix(raw, clientCloudDataHeader)
+		}
 		var list []TrackedFile
-		if err := json.Unmarshal(data, &list); err == nil {
+		if err := json.Unmarshal([]byte(raw), &list); err == nil {
 			for _, tf := range list {
 				s.manifest[tf.RelPath] = tf
 			}
@@ -122,7 +145,8 @@ func (s *SyncEngine) saveManifest() {
 	}
 	data, err := json.MarshalIndent(list, "", "  ")
 	if err == nil {
-		_ = os.WriteFile(s.getManifestPath(), data, 0644)
+		contentWithHeader := append([]byte(clientCloudDataHeader), data...)
+		_ = os.WriteFile(s.getManifestPath(), contentWithHeader, 0644)
 	}
 }
 
@@ -423,10 +447,12 @@ func (s *SyncEngine) PerformSync(password string) error {
 		localPath := filepath.Join(s.cfg.LocalSyncDir, filepath.FromSlash(relPath))
 		if _, statErr := os.Stat(localPath); os.IsNotExist(statErr) {
 			// File existed previously in manifest, but is now gone locally -> User deleted it locally
+			nowUnix := time.Now().Unix()
 			s.writeClientDebugLog("Detected local deletion: %s. Propagating delete to server.", relPath)
 			s.SetStatus(fmt.Sprintf("Syncing deletion of %s...", filepath.Base(relPath)))
 			if delErr := s.deleteRemoteFile(relPath); delErr == nil {
 				tf.Deleted = true
+				tf.DeletedAt = nowUnix
 				s.manifest[relPath] = tf
 			}
 		}
@@ -446,7 +472,7 @@ func (s *SyncEngine) PerformSync(password string) error {
 				s.SetStatus(fmt.Sprintf("Archiving deleted file %s...", filepath.Base(delRel)))
 				s.moveLocalToRecycle(localPath, delRel, lInfo)
 				s.manifestMu.Lock()
-				s.manifest[delRel] = TrackedFile{RelPath: delRel, Deleted: true}
+				s.manifest[delRel] = TrackedFile{RelPath: delRel, Deleted: true, DeletedAt: delTime}
 				s.manifestMu.Unlock()
 			}
 		}
@@ -476,17 +502,28 @@ func (s *SyncEngine) PerformSync(password string) error {
 		if os.IsNotExist(err) {
 			// If user deleted it locally, do not resurrect unless server has a NEWER version than when tracked
 			if wasTracked && tracked.Deleted {
-				if sItem.ModTime > tracked.ModTime {
-					// Server has updated the file since client deletion
+				effectiveDelTime := tracked.DeletedAt
+				if effectiveDelTime <= 0 {
+					effectiveDelTime = tracked.ModTime
+				}
+				if sItem.ModTime > effectiveDelTime {
+					// Server has updated or re-created the file strictly AFTER deletion
 					shouldDownload = true
+				} else {
+					// Server still has the older copy before deletion: do not download, re-propagate deletion to server
+					s.writeClientDebugLog("Prevented resurrection of locally deleted file %s (server modTime=%d vs deletedAt=%d)", sItem.RelPath, sItem.ModTime, effectiveDelTime)
+					_ = s.deleteRemoteFile(sItem.RelPath)
 				}
 			} else {
 				// New file on server
 				shouldDownload = true
 			}
 		} else if err == nil {
-			// Compare modification times: download only if server timestamp is newer
-			if sItem.ModTime > localInfo.ModTime().Unix() {
+			// If previously marked deleted, ensure local file was actually modified after deletion
+			if wasTracked && tracked.Deleted && localInfo.ModTime().Unix() <= tracked.DeletedAt {
+				// File was restored by accident or pending delete; archive it
+				s.moveLocalToRecycle(localPath, sItem.RelPath, localInfo)
+			} else if sItem.ModTime > localInfo.ModTime().Unix() {
 				shouldDownload = true
 			}
 		}
@@ -524,7 +561,9 @@ func (s *SyncEngine) PerformSync(password string) error {
 			return nil
 		}
 		relSlash := filepath.ToSlash(rel)
-		if strings.HasPrefix(relSlash, ".cloud_meta") || strings.HasPrefix(relSlash, "RecycleBin") {
+		baseName := filepath.Base(relSlash)
+		if strings.HasPrefix(relSlash, ".cloud_meta") || strings.HasPrefix(relSlash, "RecycleBin") ||
+			baseName == ".cloud_data" || strings.HasPrefix(baseName, ".cloud-") {
 			return nil
 		}
 
@@ -604,7 +643,19 @@ func (s *SyncEngine) moveLocalToRecycle(localPath, relPath string, info os.FileI
 			_ = os.Remove(localPath)
 		}
 	}
-	s.writeClientDebugLog("Moved local deleted file %s to RecycleBin at %s", relPath, destPath)
+
+	// Write companion restore metadata file (.restore_info.json) so the user knows where to restore the file
+	restoreMeta := map[string]interface{}{
+		"original_path": relPath,
+		"archived_path": filepath.ToSlash(filepath.Join("RecycleBin", relDir, fmt.Sprintf("%s.deleted.%s", baseName, dateTag))),
+		"deleted_at":    dateTag,
+		"mod_time":      info.ModTime().Unix(),
+		"size":          info.Size(),
+	}
+	if mBytes, mErr := json.MarshalIndent(restoreMeta, "", "  "); mErr == nil {
+		_ = os.WriteFile(destPath+".restore_info.json", mBytes, 0644)
+	}
+	s.writeClientDebugLog("Moved local deleted file %s to RecycleBin at %s (restore metadata saved)", relPath, destPath)
 }
 
 func (s *SyncEngine) deleteRemoteFile(relPath string) error {
