@@ -1,0 +1,15 @@
+{
+  "id": "dlna",
+  "name": "DLNA Server",
+  "description": "DLNA 1.5 and UPnP AV media server with built-in pure Go engine and MiniDLNA support",
+  "category": "Storage",
+  "default": true,
+  "apt_package": "minidlna",
+  "check_cmd": "which minidlna",
+  "install_sudo": "apt-get update && apt-get install -y minidlna",
+  "remove_sudo": "apt-get remove -y minidlna",
+  "commands": {
+    "status_minidlna_cmd": "systemctl status minidlna || pgrep -a minidlna",
+    "restart_minidlna_sudo": "systemctl restart minidlna || minidlna -R"
+  }
+}

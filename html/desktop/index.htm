@@ -1250,6 +1250,8 @@
                 wData.state.currentTrackIndex = restoredObj?.state?.currentTrackIndex ?? -1;
                 wData.state.isShuffle = restoredObj?.state?.isShuffle || false;
                 wData.state.isLoop = restoredObj?.state?.isLoop || false;
+                wData.state.outputMode = restoredObj?.state?.outputMode || 'browser';
+                wData.state.selectedRenderer = restoredObj?.state?.selectedRenderer || '';
 
                 body.innerHTML = `
                     <div class="app-media-container" style="padding: 0.8rem; justify-content: flex-start; gap: 0.8rem;">
@@ -1260,6 +1262,21 @@
                             <button class="btn btn-danger" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="audioDeleteSelected('${winId}')">🗑️ Delete</button>
                             <button id="${winId}_btnRand" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="audioToggleShuffle('${winId}')">🔀 Random</button>
                             <button id="${winId}_btnLoop" class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="audioToggleLoop('${winId}')">🔁 Loop</button>
+                            <div style="display: flex; align-items: center; gap: 4px; margin-left: auto;">
+                                <span style="font-size: 0.75rem; color: #8b949e;">Output:</span>
+                                <select id="${winId}_outputSelect" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:4px; font-size:0.75rem; padding:2px 4px;" onchange="desktopAudioOutputChanged('${winId}')">
+                                    <option value="browser">💻 Browser</option>
+                                    <option value="dlna">📡 DLNA</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="${winId}_dlna_bar" style="width: 100%; display: none; gap: 0.4rem; align-items: center; background: #161b22; padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid #30363d; font-size: 0.75rem;">
+                            <span style="color: #58a6ff;">Device:</span>
+                            <select id="${winId}_rendererSelect" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:4px; font-size:0.75rem; padding:2px 4px;">
+                                <option value="">Scanning devices...</option>
+                            </select>
+                            <button class="btn btn-secondary" style="padding: 0.15rem 0.4rem; font-size: 0.72rem;" onclick="desktopAudioScanRenderers('${winId}')">🔄</button>
+                            <div id="${winId}_dlna_status" style="color: #7ee787; font-size: 0.72rem; margin-left: 4px;">Ready</div>
                         </div>
                         <div id="${winId}_empty" class="app-empty-state" style="margin: auto;">
                             <div class="app-empty-icon">🎵</div>
@@ -1767,7 +1784,47 @@
             });
         }
 
-        function playAudioTrackIndex(winId, idx, autoStart = true) {
+        function desktopAudioOutputChanged(winId) {
+            const wData = windowsMap[winId];
+            if (!wData) return;
+            const outSelect = document.getElementById(`${winId}_outputSelect`);
+            const dlnaBar = document.getElementById(`${winId}_dlna_bar`);
+            wData.state.outputMode = outSelect.value;
+
+            if (wData.state.outputMode === 'dlna') {
+                if (dlnaBar) dlnaBar.style.display = 'flex';
+                desktopAudioScanRenderers(winId);
+            } else {
+                if (dlnaBar) dlnaBar.style.display = 'none';
+            }
+            saveDesktopState();
+        }
+
+        async function desktopAudioScanRenderers(winId) {
+            const select = document.getElementById(`${winId}_rendererSelect`);
+            if (!select) return;
+            select.innerHTML = '<option value="">Scanning...</option>';
+            try {
+                const res = await fetch('/api/dlna/renderers');
+                const data = await res.json();
+                select.innerHTML = '';
+                const renderers = data.renderers || [];
+                if (renderers.length === 0) {
+                    select.innerHTML = '<option value="">No DLNA devices found</option>';
+                    return;
+                }
+                renderers.forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = r.id;
+                    opt.innerText = `${r.friendly_name} (${r.ip})`;
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                select.innerHTML = '<option value="">Scan failed</option>';
+            }
+        }
+
+        async function playAudioTrackIndex(winId, idx, autoStart = true) {
             const wData = windowsMap[winId];
             if (!wData || !wData.state.playlist || idx < 0 || idx >= wData.state.playlist.length) return;
 
@@ -1776,8 +1833,44 @@
 
             document.getElementById(`${winId}_track_title`).innerText = track.name;
             const audioEl = document.getElementById(`${winId}_audio`);
-            audioEl.src = `/api/fs/raw?path=${encodeURIComponent(track.path)}`;
-            if (autoStart) audioEl.play().catch(() => {});
+
+            if (wData.state.outputMode === 'dlna') {
+                // Cast to DLNA
+                const rendererSelect = document.getElementById(`${winId}_rendererSelect`);
+                const rendererId = rendererSelect ? rendererSelect.value : '';
+                const statusEl = document.getElementById(`${winId}_dlna_status`);
+
+                if (audioEl) audioEl.pause();
+
+                if (rendererId) {
+                    if (statusEl) statusEl.innerText = 'Casting...';
+                    try {
+                        const res = await fetch('/api/dlna/cast', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                renderer_id: rendererId,
+                                action: 'play',
+                                file_path: track.path,
+                                stream_mode: 'direct_http'
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.success && statusEl) {
+                            statusEl.innerText = '▶ Playing';
+                        } else if (statusEl) {
+                            statusEl.innerText = '⚠️ ' + (data.error || 'Failed');
+                        }
+                    } catch (err) {
+                        if (statusEl) statusEl.innerText = '⚠️ Cast error';
+                    }
+                } else if (statusEl) {
+                    statusEl.innerText = '⚠️ No device';
+                }
+            } else {
+                audioEl.src = `/api/fs/raw?path=${encodeURIComponent(track.path)}`;
+                if (autoStart) audioEl.play().catch(() => {});
+            }
 
             renderAudioPlaylist(winId);
             saveDesktopState();

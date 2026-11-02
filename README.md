@@ -48,6 +48,7 @@ Featuring a modular, decoupled plugin architecture, **LinNAS** enables users to 
 ### STORAGE
 - **📁 SMB Shares & Credentials (`smb`)**: Manage Samba shares, user permissions (`pdbedit`), share import, and home directory visibility toggles (`[homes]`).
 - **💾 Local Drives, ISO & VHD (`drive_mount`)**: Mount physical partitions, read-only ISOs, and VHD images with optional SMB user restricted auto-sharing.
+- **📻 DLNA Server & Caster (`dlna`)**: DLNA 1.5 & UPnP AV media server with dual backends (built-in pure Go engine and MiniDLNA) supporting legacy puck streamers like AudioCast M5, folder selection, and direct casting from the Audio Player.
 - **🔒 VeraCrypt Container Manager (`veracrypt`)**: Mount encrypted VeraCrypt (`.hc`) and TrueCrypt (`.tc`) volumes using `tcplay`.
 
 ---

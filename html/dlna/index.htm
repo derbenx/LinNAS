@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DLNA Server - LinNAS</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background: #0d1117; color: #c9d1d9; padding: 2rem; max-width: 900px; margin: 0 auto; }
+
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; padding-bottom: 0.8rem; border-bottom: 1px solid #30363d; }
+        h2 { font-size: 1.5rem; color: #58a6ff; display: flex; align-items: center; gap: 8px; }
+        .btn-info { background: #21262d; border: 1px solid #30363d; color: #58a6ff; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; cursor: pointer; }
+        .btn-info:hover { background: #30363d; color: #79c0ff; }
+
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .card-header { font-size: 1.1rem; font-weight: bold; color: #f0f6fc; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
+
+        .status-badge { padding: 0.25rem 0.6rem; border-radius: 4px; font-size: 0.8rem; font-weight: 600; }
+        .badge-running { background: #238636; color: #fff; }
+        .badge-stopped { background: #30363d; color: #8b949e; }
+        .badge-warning { background: #d29922; color: #0d1117; }
+
+        .form-grid { display: grid; grid-template-columns: 160px 1fr; gap: 1rem; align-items: center; margin-bottom: 1rem; }
+        .form-grid label { font-size: 0.9rem; color: #8b949e; font-weight: 500; }
+        .input-group { display: flex; gap: 0.5rem; align-items: center; }
+        input[type="text"], input[type="number"], select {
+            background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; padding: 0.5rem 0.8rem; font-size: 0.9rem; width: 100%; outline: none;
+        }
+        input[type="text"]:focus, input[type="number"]:focus, select:focus { border-color: #58a6ff; }
+
+        .btn { padding: 0.5rem 1.2rem; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.88rem; border: none; transition: background 0.2s; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+        .btn-primary { background: #238636; color: white; }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-danger { background: #da3633; color: white; }
+        .btn-danger:hover { background: #b62324; }
+        .btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
+        .btn-secondary:hover { background: #30363d; color: #fff; }
+
+        .callout-box { background: rgba(56, 139, 253, 0.1); border: 1px solid rgba(56, 139, 253, 0.3); border-radius: 6px; padding: 1rem; margin-top: 1.2rem; display: flex; justify-content: space-between; align-items: center; }
+        .callout-text { font-size: 0.88rem; color: #79c0ff; line-height: 1.4; }
+
+        /* Modal Styles */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 600px; margin: 10% auto; padding: 1.5rem; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-weight: bold; color: #58a6ff; }
+        .file-list { max-height: 300px; overflow-y: auto; background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 0.5rem; }
+        .file-item { padding: 0.5rem; cursor: pointer; border-bottom: 1px solid #21262d; font-family: monospace; font-size: 0.88rem; }
+        .file-item:hover { background: #1f242d; color: #58a6ff; }
+
+        .meta-line { font-size: 0.85rem; color: #8b949e; margin-top: 0.3rem; }
+    </style>
+</head>
+<body>
+    <div class="header-bar">
+        <h2>📻 DLNA Server <button class="btn-info" onclick="showPluginInfo()">ℹ️ Info</button></h2>
+        <div id="statusBadge" class="status-badge badge-stopped">Server Stopped</div>
+    </div>
+
+    <!-- Main Server Settings Card -->
+    <div class="card">
+        <div class="card-header">
+            <span>Media Server Configuration</span>
+            <div style="display: flex; gap: 8px;">
+                <button id="toggleBtn" class="btn btn-primary" onclick="toggleServer()">▶ Start Server</button>
+                <button class="btn btn-secondary" onclick="saveConfiguration()">💾 Save Settings</button>
+            </div>
+        </div>
+
+        <div class="form-grid">
+            <label for="serverBackend">Server Backend:</label>
+            <div>
+                <select id="serverBackend" onchange="onBackendChange()">
+                    <option value="builtin">Built-in Pure Go Engine (Recommended - DLNA 1.5 & Legacy Puck Support)</option>
+                    <option value="minidlna">MiniDLNA / ReadyMedia (System Daemon)</option>
+                </select>
+                <div class="meta-line" id="backendHint">Built-in pure Go engine: zero external dependencies, compatible with AudioCast pucks.</div>
+            </div>
+
+            <label for="mediaFolder">Media Folder:</label>
+            <div class="input-group">
+                <input type="text" id="mediaFolder" placeholder="/var/media or /mnt/storage/music">
+                <button class="btn btn-secondary" style="white-space: nowrap;" onclick="openFolderPicker()">📂 Browse...</button>
+            </div>
+
+            <label for="friendlyName">Friendly Name:</label>
+            <div>
+                <input type="text" id="friendlyName" value="LinNAS DLNA">
+                <div class="meta-line">The broadcast name visible to devices on your Wi-Fi / LAN.</div>
+            </div>
+
+            <label for="serverPort">Server Port:</label>
+            <div>
+                <input type="number" id="serverPort" value="8200" min="1025" max="65535" style="max-width: 150px;">
+                <span class="meta-line" style="margin-left: 8px;">Default: 8200</span>
+            </div>
+
+            <label for="streamMode">Stream URL Mode:</label>
+            <div>
+                <select id="streamMode" style="max-width: 320px;">
+                    <option value="direct_http">Direct HTTP API Stream (Max Device Compatibility)</option>
+                    <option value="dlna_content">DLNA Content Directory URL (/media/...)</option>
+                </select>
+                <div class="meta-line">Format of audio stream URLs provided when casting to renderers.</div>
+            </div>
+        </div>
+
+        <!-- Diagnostics / Network Info -->
+        <div style="background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 0.8rem 1rem; font-size: 0.85rem; color: #8b949e;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem;">
+                <span>Server Endpoint:</span>
+                <strong id="endpointText" style="color: #c9d1d9;">http://127.0.0.1:8200/description.xml</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 0.3rem;">
+                <span>Folder Status:</span>
+                <span id="folderStatusText" style="color: #c9d1d9;">Checking...</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+                <span>MiniDLNA Installed:</span>
+                <span id="minidlnaStatusText" style="color: #c9d1d9;">Checking...</span>
+            </div>
+        </div>
+
+        <!-- Audio Player Callout -->
+        <div class="callout-box">
+            <div class="callout-text">
+                <strong>🎵 Ready to stream or cast music?</strong><br>
+                Both the standalone <strong>Audio Player</strong> and the <strong>Virtual Desktop Audio Player</strong> feature an <strong>Output Selector (Browser vs DLNA)</strong> to detect your AudioCast puck and cast songs directly!
+            </div>
+            <button class="btn btn-primary" onclick="openAudioPlayer()">🔊 Open Audio Player</button>
+        </div>
+    </div>
+
+    <!-- Folder Picker Modal -->
+    <div id="folderModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span id="modalPath">/</span>
+                <div>
+                    <button class="btn btn-primary" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;" onclick="selectFolderFromModal()">Select This Folder</button>
+                    <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeModal()">✕</button>
+                </div>
+            </div>
+            <div id="fileList" class="file-list"></div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div id="infoModal" class="modal">
+        <div class="modal-content" style="max-width: 650px;">
+            <div class="modal-header">
+                <span>DLNA Server Help & Documentation</span>
+                <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem;" onclick="closeInfoModal()">✕</button>
+            </div>
+            <div id="infoBody" style="font-size: 0.9rem; line-height: 1.5; color: #c9d1d9;">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        let currentStatus = {};
+        let currentBrowserPath = '/';
+
+        async function loadStatus() {
+            try {
+                const res = await fetch('/api/dlna/status');
+                const data = await res.json();
+                currentStatus = data;
+
+                document.getElementById('serverBackend').value = data.server_backend || 'builtin';
+                document.getElementById('mediaFolder').value = data.media_folder || '/var/media';
+                document.getElementById('friendlyName').value = data.friendly_name || 'LinNAS DLNA';
+                document.getElementById('serverPort').value = data.port || 8200;
+                document.getElementById('streamMode').value = data.stream_mode || 'direct_http';
+
+                updateUIState();
+            } catch (err) {
+                console.error('Failed to load DLNA status:', err);
+            }
+        }
+
+        function updateUIState() {
+            const badge = document.getElementById('statusBadge');
+            const toggleBtn = document.getElementById('toggleBtn');
+            const isRunning = currentStatus.active_running;
+
+            if (isRunning) {
+                badge.innerText = `● Server Running (${currentStatus.server_backend === 'minidlna' ? 'MiniDLNA' : 'Built-in Go'})`;
+                badge.className = 'status-badge badge-running';
+                toggleBtn.innerText = '⏹ Stop Server';
+                toggleBtn.className = 'btn btn-danger';
+            } else {
+                badge.innerText = 'Server Stopped';
+                badge.className = 'status-badge badge-stopped';
+                toggleBtn.innerText = '▶ Start Server';
+                toggleBtn.className = 'btn btn-primary';
+            }
+
+            const ip = currentStatus.server_ip || '127.0.0.1';
+            const port = currentStatus.port || 8200;
+            document.getElementById('endpointText').innerText = `http://${ip}:${port}/description.xml`;
+
+            document.getElementById('folderStatusText').innerText = currentStatus.folder_exists ? '✅ Folder exists and ready' : '⚠️ Folder not found or empty';
+            document.getElementById('folderStatusText').style.color = currentStatus.folder_exists ? '#7ee787' : '#e3b341';
+
+            document.getElementById('minidlnaStatusText').innerText = currentStatus.minidlna_installed ? 'Installed (Available)' : 'Not installed';
+
+            onBackendChange();
+        }
+
+        function onBackendChange() {
+            const b = document.getElementById('serverBackend').value;
+            const hint = document.getElementById('backendHint');
+            if (b === 'builtin') {
+                hint.innerText = 'Built-in pure Go engine: zero external dependencies, compatible with AudioCast pucks & legacy UPnP AV.';
+            } else {
+                hint.innerText = 'MiniDLNA / ReadyMedia: runs system minidlna daemon with auto-generated configuration.';
+            }
+        }
+
+        async function saveConfiguration() {
+            const backend = document.getElementById('serverBackend').value;
+            const folder = document.getElementById('mediaFolder').value;
+            const name = document.getElementById('friendlyName').value;
+            const port = parseInt(document.getElementById('serverPort').value, 10);
+            const streamMode = document.getElementById('streamMode').value;
+
+            try {
+                const res = await fetch('/api/dlna/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        server_backend: backend,
+                        media_folder: folder,
+                        friendly_name: name,
+                        port: port,
+                        stream_mode: streamMode
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    await loadStatus();
+                    alert('DLNA settings saved successfully!');
+                } else {
+                    alert('Error saving settings: ' + data.error);
+                }
+            } catch (err) {
+                alert('Save error: ' + err.message);
+            }
+        }
+
+        async function toggleServer() {
+            const willEnable = !currentStatus.active_running;
+            // Save current form inputs first
+            const backend = document.getElementById('serverBackend').value;
+            const folder = document.getElementById('mediaFolder').value;
+            const name = document.getElementById('friendlyName').value;
+            const port = parseInt(document.getElementById('serverPort').value, 10);
+            const streamMode = document.getElementById('streamMode').value;
+
+            try {
+                await fetch('/api/dlna/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        server_backend: backend,
+                        media_folder: folder,
+                        friendly_name: name,
+                        port: port,
+                        stream_mode: streamMode
+                    })
+                });
+
+                const res = await fetch('/api/dlna/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: willEnable })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    await loadStatus();
+                } else {
+                    alert('Failed to toggle DLNA server: ' + data.error);
+                }
+            } catch (err) {
+                alert('Toggle error: ' + err.message);
+            }
+        }
+
+        function openAudioPlayer() {
+            const folder = document.getElementById('mediaFolder').value;
+            if (window.parent && typeof window.parent.loadPluginView === 'function') {
+                window.parent.loadPluginView('audioplayer', { dir: folder });
+            } else {
+                window.location.href = `/audioplayer/index.htm?dir=${encodeURIComponent(folder)}`;
+            }
+        }
+
+        /* Folder Picker Modal */
+        async function openFolderPicker(path) {
+            currentBrowserPath = path || document.getElementById('mediaFolder').value || '/';
+            document.getElementById('modalPath').innerText = currentBrowserPath;
+            document.getElementById('folderModal').style.display = 'block';
+
+            try {
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentBrowserPath)}`);
+                const data = await res.json();
+                const container = document.getElementById('fileList');
+                container.innerHTML = '';
+
+                if (data.items) {
+                    data.items.forEach(item => {
+                        if (item.is_dir) {
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = 'file-item';
+                            itemDiv.innerText = '📁 ' + item.name;
+                            itemDiv.onclick = () => openFolderPicker(item.path);
+                            container.appendChild(itemDiv);
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error('Picker error:', err);
+            }
+        }
+
+        function selectFolderFromModal() {
+            document.getElementById('mediaFolder').value = currentBrowserPath;
+            closeModal();
+        }
+
+        function closeModal() {
+            document.getElementById('folderModal').style.display = 'none';
+        }
+
+        async function showPluginInfo() {
+            document.getElementById('infoModal').style.display = 'block';
+            try {
+                const res = await fetch('/dlna/plugin.info');
+                if (res.ok) {
+                    document.getElementById('infoBody').innerHTML = await res.text();
+                } else {
+                    document.getElementById('infoBody').innerText = 'No documentation available.';
+                }
+            } catch (err) {
+                document.getElementById('infoBody').innerText = 'Failed to load info: ' + err.message;
+            }
+        }
+
+        function closeInfoModal() {
+            document.getElementById('infoModal').style.display = 'none';
+        }
+
+        window.onload = loadStatus;
+    </script>
+</body>
+</html>

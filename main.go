@@ -2370,6 +2370,16 @@ func main() {
 	}
 
 	loadCloudConfig()
+	loadDLNAConfig()
+
+	// If DLNA was previously enabled, auto-start service
+	if dlnaConfig.Enabled {
+		if dlnaConfig.ServerBackend == "minidlna" {
+			_ = startMiniDLNA(dlnaConfig.MediaFolder, dlnaConfig.FriendlyName, dlnaConfig.Port)
+		} else {
+			_ = startBuiltinDLNAServer(dlnaConfig.MediaFolder, dlnaConfig.FriendlyName, dlnaConfig.Port)
+		}
+	}
 
 	mux := http.NewServeMux()
 
@@ -2466,6 +2476,14 @@ func main() {
 	mux.HandleFunc("/api/cron/run", authMiddleware(handleCronRun))
 	mux.HandleFunc("/api/cron/stop", authMiddleware(handleCronStop))
 	mux.HandleFunc("/api/dns/convert", authMiddleware(handleDNSConvert))
+
+	// DLNA Server & Caster endpoints
+	mux.HandleFunc("/api/dlna/status", authMiddleware(handleDLNAStatus))
+	mux.HandleFunc("/api/dlna/config", authMiddleware(handleDLNAConfig))
+	mux.HandleFunc("/api/dlna/toggle", authMiddleware(handleDLNAToggle))
+	mux.HandleFunc("/api/dlna/renderers", authMiddleware(handleDLNARenderers))
+	mux.HandleFunc("/api/dlna/cast", authMiddleware(handleDLNACast))
+	mux.HandleFunc("/api/dlna/cast/status", authMiddleware(handleDLNACastStatus))
 
 	// Local Cloud endpoints
 	mux.HandleFunc("/api/cloud/status", authMiddleware(handleCloudStatus))

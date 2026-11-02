@@ -1,0 +1,27 @@
+<p><strong>LinNAS DLNA 1.5 & UPnP AV Media Server</strong></p>
+<p>This plugin enables network-wide media streaming to DLNA and UPnP AV client devices across your local network.</p>
+
+<hr style="border:0; border-top:1px solid #30363d; margin: 0.8rem 0;">
+
+<p><strong>🌟 Key Features:</strong></p>
+<ul style="margin-left: 1.2rem; margin-top: 0.4rem; line-height: 1.6;">
+  <li><strong>Dual Server Backends:</strong>
+    <ul>
+      <li><strong>Built-in Pure Go Engine:</strong> Fully self-contained DLNA 1.5 / UPnP AV MediaServer requiring zero external dependencies, offering permanent compatibility without Debian deprecation concerns.</li>
+      <li><strong>System MiniDLNA (ReadyMedia):</strong> Integration with the Debian repository <code>minidlna</code> daemon for traditional setups.</li>
+    </ul>
+  </li>
+  <li><strong>Legacy Hardware Compatibility:</strong> Tested for DLNA 1.5 and UPnP AV Architecture v1.0 specifications, ideal for puck streamers like AudioCast M5, wireless receivers, smart TVs, and network DACs.</li>
+  <li><strong>Folder Selection:</strong> Easily select any folder on your storage partitions to serve music, audiobooks, or media files.</li>
+  <li><strong>Casting Integration:</strong> Both the <em>Audio Player</em> plugin and the <em>Virtual Desktop Audio Player</em> feature an <strong>Output Selector (Browser vs DLNA)</strong> allowing you to discover LAN renderers (like your AudioCast puck) and cast audio directly with volume, seek, and track controls.</li>
+</ul>
+
+<hr style="border:0; border-top:1px solid #30363d; margin: 0.8rem 0;">
+
+<p><strong>🛠️ Getting Started:</strong></p>
+<ol style="margin-left: 1.2rem; margin-top: 0.4rem; line-height: 1.6;">
+  <li>Choose your server backend (Built-in Go or MiniDLNA).</li>
+  <li>Click <em>Browse...</em> to choose the media folder to share.</li>
+  <li>Click <strong>Start Server</strong> to broadcast the DLNA server onto your network.</li>
+  <li>Open the <strong>Audio Player</strong> (under Tools or Virtual Desktop) to play tracks in your browser or cast them directly to detected DLNA pucks!</li>
+</ol>

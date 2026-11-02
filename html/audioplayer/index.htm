@@ -7,24 +7,37 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: #0d1117; color: #c9d1d9; padding: 1.5rem; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
-        .header-bar { display: flex; justify-content: space-between; align-items: center; background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 0.8rem 1.2rem; margin-bottom: 1rem; gap: 1rem; }
-        .title-group { display: flex; align-items: center; gap: 10px; max-width: 50%; min-width: 0; }
+        .header-bar { display: flex; justify-content: space-between; align-items: center; background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 0.8rem 1.2rem; margin-bottom: 0.8rem; gap: 1rem; flex-wrap: wrap; }
+        .title-group { display: flex; align-items: center; gap: 10px; max-width: 45%; min-width: 0; }
         h2 { font-size: 1.3rem; color: #58a6ff; white-space: nowrap; }
         .meta-info { font-size: 0.82rem; color: #8b949e; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        .toolbar { display: flex; gap: 0.5rem; align-items: center; margin-left: auto; flex-shrink: 0; }
+        .toolbar { display: flex; gap: 0.5rem; align-items: center; margin-left: auto; flex-shrink: 0; flex-wrap: wrap; }
         .btn { padding: 0.45rem 0.9rem; background: #238636; color: white; border: none; border-radius: 5px; font-weight: 600; cursor: pointer; font-size: 0.82rem; transition: background 0.2s; display: flex; align-items: center; gap: 5px; }
         .btn:hover { background: #2ea043; }
         .btn-secondary { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; }
         .btn-secondary:hover { background: #30363d; color: white; }
 
+        /* Output & DLNA Controls Bar */
+        .output-bar { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 0.6rem 1.2rem; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 12px; font-size: 0.85rem; flex-wrap: wrap; }
+        .output-bar label { font-weight: bold; color: #58a6ff; display: flex; align-items: center; gap: 6px; }
+        select { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; padding: 0.35rem 0.6rem; font-size: 0.82rem; outline: none; }
+        select:focus { border-color: #58a6ff; }
+
         .player-stage { flex: 1; background: #161b22; border: 1px solid #30363d; border-radius: 8px; display: flex; flex-direction: column; padding: 1.2rem; overflow: hidden; }
 
-        .now-playing-card { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 1.2rem; }
-        .audio-icon { font-size: 2.5rem; color: #58a6ff; }
+        .now-playing-card { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 1rem; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 1.2rem; }
+        .audio-icon { font-size: 2.2rem; color: #58a6ff; }
         .now-playing-info { flex: 1; min-width: 0; }
-        .track-title { font-size: 1.1rem; font-weight: bold; color: #f0f6fc; margin-bottom: 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .track-title { font-size: 1.1rem; font-weight: bold; color: #f0f6fc; margin-bottom: 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .track-path { font-size: 0.8rem; color: #8b949e; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* DLNA Remote Playback Control Strip */
+        #dlnaRemoteControls { display: none; background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 0.8rem 1rem; margin-bottom: 0.8rem; align-items: center; justify-content: space-between; gap: 1rem; }
+        .remote-btns { display: flex; align-items: center; gap: 8px; }
+        .remote-status { font-size: 0.82rem; color: #7ee787; font-weight: 600; }
+        .volume-group { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #8b949e; }
+        .volume-group input[type="range"] { accent-color: #238636; width: 90px; cursor: pointer; }
 
         .playlist-container { flex: 1; background: #0d1117; border: 1px solid #21262d; border-radius: 6px; overflow-y: auto; }
         table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
@@ -58,12 +71,51 @@
         </div>
     </div>
 
+    <!-- Output Selector Bar (Browser vs DLNA) -->
+    <div class="output-bar">
+        <label for="outputSelect"><span>🔊 Output:</span></label>
+        <select id="outputSelect" onchange="onOutputChange()">
+            <option value="browser">💻 Browser (Local Audio)</option>
+            <option value="dlna">📡 DLNA (AudioCast / Network Renderer)</option>
+        </select>
+
+        <div id="dlnaGroup" style="display: none; align-items: center; gap: 8px;">
+            <label for="rendererSelect" style="color: #8b949e; font-weight: normal;">Device:</label>
+            <select id="rendererSelect" style="max-width: 250px;">
+                <option value="">Scanning network devices...</option>
+            </select>
+            <button class="btn btn-secondary" style="padding: 0.35rem 0.6rem; font-size: 0.78rem;" onclick="refreshRenderers()" title="Scan for DLNA / AudioCast devices">🔄 Scan</button>
+
+            <label for="streamModeSelect" style="color: #8b949e; font-weight: normal; margin-left: 6px;">Stream URL:</label>
+            <select id="streamModeSelect">
+                <option value="direct_http">Direct HTTP</option>
+                <option value="dlna_content">DLNA Media URL</option>
+            </select>
+        </div>
+    </div>
+
     <div class="player-stage">
         <div class="now-playing-card">
-            <div class="audio-icon">🎶</div>
+            <div class="audio-icon" id="nowPlayingIcon">🎶</div>
             <div class="now-playing-info">
                 <div id="currentTrackTitle" class="track-title">No Audio Track Playing</div>
                 <div id="currentTrackPath" class="track-path">Click 'Grab All Audio in Folder' or select a track below</div>
+            </div>
+        </div>
+
+        <!-- DLNA Remote Controls Strip when DLNA is active -->
+        <div id="dlnaRemoteControls">
+            <div class="remote-btns">
+                <button class="btn btn-secondary" style="padding: 0.35rem 0.6rem;" onclick="prevTrack()" title="Previous Track">⏮</button>
+                <button id="remotePlayBtn" class="btn" style="padding: 0.35rem 0.8rem;" onclick="toggleRemotePlay()">▶ Play</button>
+                <button class="btn btn-secondary" style="padding: 0.35rem 0.6rem;" onclick="stopRemotePlay()" title="Stop">⏹</button>
+                <button class="btn btn-secondary" style="padding: 0.35rem 0.6rem;" onclick="nextTrack()" title="Next Track">⏭</button>
+            </div>
+            <div class="remote-status" id="remoteStatusText">Ready to Cast</div>
+            <div class="volume-group">
+                <span>🔊 Vol:</span>
+                <input type="range" id="remoteVolume" min="0" max="100" value="80" onchange="setRemoteVolume(this.value)">
+                <span id="remoteVolVal">80%</span>
             </div>
         </div>
 
@@ -107,6 +159,10 @@
         let currentDir = '/';
         let playlist = [];
         let currentTrackIndex = -1;
+        let outputMode = 'browser'; // 'browser' or 'dlna'
+        let discoveredRenderers = [];
+        let remoteStatusTimer = null;
+        let isRemotePlaying = false;
 
         async function initAudioPlayer() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -118,6 +174,57 @@
             if (dir !== '/') document.getElementById('backBtn').style.display = 'flex';
 
             await loadFolderPlaylist(dir, file);
+            await refreshRenderers();
+        }
+
+        function onOutputChange() {
+            outputMode = document.getElementById('outputSelect').value;
+            const dlnaGroup = document.getElementById('dlnaGroup');
+            const dlnaRemote = document.getElementById('dlnaRemoteControls');
+            const icon = document.getElementById('nowPlayingIcon');
+
+            if (outputMode === 'dlna') {
+                dlnaGroup.style.display = 'flex';
+                dlnaRemote.style.display = 'flex';
+                icon.innerText = '📡';
+                if (discoveredRenderers.length === 0) {
+                    refreshRenderers();
+                }
+            } else {
+                dlnaGroup.style.display = 'none';
+                dlnaRemote.style.display = 'none';
+                icon.innerText = '🎶';
+                if (remoteStatusTimer) {
+                    clearInterval(remoteStatusTimer);
+                    remoteStatusTimer = null;
+                }
+            }
+        }
+
+        async function refreshRenderers() {
+            const select = document.getElementById('rendererSelect');
+            select.innerHTML = '<option value="">Scanning for renderers...</option>';
+
+            try {
+                const res = await fetch('/api/dlna/renderers');
+                const data = await res.json();
+                discoveredRenderers = data.renderers || [];
+                select.innerHTML = '';
+
+                if (discoveredRenderers.length === 0) {
+                    select.innerHTML = '<option value="">No DLNA devices found</option>';
+                    return;
+                }
+
+                discoveredRenderers.forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = r.id;
+                    opt.innerText = `${r.friendly_name} (${r.ip})`;
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                select.innerHTML = '<option value="">Failed to scan renderers</option>';
+            }
         }
 
         async function loadFolderPlaylist(dirPath, autoPlayFile) {
@@ -178,7 +285,7 @@
             });
         }
 
-        function playTrackIndex(index) {
+        async function playTrackIndex(index) {
             if (index < 0 || index >= playlist.length) return;
             currentTrackIndex = index;
             const track = playlist[index];
@@ -187,10 +294,155 @@
             document.getElementById('currentTrackPath').innerText = track.path;
             renderPlaylistTable();
 
-            // Send to parent global persistent audio engine
-            if (window.parent && typeof window.parent.playGlobalAudioQueue === 'function') {
-                window.parent.playGlobalAudioQueue(playlist, index, currentDir);
+            if (outputMode === 'dlna') {
+                await castTrackToDLNA(track);
+            } else {
+                // Send to parent global persistent audio engine in browser
+                if (window.parent && typeof window.parent.playGlobalAudioQueue === 'function') {
+                    window.parent.playGlobalAudioQueue(playlist, index, currentDir);
+                }
             }
+        }
+
+        async function castTrackToDLNA(track) {
+            const rendererId = document.getElementById('rendererSelect').value;
+            const streamMode = document.getElementById('streamModeSelect').value;
+            const statusEl = document.getElementById('remoteStatusText');
+
+            if (!rendererId) {
+                statusEl.innerText = '⚠️ Please select a DLNA device';
+                statusEl.style.color = '#e3b341';
+                return;
+            }
+
+            statusEl.innerText = `Casting to ${document.getElementById('rendererSelect').selectedOptions[0]?.text || 'device'}...`;
+            statusEl.style.color = '#58a6ff';
+
+            try {
+                const res = await fetch('/api/dlna/cast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        renderer_id: rendererId,
+                        action: 'play',
+                        file_path: track.path,
+                        stream_mode: streamMode
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    isRemotePlaying = true;
+                    document.getElementById('remotePlayBtn').innerText = '⏸ Pause';
+                    statusEl.innerText = '▶ Playing on DLNA device';
+                    statusEl.style.color = '#7ee787';
+                    startRemotePolling();
+                } else {
+                    statusEl.innerText = 'Error: ' + data.error;
+                    statusEl.style.color = '#f85149';
+                }
+            } catch (err) {
+                statusEl.innerText = 'Cast failed: ' + err.message;
+                statusEl.style.color = '#f85149';
+            }
+        }
+
+        async function toggleRemotePlay() {
+            const rendererId = document.getElementById('rendererSelect').value;
+            if (!rendererId) return;
+
+            const action = isRemotePlaying ? 'pause' : 'play';
+            try {
+                const res = await fetch('/api/dlna/cast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        renderer_id: rendererId,
+                        action: action
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    isRemotePlaying = !isRemotePlaying;
+                    document.getElementById('remotePlayBtn').innerText = isRemotePlaying ? '⏸ Pause' : '▶ Play';
+                    document.getElementById('remoteStatusText').innerText = isRemotePlaying ? '▶ Playing' : '⏸ Paused';
+                }
+            } catch (err) {}
+        }
+
+        async function stopRemotePlay() {
+            const rendererId = document.getElementById('rendererSelect').value;
+            if (!rendererId) return;
+
+            try {
+                await fetch('/api/dlna/cast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        renderer_id: rendererId,
+                        action: 'stop'
+                    })
+                });
+                isRemotePlaying = false;
+                document.getElementById('remotePlayBtn').innerText = '▶ Play';
+                document.getElementById('remoteStatusText').innerText = '⏹ Stopped';
+            } catch (err) {}
+        }
+
+        async function setRemoteVolume(vol) {
+            const rendererId = document.getElementById('rendererSelect').value;
+            document.getElementById('remoteVolVal').innerText = `${vol}%`;
+            if (!rendererId) return;
+
+            try {
+                await fetch('/api/dlna/cast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        renderer_id: rendererId,
+                        action: 'volume',
+                        volume: parseInt(vol, 10)
+                    })
+                });
+            } catch (err) {}
+        }
+
+        function prevTrack() {
+            if (playlist.length === 0) return;
+            const newIdx = (currentTrackIndex - 1 + playlist.length) % playlist.length;
+            playTrackIndex(newIdx);
+        }
+
+        function nextTrack() {
+            if (playlist.length === 0) return;
+            const newIdx = (currentTrackIndex + 1) % playlist.length;
+            playTrackIndex(newIdx);
+        }
+
+        function startRemotePolling() {
+            if (remoteStatusTimer) clearInterval(remoteStatusTimer);
+            remoteStatusTimer = setInterval(async () => {
+                if (outputMode !== 'dlna') return;
+                const rendererId = document.getElementById('rendererSelect').value;
+                if (!rendererId) return;
+
+                try {
+                    const res = await fetch(`/api/dlna/cast/status?renderer_id=${encodeURIComponent(rendererId)}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        if (data.state === 'STOPPED' && isRemotePlaying) {
+                            nextTrack();
+                        } else if (data.state === 'PLAYING') {
+                            isRemotePlaying = true;
+                            document.getElementById('remotePlayBtn').innerText = '⏸ Pause';
+                            document.getElementById('remoteStatusText').innerText = `▶ Playing (${data.rel_time || '00:00'} / ${data.track_duration || '00:00'})`;
+                        } else if (data.state === 'PAUSED_PLAYBACK') {
+                            isRemotePlaying = false;
+                            document.getElementById('remotePlayBtn').innerText = '▶ Play';
+                            document.getElementById('remoteStatusText').innerText = '⏸ Paused';
+                        }
+                    }
+                } catch (err) {}
+            }, 2500);
         }
 
         function goBackToFiles() {
@@ -213,8 +465,6 @@
                 const data = await res.json();
                 const container = document.getElementById('fileList');
                 container.innerHTML = '';
-
-
 
                 if (data.items) {
                     data.items.forEach(item => {
@@ -244,7 +494,7 @@
         function isAudioFile(filename) {
             if (!filename || !filename.includes('.')) return false;
             const ext = filename.split('.').pop().toLowerCase();
-            return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma'].includes(ext);
+            return ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'alac'].includes(ext);
         }
 
         function formatBytes(bytes) {
