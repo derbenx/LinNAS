@@ -9,4 +9,9 @@ client/config.json
 client/test_config.json
 client/sync_manifest.json
 sync_manifest.json
-data/cloud.json
+data/
+*.json.bak
+cloud.json
+sync_manifest.json
+linnas-cron
+*.data

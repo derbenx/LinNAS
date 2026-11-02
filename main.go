@@ -1222,6 +1222,17 @@ func parseSystemSMBConf() SMBData {
 	return smbData
 }
 
+func getBinaryDir() string {
+	if exePath, err := os.Executable(); err == nil {
+		if resolved, rErr := filepath.EvalSymlinks(exePath); rErr == nil {
+			exePath = resolved
+		}
+		return filepath.Dir(exePath)
+	}
+	cwd, _ := os.Getwd()
+	return cwd
+}
+
 func handlePluginData(w http.ResponseWriter, r *http.Request) {
 	pluginID := r.URL.Query().Get("plugin")
 	if matched, _ := regexp.MatchString(`^[a-zA-Z0-9_\-]+$`, pluginID); !matched || pluginID == "" {
@@ -1229,14 +1240,38 @@ func handlePluginData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	persistentPath := filepath.Join("data", pluginID+".json")
+	// Persist JSON files in the same folder where the binary is
+	binDir := getBinaryDir()
+	persistentPath := filepath.Join(binDir, pluginID+".json")
 	htmlPath := filepath.Join("html", pluginID, "data.json")
 
 	switch r.Method {
 	case http.MethodGet:
 		dataBytes, err := os.ReadFile(persistentPath)
 		if err != nil || len(dataBytes) == 0 {
+			// Check legacy data/ dir if exists
+			dataBytes, err = os.ReadFile(filepath.Join("data", pluginID+".json"))
+		}
+		if err != nil || len(dataBytes) == 0 {
 			dataBytes, err = os.ReadFile(htmlPath)
+		}
+
+		// Provide in-code defaults if no file exists
+		if (err != nil || len(dataBytes) == 0) && pluginID == "ufw" {
+			// Single default entry for LinNAS in the firewall as code in the binary
+			defaultUfw := map[string]interface{}{
+				"rules": map[string]interface{}{
+					"linnas": map[string]interface{}{
+						"name":     "LinNAS",
+						"disabled": false,
+						"rawCmd":   fmt.Sprintf("ufw allow %d/tcp", appConfig.Port),
+					},
+				},
+			}
+			if defBytes, defErr := json.MarshalIndent(defaultUfw, "", "  "); defErr == nil {
+				dataBytes = defBytes
+				_ = os.WriteFile(persistentPath, defBytes, 0644)
+			}
 		}
 
 		if pluginID == "smb" {
@@ -1291,7 +1326,6 @@ func handlePluginData(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		_ = os.MkdirAll("data", 0755)
 		_ = os.WriteFile(persistentPath, decryptedBody, 0644)
 
 		_ = os.MkdirAll(filepath.Dir(htmlPath), 0755)
@@ -2275,11 +2309,12 @@ func main() {
 	loadConfig()
 
 	_ = os.MkdirAll("html", 0755)
-	_ = os.MkdirAll("data", 0755)
-
 	// Sync SMB config at startup if data exists or recover from system config
+	binDir := getBinaryDir()
 	var smbBytes []byte
-	if b, err := os.ReadFile("data/smb.json"); err == nil && len(b) > 0 {
+	if b, err := os.ReadFile(filepath.Join(binDir, "smb.json")); err == nil && len(b) > 0 {
+		smbBytes = b
+	} else if b, err := os.ReadFile("data/smb.json"); err == nil && len(b) > 0 {
 		smbBytes = b
 	} else if b, err := os.ReadFile("html/smb/data.json"); err == nil && len(b) > 0 {
 		smbBytes = b
@@ -2291,7 +2326,7 @@ func main() {
 		if len(recovered.Shares) > 0 {
 			if recBytes, err := json.MarshalIndent(recovered, "", "  "); err == nil {
 				smbBytes = recBytes
-				_ = os.WriteFile("data/smb.json", recBytes, 0644)
+				_ = os.WriteFile(filepath.Join(binDir, "smb.json"), recBytes, 0644)
 				_ = os.MkdirAll("html/smb", 0755)
 				_ = os.WriteFile("html/smb/data.json", recBytes, 0644)
 			}
@@ -2870,10 +2905,18 @@ func handleCronStop(w http.ResponseWriter, r *http.Request) {
 // Local Cloud Server Plugin Logic & Endpoints
 // ---------------------------------------------------------
 
+func getCloudConfigPath() string {
+	return filepath.Join(getBinaryDir(), "cloud.json")
+}
+
 func loadCloudConfig() {
 	cloudConfigMu.Lock()
 	defer cloudConfigMu.Unlock()
-	b, err := os.ReadFile("data/cloud.json")
+	b, err := os.ReadFile(getCloudConfigPath())
+	if err != nil || len(b) == 0 {
+		// check legacy location
+		b, err = os.ReadFile("data/cloud.json")
+	}
 	if err == nil && len(b) > 0 {
 		var cfg CloudConfig
 		if err := json.Unmarshal(b, &cfg); err == nil {
@@ -2890,8 +2933,7 @@ func saveCloudConfig(cfg CloudConfig) error {
 	if err != nil {
 		return err
 	}
-	_ = os.MkdirAll("data", 0755)
-	if err := os.WriteFile("data/cloud.json", b, 0644); err != nil {
+	if err := os.WriteFile(getCloudConfigPath(), b, 0644); err != nil {
 		return err
 	}
 	cloudConfig = cfg
