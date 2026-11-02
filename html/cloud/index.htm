@@ -190,9 +190,14 @@
     <div class="section">
         <div class="section-title">
             <span>Cloud Service Configuration</span>
-            <button id="toggleServiceBtn" class="btn" onclick="toggleCloudService()">
-                ▶️ Start Service
-            </button>
+            <div style="display: flex; gap: 8px;">
+                <button id="smartTestBtn" class="btn btn-secondary" onclick="toggleSmartTestAlert()">
+                    🧪 Test SMART Alert (Off)
+                </button>
+                <button id="toggleServiceBtn" class="btn" onclick="toggleCloudService()">
+                    ▶️ Start Service
+                </button>
+            </div>
         </div>
 
         <div class="form-grid">
@@ -369,6 +374,28 @@
                 }
             } catch (err) {
                 alert('Request failed: ' + err.message);
+            }
+        }
+
+        let isSmartTestActive = false;
+
+        async function toggleSmartTestAlert() {
+            try {
+                const res = await fetch('/api/cloud/smart/test_toggle', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    isSmartTestActive = data.simulated;
+                    const btn = document.getElementById('smartTestBtn');
+                    if (isSmartTestActive) {
+                        btn.innerText = '⚠️ Test Alert: ACTIVE (Simulating Bad Drives)';
+                        btn.className = 'btn btn-danger';
+                    } else {
+                        btn.innerText = '🧪 Test SMART Alert (Off)';
+                        btn.className = 'btn btn-secondary';
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to toggle test SMART alert:', err);
             }
         }
 

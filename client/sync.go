@@ -37,7 +37,7 @@ type SyncEngine struct {
 	statusMsg    string
 	statusMu     sync.RWMutex
 	onStatus     func(string)
-	onSmartAlert func(string)
+	onSmartAlert func(alertMsg string, isTest bool)
 	manifest     map[string]TrackedFile // relPath -> tracked state
 	manifestMu   sync.Mutex
 }
@@ -285,28 +285,34 @@ func (s *SyncEngine) FetchServerFolderTree() ([]ServerItem, error) {
 }
 
 // CheckSMARTDriveHealth queries server SMART health status
-func (s *SyncEngine) CheckSMARTDriveHealth() (bool, []SmartDiskInfo, error) {
+func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, error) {
 	serverURL := s.crypto.serverURL
 	resp, err := s.httpClient.Get(serverURL + "/api/cloud/smart")
 	if err != nil {
-		return true, nil, err
+		return true, false, nil, err
 	}
 	defer resp.Body.Close()
 
 	var data struct {
 		Success        bool            `json:"success"`
 		OverallHealthy bool            `json:"overall_healthy"`
+		IsTest         bool            `json:"is_test"`
+		TestMessage    string          `json:"test_message"`
 		Disks          []SmartDiskInfo `json:"disks"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return true, nil, err
+		return true, false, nil, err
 	}
 
 	if !data.OverallHealthy && s.onSmartAlert != nil {
-		s.onSmartAlert("SMART Alert: One or more server storage drives report errors!")
+		if data.IsTest {
+			s.onSmartAlert("this is a test! Simulated drive failures detected on LinNAS server.", true)
+		} else {
+			s.onSmartAlert("SMART Alert: One or more server storage drives report errors!", false)
+		}
 	}
 
-	return data.OverallHealthy, data.Disks, nil
+	return data.OverallHealthy, data.IsTest, data.Disks, nil
 }
 
 // PerformSync runs a single pass of lazy two-way sync with deletion tracking

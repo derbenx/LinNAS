@@ -93,10 +93,14 @@ func main() {
 		appendLog(msg)
 	}
 
-	// SMART alert notification
-	engine.onSmartAlert = func(alert string) {
+	// SMART alert notification (with "this is a test!" in yellow)
+	engine.onSmartAlert = func(alert string, isTest bool) {
 		fyne.Do(func() {
-			a.SendNotification(fyne.NewNotification("LinNAS Drive Warning", alert))
+			title := "LinNAS Drive Warning"
+			if isTest {
+				title = "⚠️ THIS IS A TEST!"
+			}
+			a.SendNotification(fyne.NewNotification(title, alert))
 		})
 	}
 
@@ -342,7 +346,7 @@ func main() {
 		pwd := pwdEntry.Text
 		go func() {
 			_ = engine.EnsureAuthenticated(pwd)
-			_, disks, err := engine.CheckSMARTDriveHealth()
+			healthy, isTest, disks, err := engine.CheckSMARTDriveHealth()
 
 			fyne.Do(func() {
 				smartTilesContainer.Objects = nil
@@ -351,6 +355,19 @@ func main() {
 					smartTilesContainer.Add(widget.NewLabel("Could not fetch SMART status: " + err.Error()))
 					smartTilesContainer.Refresh()
 					return
+				}
+
+				// If test mode or unhealthy, show banner
+				if isTest {
+					testBanner := canvas.NewText("⚠️ THIS IS A TEST! (Simulated Bad Drives Alert)", color.RGBA{R: 255, G: 215, B: 0, A: 255})
+					testBanner.TextStyle = fyne.TextStyle{Bold: true}
+					smartTilesContainer.Add(testBanner)
+					smartTilesContainer.Add(widget.NewLabel("Simulated test active on server"))
+				} else if !healthy {
+					failBanner := canvas.NewText("❌ WARNING: Critical SMART Hardware Failure Detected!", color.RGBA{R: 255, G: 60, B: 60, A: 255})
+					failBanner.TextStyle = fyne.TextStyle{Bold: true}
+					smartTilesContainer.Add(failBanner)
+					smartTilesContainer.Add(widget.NewLabel("Check server drive health immediately"))
 				}
 
 				if len(disks) == 0 {

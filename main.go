@@ -132,6 +132,9 @@ var (
 	cloudFileLocksMu sync.Mutex
 	cloudActivityMu  sync.RWMutex
 	cloudLastActivity time.Time
+
+	cloudSmartTestMu sync.RWMutex
+	cloudSmartTestSimulated bool
 )
 
 type CloudConfig struct {
@@ -2406,6 +2409,7 @@ func main() {
 	mux.HandleFunc("/api/cloud/delete", authMiddleware(handleCloudDelete))
 	mux.HandleFunc("/api/cloud/mkdir", authMiddleware(handleCloudMkdir))
 	mux.HandleFunc("/api/cloud/smart", authMiddleware(handleCloudSmart))
+	mux.HandleFunc("/api/cloud/smart/test_toggle", authMiddleware(handleCloudSmartTestToggle))
 	mux.HandleFunc("/api/settings/get", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, map[string]interface{}{
 			"port":            appConfig.Port,
@@ -3183,8 +3187,27 @@ type SmartDiskInfo struct {
 	RawInfo       string `json:"raw_info,omitempty"`
 }
 
+func handleCloudSmartTestToggle(w http.ResponseWriter, r *http.Request) {
+	recordCloudActivity()
+	cloudSmartTestMu.Lock()
+	cloudSmartTestSimulated = !cloudSmartTestSimulated
+	curState := cloudSmartTestSimulated
+	cloudSmartTestMu.Unlock()
+
+	jsonResponse(w, map[string]interface{}{
+		"success":       true,
+		"simulated":     curState,
+		"message":       fmt.Sprintf("SMART test alert simulation set to %v", curState),
+	})
+}
+
 func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
 	recordCloudActivity()
+
+	cloudSmartTestMu.RLock()
+	isTestSimulated := cloudSmartTestSimulated
+	cloudSmartTestMu.RUnlock()
+
 	out, err := exec.Command("lsblk", "-d", "-n", "-o", "NAME,TYPE,SIZE,MODEL").CombinedOutput()
 	var disks []SmartDiskInfo
 	overallHealthy := true
@@ -3257,9 +3280,34 @@ func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// If test simulation is active, inject bad drives and trigger overall_healthy = false
+	if isTestSimulated {
+		overallHealthy = false
+		disks = append([]SmartDiskInfo{
+			{
+				Device:        "/dev/sda",
+				FirstPartName: "sda1",
+				Model:         "Samsung 980 PRO (SIMULATED ERROR)",
+				Capacity:      "1.0 TB",
+				Health:        "FAILED",
+				RawInfo:       "SMART overall-health self-assessment test result: FAILED (Test Mode Active)",
+			},
+			{
+				Device:        "/dev/sdb",
+				FirstPartName: "sdb1",
+				Model:         "WDC WD40EFAX (SIMULATED ERROR)",
+				Capacity:      "4.0 TB",
+				Health:        "FAILED",
+				RawInfo:       "SMART overall-health self-assessment test result: FAILED (Test Mode Active)",
+			},
+		}, disks...)
+	}
+
 	jsonResponse(w, map[string]interface{}{
 		"success":         true,
 		"overall_healthy": overallHealthy,
+		"is_test":         isTestSimulated,
+		"test_message":    "This is a test!",
 		"disks":           disks,
 		"timestamp":       time.Now().Unix(),
 	})
