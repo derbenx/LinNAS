@@ -1,56 +1,199 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 )
+
+// getLocalClientIP attempts to resolve an outbound local IP address
+func getLocalClientIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err == nil {
+		defer conn.Close()
+		localAddr := conn.LocalAddr().(*net.UDPAddr)
+		return localAddr.IP.String()
+	}
+	return "127.0.0.1"
+}
+
+func formatBytesSize(bytes uint64) string {
+	const (
+		gb = 1024 * 1024 * 1024
+		tb = gb * 1024
+	)
+	if bytes >= tb {
+		return fmt.Sprintf("%.1f TB", float64(bytes)/float64(tb))
+	}
+	if bytes >= gb {
+		return fmt.Sprintf("%.1f GB", float64(bytes)/float64(gb))
+	}
+	if bytes > 0 {
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(1024*1024))
+	}
+	return "Unknown"
+}
 
 // CheckLocalSMARTHealth checks the client machine's physical drives
 func CheckLocalSMARTHealth() (bool, []SmartDiskInfo, error) {
 	var disks []SmartDiskInfo
 	overallHealthy := true
+	hostName, _ := os.Hostname()
+	clientIP := getLocalClientIP()
 
 	if runtime.GOOS == "windows" {
-		// Use wmic or powershell on Windows to inspect disk health
-		cmd := exec.Command("powershell", "-NoProfile", "-Command", "Get-PhysicalDisk | Select-Object DeviceId, FriendlyName, Size, OperationalStatus, HealthStatus | ConvertTo-Json")
+		// PowerShell script to gather all fixed physical disks, their partitions/drive letters, temperature, serial, and health status
+		// Uses Get-PhysicalDisk and Get-StorageReliabilityCounter. Filters out removable/USB media (BusType -ne 'USB' and MediaType -ne 'Removable')
+		psScript := `
+$ErrorActionPreference = 'SilentlyContinue'
+$disks = Get-PhysicalDisk | Where-Object { $_.BusType -ne 'USB' -and $_.MediaType -ne 'Removable' }
+$results = @()
+
+foreach ($d in $disks) {
+    $temp = 0
+    try {
+        $rel = $d | Get-StorageReliabilityCounter
+        if ($rel -and $rel.Temperature -gt 0 -and $rel.Temperature -lt 150) {
+            $temp = [int]$rel.Temperature
+        }
+    } catch {}
+
+    $partLetters = @()
+    try {
+        $diskNum = $d.DeviceId
+        $parts = Get-Partition -DiskNumber $diskNum | Where-Object { $_.DriveLetter }
+        foreach ($p in $parts) {
+            if ($p.DriveLetter) {
+                $partLetters += ($p.DriveLetter + ":")
+            }
+        }
+    } catch {}
+
+    $volLabel = ""
+    if ($partLetters.Count -gt 0) {
+        $firstLetter = $partLetters[0].TrimEnd(':')
+        try {
+            $vol = Get-Volume -DriveLetter $firstLetter
+            if ($vol -and $vol.FileSystemLabel) {
+                $volLabel = $vol.FileSystemLabel
+            }
+        } catch {}
+    }
+
+    $results += [PSCustomObject]@{
+        DeviceId          = [string]$d.DeviceId
+        FriendlyName      = [string]$d.FriendlyName
+        SerialNumber      = [string]$d.SerialNumber
+        Size              = [uint64]$d.Size
+        HealthStatus      = [string]$d.HealthStatus
+        OperationalStatus = [string]$d.OperationalStatus
+        Temperature       = [int]$temp
+        DriveLetters      = ($partLetters -join ", ")
+        VolumeLabel       = [string]$volLabel
+    }
+}
+
+$results | ConvertTo-Json -Depth 3 -Compress
+`
+		cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", psScript)
+		prepareHiddenCommand(cmd)
 		out, err := cmd.Output()
 		if err == nil && len(out) > 0 {
-			outStr := string(out)
-			isFail := strings.Contains(strings.ToUpper(outStr), "UNHEALTHY") || strings.Contains(strings.ToUpper(outStr), "WARNING")
-			health := "PASSED"
-			if isFail {
-				health = "FAILED"
-				overallHealthy = false
+			outStr := strings.TrimSpace(string(out))
+			if outStr != "" && outStr != "null" {
+				type winDiskRecord struct {
+					DeviceId          string `json:"DeviceId"`
+					FriendlyName      string `json:"FriendlyName"`
+					SerialNumber      string `json:"SerialNumber"`
+					Size              uint64 `json:"Size"`
+					HealthStatus      string `json:"HealthStatus"`
+					OperationalStatus string `json:"OperationalStatus"`
+					Temperature       int    `json:"Temperature"`
+					DriveLetters      string `json:"DriveLetters"`
+					VolumeLabel       string `json:"VolumeLabel"`
+				}
+
+				var records []winDiskRecord
+				if strings.HasPrefix(outStr, "[") {
+					_ = json.Unmarshal([]byte(outStr), &records)
+				} else if strings.HasPrefix(outStr, "{") {
+					var single winDiskRecord
+					if json.Unmarshal([]byte(outStr), &single) == nil {
+						records = append(records, single)
+					}
+				}
+
+				for _, r := range records {
+					isFail := strings.EqualFold(r.HealthStatus, "Unhealthy") ||
+						strings.EqualFold(r.HealthStatus, "Warning") ||
+						strings.Contains(strings.ToUpper(r.OperationalStatus), "FAIL") ||
+						strings.Contains(strings.ToUpper(r.OperationalStatus), "DEGRADED")
+
+					health := "PASSED"
+					if isFail {
+						health = "FAILED"
+						overallHealthy = false
+					}
+
+					devDisplay := "Disk " + r.DeviceId
+					if r.DriveLetters != "" {
+						devDisplay = r.DriveLetters
+					}
+
+					labelDisplay := r.VolumeLabel
+					if labelDisplay == "" && r.DriveLetters != "" {
+						labelDisplay = "Disk " + r.DeviceId
+					}
+
+					disks = append(disks, SmartDiskInfo{
+						Device:        devDisplay,
+						PartLabel:     labelDisplay,
+						FirstPartName: r.DriveLetters,
+						Model:         strings.TrimSpace(r.FriendlyName),
+						Serial:        strings.TrimSpace(r.SerialNumber),
+						Capacity:      formatBytesSize(r.Size),
+						Health:        health,
+						TempC:         r.Temperature,
+						HostName:      hostName,
+						IP:            clientIP,
+						RawInfo:       fmt.Sprintf("Health: %s, Operational: %s", r.HealthStatus, r.OperationalStatus),
+					})
+				}
+
+				if len(disks) > 0 {
+					return overallHealthy, disks, nil
+				}
 			}
-			disks = append(disks, SmartDiskInfo{
-				Device:        "C:",
-				PartLabel:     "Windows-OS",
-				FirstPartName: "C:",
-				Model:         "Physical Disk",
-				Capacity:      "System Volume",
-				Health:        health,
-			})
-			return overallHealthy, disks, nil
 		}
 	}
 
 	// Linux / macOS: check lsblk and smartctl
-	out, err := exec.Command("lsblk", "-d", "-n", "-o", "NAME,TYPE,SIZE,MODEL").CombinedOutput()
+	// Filter for fixed disks (TYPE == "disk", exclude loop, ram, and removable devices RM == 0)
+	out, err := exec.Command("lsblk", "-d", "-n", "-o", "NAME,TYPE,SIZE,MODEL,ROTA,RM,SERIAL").CombinedOutput()
 	if err == nil {
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 		for _, line := range lines {
 			fields := strings.Fields(line)
 			if len(fields) >= 2 && fields[1] == "disk" {
 				dev := fields[0]
+
+				// Check if removable media (RM == "1") and ignore
+				if len(fields) >= 6 && fields[5] == "1" {
+					continue
+				}
+
 				size := ""
 				if len(fields) >= 3 {
 					size = fields[2]
 				}
 				model := ""
 				if len(fields) >= 4 {
-					model = strings.Join(fields[3:], " ")
+					model = fields[3]
 				}
 
 				firstPart := ""
@@ -76,18 +219,25 @@ func CheckLocalSMARTHealth() (bool, []SmartDiskInfo, error) {
 					}
 				}
 
+				serialOut, _ := exec.Command("lsblk", "-d", "-n", "-o", "SERIAL", "/dev/"+dev).CombinedOutput()
+				serialStr := strings.TrimSpace(string(serialOut))
+
 				info := SmartDiskInfo{
 					Device:        dev,
 					PartLabel:     partLabel,
 					FirstPartName: firstPart,
 					Capacity:      size,
 					Model:         model,
+					Serial:        serialStr,
+					HostName:      hostName,
+					IP:            clientIP,
 					Health:        "UNKNOWN",
 				}
 
-				sCmd := exec.Command("smartctl", "-H", "/dev/"+dev)
+				sCmd := exec.Command("smartctl", "-A", "-H", "/dev/"+dev)
 				sOut, sErr := sCmd.CombinedOutput()
-				upperStr := strings.ToUpper(string(sOut))
+				sStr := string(sOut)
+				upperStr := strings.ToUpper(sStr)
 
 				if strings.Contains(upperStr, "SELF-ASSESSMENT TEST RESULT: FAILED") ||
 					strings.Contains(upperStr, "SMART HEALTH STATUS: FAILURE") ||
@@ -101,6 +251,21 @@ func CheckLocalSMARTHealth() (bool, []SmartDiskInfo, error) {
 					info.Health = "PASSED"
 				}
 
+				// Extract drive temperature in Celsius if available
+				for _, line := range strings.Split(sStr, "\n") {
+					upLine := strings.ToUpper(line)
+					if strings.Contains(upLine, "TEMPERATURE_CELSIUS") || strings.Contains(upLine, "AIRFLOW_TEMPERATURE_CEL") || strings.Contains(upLine, "CURRENT DRIVE TEMPERATURE") {
+						fields := strings.Fields(line)
+						if len(fields) >= 10 {
+							if val, convErr := strconv.Atoi(fields[9]); convErr == nil && val > 0 && val < 120 {
+								info.TempC = val
+								break
+							}
+						}
+					}
+				}
+
+				info.RawInfo = strings.TrimSpace(sStr)
 				disks = append(disks, info)
 			}
 		}
@@ -108,14 +273,16 @@ func CheckLocalSMARTHealth() (bool, []SmartDiskInfo, error) {
 
 	if len(disks) == 0 {
 		// Provide default entry for client host
-		host, _ := os.Hostname()
 		disks = append(disks, SmartDiskInfo{
 			Device:        "sda",
 			PartLabel:     "RootVolume",
 			FirstPartName: "sda1",
-			Model:         host,
+			Model:         hostName,
+			Serial:        "N/A",
 			Capacity:      "System Disk",
 			Health:        "PASSED",
+			HostName:      hostName,
+			IP:            clientIP,
 		})
 	}
 

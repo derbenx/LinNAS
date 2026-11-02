@@ -20,9 +20,12 @@ type SmartDiskInfo struct {
 	PartLabel     string `json:"part_label,omitempty"`
 	FirstPartName string `json:"first_part_name,omitempty"`
 	Model         string `json:"model"`
+	Serial        string `json:"serial,omitempty"`
 	Capacity      string `json:"capacity"`
 	Health        string `json:"health"` // "PASSED", "FAILED", "UNKNOWN"
 	TempC         int    `json:"temp_c,omitempty"`
+	HostName      string `json:"hostname,omitempty"`
+	IP            string `json:"ip,omitempty"`
 	RawInfo       string `json:"raw_info,omitempty"`
 }
 
@@ -39,6 +42,8 @@ type SyncEngine struct {
 	statusMu     sync.RWMutex
 	onStatus     func(string)
 	onSmartAlert func(alertMsg string, isTest bool)
+	smartMuteUntil time.Time
+	smartMuteMu    sync.RWMutex
 	manifest     map[string]TrackedFile // relPath -> tracked state
 	manifestMu   sync.Mutex
 }
@@ -174,6 +179,20 @@ func (s *SyncEngine) GetStatus() string {
 	s.statusMu.RLock()
 	defer s.statusMu.RUnlock()
 	return s.statusMsg
+}
+
+// MuteSmartAlerts mutes popup alerts for a given duration
+func (s *SyncEngine) MuteSmartAlerts(duration time.Duration) {
+	s.smartMuteMu.Lock()
+	defer s.smartMuteMu.Unlock()
+	s.smartMuteUntil = time.Now().Add(duration)
+}
+
+// IsSmartAlertMuted returns whether alerts are currently suppressed
+func (s *SyncEngine) IsSmartAlertMuted() bool {
+	s.smartMuteMu.RLock()
+	defer s.smartMuteMu.RUnlock()
+	return time.Now().Before(s.smartMuteUntil)
 }
 
 func (s *SyncEngine) UpdateConfig(cfg ClientConfig) {
@@ -366,29 +385,64 @@ func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, []Cli
 	}
 
 	if (!data.OverallHealthy || !localHealthy) && s.onSmartAlert != nil {
-		if data.IsTest {
-			s.onSmartAlert("this is a test! Simulated drive failures detected on LinNAS server.", true)
-		} else {
+		if !s.IsSmartAlertMuted() {
+			formatDriveDetail := func(source string, d SmartDiskInfo) string {
+				var parts []string
+				parts = append(parts, fmt.Sprintf("Source: %s", source))
+				if d.HostName != "" {
+					parts = append(parts, fmt.Sprintf("Host: %s", d.HostName))
+				}
+				if d.IP != "" {
+					parts = append(parts, fmt.Sprintf("IP: %s", d.IP))
+				}
+				parts = append(parts, fmt.Sprintf("Drive: %s", d.Device))
+				if d.PartLabel != "" {
+					parts = append(parts, fmt.Sprintf("Partition: %s", d.PartLabel))
+				}
+				if d.Model != "" {
+					parts = append(parts, fmt.Sprintf("Model: %s", d.Model))
+				}
+				if d.Serial != "" {
+					parts = append(parts, fmt.Sprintf("Serial: %s", d.Serial))
+				}
+				if d.TempC > 0 {
+					parts = append(parts, fmt.Sprintf("Temp: %d°C", d.TempC))
+				}
+				parts = append(parts, fmt.Sprintf("Health: %s", d.Health))
+				return strings.Join(parts, " | ")
+			}
+
 			var failDetails []string
 			for _, d := range data.Disks {
 				if d.Health == "FAILED" {
-					failDetails = append(failDetails, fmt.Sprintf("Server drive %s (%s)", d.Device, d.Model))
+					failDetails = append(failDetails, formatDriveDetail("Server", d))
 				}
 			}
 			for _, cr := range data.ClientReports {
 				for _, fd := range cr.Failing {
-					failDetails = append(failDetails, fmt.Sprintf("Client %s drive %s", cr.Client, fd.Device))
+					if fd.IP == "" && strings.Contains(cr.Client, "(") {
+						start := strings.LastIndex(cr.Client, "(")
+						end := strings.LastIndex(cr.Client, ")")
+						if start != -1 && end != -1 && end > start {
+							fd.IP = cr.Client[start+1 : end]
+						}
+					}
+					failDetails = append(failDetails, formatDriveDetail(fmt.Sprintf("Client %s", cr.Client), fd))
 				}
 			}
 			if !localHealthy {
 				for _, ld := range localDisks {
 					if ld.Health == "FAILED" {
-						failDetails = append(failDetails, fmt.Sprintf("This PC local drive %s (%s)", ld.Device, ld.Model))
+						failDetails = append(failDetails, formatDriveDetail("This PC (Local)", ld))
 					}
 				}
 			}
-			detailMsg := strings.Join(failDetails, "\n• ")
-			s.onSmartAlert(fmt.Sprintf("SMART Drive Failure Warning:\n• %s", detailMsg), false)
+
+			detailMsg := strings.Join(failDetails, "\n\n• ")
+			if detailMsg != "" {
+				detailMsg = "• " + detailMsg
+			}
+			s.onSmartAlert(detailMsg, data.IsTest)
 		}
 	}
 

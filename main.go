@@ -3333,9 +3333,12 @@ type SmartDiskInfo struct {
 	PartLabel     string `json:"part_label,omitempty"`     // Volume / partition label e.g. "StorageVault"
 	FirstPartName string `json:"first_part_name,omitempty"` // e.g. "sda1" or "vda1"
 	Model         string `json:"model"`
+	Serial        string `json:"serial,omitempty"`         // Drive serial number
 	Capacity      string `json:"capacity"`
 	Health        string `json:"health"` // "PASSED", "FAILED", "UNKNOWN"
 	TempC         int    `json:"temp_c,omitempty"`
+	HostName      string `json:"hostname,omitempty"`
+	IP            string `json:"ip,omitempty"`
 	RawInfo       string `json:"raw_info,omitempty"`
 }
 
@@ -3371,6 +3374,12 @@ func handleCloudSmartReport(w http.ResponseWriter, r *http.Request) {
 		clientKey = fmt.Sprintf("%s (%s)", req.ClientID, clientIP)
 	}
 
+	for i := range req.Disks {
+		if req.Disks[i].IP == "" {
+			req.Disks[i].IP = clientIP
+		}
+	}
+
 	clientSMARTReportsMu.Lock()
 	clientSMARTReports[clientKey] = req.Disks
 	clientSMARTReportsMu.Unlock()
@@ -3398,6 +3407,8 @@ func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
 	cloudSmartTestMu.RLock()
 	isTestSimulated := cloudSmartTestSimulated
 	cloudSmartTestMu.RUnlock()
+
+	serverHostname, _ := os.Hostname()
 
 	out, err := exec.Command("lsblk", "-d", "-n", "-o", "NAME,TYPE,SIZE,MODEL").CombinedOutput()
 	var disks []SmartDiskInfo
@@ -3442,12 +3453,17 @@ func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
+				serialOut, _ := exec.Command("lsblk", "-d", "-n", "-o", "SERIAL", "/dev/"+dev).CombinedOutput()
+				serialStr := strings.TrimSpace(string(serialOut))
+
 				info := SmartDiskInfo{
 					Device:        "/dev/" + dev,
 					PartLabel:     partLabel,
 					FirstPartName: firstPart,
 					Capacity:      size,
 					Model:         model,
+					Serial:        serialStr,
+					HostName:      serverHostname,
 					Health:        "UNKNOWN",
 				}
 
@@ -3504,18 +3520,22 @@ func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
 				Device:        "/dev/sda",
 				PartLabel:     "NVMe-Fast",
 				Model:         "Samsung 980 PRO",
+				Serial:        "S5GXNX0T104829X",
 				Capacity:      "1.0 TB",
 				Health:        "FAILED",
 				TempC:         58,
+				HostName:      serverHostname,
 				RawInfo:       "SMART overall-health self-assessment test result: FAILED (Test Mode Active)",
 			},
 			{
 				Device:        "/dev/sdb",
 				PartLabel:     "MediaVault",
 				Model:         "WDC WD40EFAX",
+				Serial:        "WD-WX22D51L86KZ",
 				Capacity:      "4.0 TB",
 				Health:        "FAILED",
 				TempC:         42,
+				HostName:      serverHostname,
 				RawInfo:       "SMART overall-health self-assessment test result: FAILED (Test Mode Active)",
 			},
 		}, disks...)
