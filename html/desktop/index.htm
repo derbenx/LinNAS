@@ -2114,8 +2114,10 @@
                 tr.draggable = true;
 
                 const ext = item.name.split('.').pop().toLowerCase();
+                const isParentDir = (item.name === '..');
                 let icon = '📄';
-                if (item.is_dir) icon = '📁';
+                if (isParentDir) icon = '⬆️';
+                else if (item.is_dir) icon = '📁';
                 else if (['stl', 'obj', 'gltf', 'glb', '3mf'].includes(ext)) icon = '🧊';
                 else if (['mp3', 'wav', 'ogg', 'flac', 'm4a'].includes(ext)) icon = '🎵';
                 else if (['mp4', 'webm', 'mkv', 'mov'].includes(ext)) icon = '🎬';
@@ -2128,7 +2130,7 @@
                         <strong>${escapeHtml(item.name)}</strong>
                     </td>
                     <td>${item.is_dir ? '--' : formatBytes(item.size)}</td>
-                    <td><span style="font-family: monospace; color: #8b949e;">${item.permissions || 'rwxr-xr-x'}</span></td>
+                    <td><span style="font-family: monospace; color: #8b949e;">${isParentDir ? '--' : (item.permissions || 'rwxr-xr-x')}</span></td>
                 `;
 
                 tr.onclick = (e) => {

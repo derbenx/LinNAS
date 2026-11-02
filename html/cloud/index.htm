@@ -208,8 +208,9 @@
                     <button class="btn btn-secondary" onclick="openFolderBrowser()">📂 Browse...</button>
                 </div>
             </div>
-            <div>
+            <div style="display: flex; gap: 8px;">
                 <button class="btn btn-secondary" onclick="saveFolderConfig()">💾 Save Folder</button>
+                <button class="btn btn-secondary" onclick="browseCloudStorageInFileManager()">📂 Browse Cloud Storage</button>
             </div>
         </div>
 
@@ -233,28 +234,6 @@
         </div>
     </div>
 
-    <!-- Active Files & Cloud Directory Preview -->
-    <div class="section">
-        <div class="section-title">
-            <span>Cloud Storage Browser</span>
-            <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;" onclick="loadCloudFiles()">🔄 Refresh</button>
-        </div>
-        <div id="fileTableContainer">
-            <p style="color: #8b949e; font-size: 0.9rem;" id="noFilesMsg">Service stopped or no files found.</p>
-            <table id="cloudFileTable" style="display: none;">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Path</th>
-                        <th>Size</th>
-                        <th>Last Modified</th>
-                        <th>Checksum (SHA-256)</th>
-                    </tr>
-                </thead>
-                <tbody id="cloudFileTableBody"></tbody>
-            </table>
-        </div>
-    </div>
 
     <!-- Folder Browser Modal with New Folder Button -->
     <div id="folderModal" class="modal">
@@ -289,6 +268,19 @@
         async function initCloudUI() {
             await refreshStatus();
             setInterval(refreshStatus, 3000);
+        }
+
+        function browseCloudStorageInFileManager() {
+            const folder = document.getElementById('cloudFolderInput').value.trim();
+            if (!folder) {
+                alert('No cloud storage folder is configured yet.');
+                return;
+            }
+            if (window.parent && typeof window.parent.loadPluginView === 'function') {
+                window.parent.loadPluginView('filemanager', { dir: folder });
+            } else {
+                window.location.href = `/filemanager/?dir=${encodeURIComponent(folder)}`;
+            }
         }
 
         async function refreshStatus() {
@@ -343,9 +335,6 @@
                     }, 500);
                 }
 
-                if (isServiceRunning && document.getElementById('cloudFileTable').style.display === 'none') {
-                    loadCloudFiles();
-                }
             } catch (err) {
                 console.error('Error fetching cloud status:', err);
             }
@@ -421,71 +410,12 @@
                 const data = await res.json();
                 if (data.success) {
                     await refreshStatus();
-                    if (newTargetState) {
-                        loadCloudFiles();
-                    } else {
-                        document.getElementById('cloudFileTable').style.display = 'none';
-                        document.getElementById('noFilesMsg').style.display = 'block';
-                        document.getElementById('noFilesMsg').innerText = 'Service stopped.';
-                    }
                 } else {
                     alert('Operation failed: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
                 alert('Request failed: ' + err.message);
             }
-        }
-
-        async function loadCloudFiles() {
-            if (!isServiceRunning) return;
-            try {
-                const res = await fetch('/api/cloud/list?recursive=true');
-                if (!res.ok) {
-                    document.getElementById('cloudFileTable').style.display = 'none';
-                    document.getElementById('noFilesMsg').style.display = 'block';
-                    document.getElementById('noFilesMsg').innerText = 'Could not read directory items.';
-                    return;
-                }
-                const data = await res.json();
-                const tbody = document.getElementById('cloudFileTableBody');
-                tbody.innerHTML = '';
-
-                if (!data.items || data.items.length === 0) {
-                    document.getElementById('cloudFileTable').style.display = 'none';
-                    document.getElementById('noFilesMsg').style.display = 'block';
-                    document.getElementById('noFilesMsg').innerText = 'No files synced yet. Storage folder is empty.';
-                    return;
-                }
-
-                document.getElementById('cloudFileTable').style.display = 'table';
-                document.getElementById('noFilesMsg').style.display = 'none';
-
-                data.items.forEach(item => {
-                    const tr = document.createElement('tr');
-                    const icon = item.is_dir ? '📁' : '📄';
-                    const isRecycle = item.rel_path.startsWith('RecycleBin');
-                    const badgeHtml = isRecycle ? '<span class="badge badge-recycle">RecycleBin</span> ' : '';
-
-                    tr.innerHTML = `
-                        <td>${icon} ${item.name}</td>
-                        <td>${badgeHtml}${item.rel_path}</td>
-                        <td>${item.is_dir ? '--' : formatBytes(item.size)}</td>
-                        <td>${new Date(item.mod_time * 1000).toLocaleString()}</td>
-                        <td style="font-family: monospace; font-size: 0.8rem; color: #8b949e;">${item.sha256 ? item.sha256.substring(0, 16) + '...' : '--'}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            } catch (err) {
-                console.error('Error loading cloud files:', err);
-            }
-        }
-
-        function formatBytes(bytes) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
         // Folder Browser Logic

@@ -2044,7 +2044,22 @@ func handleFsBrowse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parent := filepath.Dir(dirPath)
+
 	var items []FileEntry
+	// Include ".." at the top if not at root filesystem directory
+	if dirPath != "/" && dirPath != "." && parent != "" && parent != dirPath {
+		items = append(items, FileEntry{
+			Name:        "..",
+			Path:        parent,
+			IsDir:       true,
+			Size:        0,
+			Permissions: "rwxr-xr-x",
+			ModeOctal:   "0755",
+		})
+	}
+
+	var dirEntries []FileEntry
 	for _, entry := range entries {
 		info, err := entry.Info()
 		size := int64(0)
@@ -2055,7 +2070,7 @@ func handleFsBrowse(w http.ResponseWriter, r *http.Request) {
 			permStr = info.Mode().String()
 			octalStr = fmt.Sprintf("%04o", info.Mode().Perm())
 		}
-		items = append(items, FileEntry{
+		dirEntries = append(dirEntries, FileEntry{
 			Name:        entry.Name(),
 			Path:        filepath.Join(dirPath, entry.Name()),
 			IsDir:       entry.IsDir(),
@@ -2065,14 +2080,14 @@ func handleFsBrowse(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].IsDir != items[j].IsDir {
-			return items[i].IsDir // folders first (true < false is false, so true comes first)
+	sort.Slice(dirEntries, func(i, j int) bool {
+		if dirEntries[i].IsDir != dirEntries[j].IsDir {
+			return dirEntries[i].IsDir // folders first
 		}
-		return strings.ToLower(items[i].Name) < strings.ToLower(items[j].Name)
+		return strings.ToLower(dirEntries[i].Name) < strings.ToLower(dirEntries[j].Name)
 	})
 
-	parent := filepath.Dir(dirPath)
+	items = append(items, dirEntries...)
 
 	// Query filesystem type of the directory
 	fsType := "ext4"

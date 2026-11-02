@@ -299,17 +299,18 @@
                 else if (isImage) icon = '🖼️';
                 else if (isText) icon = '📝';
 
+                const isParentDir = (item.name === '..');
                 tr.innerHTML = `
                     <td>
-                        <input type="checkbox" ${selectedPaths.has(item.path) ? 'checked' : ''} onclick="toggleItemSelect(event, '${escapeJs(item.path)}')">
+                        ${isParentDir ? '' : `<input type="checkbox" ${selectedPaths.has(item.path) ? 'checked' : ''} onclick="toggleItemSelect(event, '${escapeJs(item.path)}')">`}
                     </td>
                     <td>
-                        <span class="item-icon">${icon}</span>
+                        <span class="item-icon">${isParentDir ? '⬆️' : icon}</span>
                         <strong>${escapeHtml(item.name)}</strong>
                     </td>
-                    <td><span style="font-family: monospace; font-size: 0.8rem; color: #8b949e;">${item.permissions || 'rwxr-xr-x'}</span></td>
+                    <td><span style="font-family: monospace; font-size: 0.8rem; color: #8b949e;">${isParentDir ? '--' : (item.permissions || 'rwxr-xr-x')}</span></td>
                     <td>${item.is_dir ? '--' : formatBytes(item.size)}</td>
-                    <td>${item.is_dir ? 'Folder' : getFileExtension(item.name)}</td>
+                    <td>${isParentDir ? 'Parent Directory' : (item.is_dir ? 'Folder' : getFileExtension(item.name))}</td>
                 `;
 
                 tr.onclick = (e) => {

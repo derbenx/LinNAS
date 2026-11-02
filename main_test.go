@@ -154,15 +154,17 @@ func TestFsBrowseSortingOrder(t *testing.T) {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if len(resp.Items) != 4 {
-		t.Fatalf("Expected 4 items, got %d", len(resp.Items))
+	// Items includes ".." at index 0 for parent directory navigation
+	if len(resp.Items) != 5 {
+		t.Fatalf("Expected 5 items (including '..'), got %d", len(resp.Items))
 	}
 
-	// Order should be: a_folder (dir), b_folder (dir), a_file.txt (file), Z_file.txt (file)
+	// Order should be: .. (parent dir), a_folder (dir), b_folder (dir), a_file.txt (file), Z_file.txt (file)
 	expectedOrder := []struct {
 		name  string
 		isDir bool
 	}{
+		{"..", true},
 		{"a_folder", true},
 		{"b_folder", true},
 		{"a_file.txt", false},
