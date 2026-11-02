@@ -11,17 +11,17 @@ import (
 )
 
 type ClientConfig struct {
-	ServerEndpoint  string          `json:"server_endpoint"`  // e.g. "192.168.1.50:8080"
+	ServerEndpoint  string          `json:"server_endpoint"`         // e.g. "192.168.1.50:8080"
 	Username        string          `json:"username"`
-	PasswordHash    string          `json:"password_hash"`     // SHA-256 hash (never store plaintext password)
+	PasswordHash    string          `json:"password_hash"`            // SHA-256 hash (never store plaintext password)
 	SessionToken    string          `json:"session_token,omitempty"` // Long-lived auth session token
 	LocalSyncDir    string          `json:"local_sync_dir"`
 	SyncEnabled     bool            `json:"sync_enabled"`
-	SyncIntervalSec int             `json:"sync_interval_sec"` // Default 30s
-	ThrottleKBps    int             `json:"throttle_kbps"`     // 0 = unlimited, otherwise speed cap
-	IdleOnly        bool            `json:"idle_only"`         // Only upload/sync when idle
-	IdleWaitMinutes int             `json:"idle_wait_minutes"` // e.g. 5 minutes
-	SelectedFolders map[string]bool `json:"selected_folders"`  // checked folders (relative paths)
+	SyncMode        string          `json:"sync_mode"`                // "On a timer" or "When idle for"
+	SyncIntervalSec int             `json:"sync_interval_sec"`        // 120 (2 mins) to 18000 (5 hours)
+	ThrottleKBps    int             `json:"throttle_kbps"`            // 0 = unlimited, otherwise speed cap
+	IdleOnly        bool            `json:"idle_only"`                // Only upload/sync when idle
+	SelectedFolders map[string]bool `json:"selected_folders"`         // checked folders (relative paths)
 }
 
 var (
@@ -37,10 +37,10 @@ func getDefaultConfig() ClientConfig {
 		Username:        "admin",
 		LocalSyncDir:    defaultLocalDir,
 		SyncEnabled:     true,
-		SyncIntervalSec: 30,
+		SyncMode:        "On a timer",
+		SyncIntervalSec: 300, // Default 5 mins
 		ThrottleKBps:    500, // Leisurely default ~500 KB/s
 		IdleOnly:        false,
-		IdleWaitMinutes: 3,
 		SelectedFolders: make(map[string]bool),
 	}
 }
@@ -70,8 +70,15 @@ func LoadConfig() ClientConfig {
 		if appCfg.SelectedFolders == nil {
 			appCfg.SelectedFolders = make(map[string]bool)
 		}
-		if appCfg.SyncIntervalSec <= 0 {
-			appCfg.SyncIntervalSec = 30
+		if appCfg.SyncMode == "" {
+			if appCfg.IdleOnly {
+				appCfg.SyncMode = "When idle for"
+			} else {
+				appCfg.SyncMode = "On a timer"
+			}
+		}
+		if appCfg.SyncIntervalSec < 120 {
+			appCfg.SyncIntervalSec = 300 // default 5 mins
 		}
 	}
 	return appCfg

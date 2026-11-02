@@ -3174,12 +3174,13 @@ func handleCloudStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 type SmartDiskInfo struct {
-	Device   string `json:"device"`
-	Model    string `json:"model"`
-	Capacity string `json:"capacity"`
-	Health   string `json:"health"` // "PASSED", "FAILED", "UNKNOWN"
-	TempC    int    `json:"temp_c,omitempty"`
-	RawInfo  string `json:"raw_info,omitempty"`
+	Device        string `json:"device"`
+	FirstPartName string `json:"first_part_name,omitempty"` // e.g. "sda1" or "vda1"
+	Model         string `json:"model"`
+	Capacity      string `json:"capacity"`
+	Health        string `json:"health"` // "PASSED", "FAILED", "UNKNOWN"
+	TempC         int    `json:"temp_c,omitempty"`
+	RawInfo       string `json:"raw_info,omitempty"`
 }
 
 func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
@@ -3203,11 +3204,26 @@ func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
 					model = strings.Join(fields[3:], " ")
 				}
 
+				// Look for first partition name
+				firstPart := ""
+				partOut, pErr := exec.Command("lsblk", "-n", "-l", "-o", "NAME,TYPE", "/dev/"+dev).CombinedOutput()
+				if pErr == nil {
+					pLines := strings.Split(strings.TrimSpace(string(partOut)), "\n")
+					for _, pl := range pLines {
+						pFields := strings.Fields(pl)
+						if len(pFields) >= 2 && pFields[1] == "part" {
+							firstPart = pFields[0]
+							break
+						}
+					}
+				}
+
 				info := SmartDiskInfo{
-					Device:   "/dev/" + dev,
-					Capacity: size,
-					Model:    model,
-					Health:   "UNKNOWN",
+					Device:        "/dev/" + dev,
+					FirstPartName: firstPart,
+					Capacity:      size,
+					Model:         model,
+					Health:        "UNKNOWN",
 				}
 
 				// Check SMART health via smartctl

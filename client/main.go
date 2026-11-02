@@ -16,11 +16,34 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+func formatInterval(seconds int) string {
+	if seconds < 60 {
+		return fmt.Sprintf("%d secs", seconds)
+	}
+	mins := seconds / 60
+	hours := mins / 60
+	remainMins := mins % 60
+	if hours > 0 {
+		if remainMins == 0 {
+			if hours == 1 {
+				return "1 hour"
+			}
+			return fmt.Sprintf("%d hours", hours)
+		}
+		return fmt.Sprintf("%d hr %d min", hours, remainMins)
+	}
+	return fmt.Sprintf("%d mins", mins)
+}
+
 func main() {
 	a := app.NewWithID("com.linnas.cloudclient")
 	w := a.NewWindow("LinNAS Local Cloud")
-	w.Resize(fyne.NewSize(720, 580))
-	w.SetFixedSize(true) // Prevent window from expanding and stretching off screen
+
+	// Fit on a single monitor: default to 740x540, center on screen, allow user resize
+	initW := float32(740)
+	initH := float32(540)
+	w.Resize(fyne.NewSize(initW, initH))
+	w.CenterOnScreen()
 
 	cfg := LoadConfig()
 	engine, err := NewSyncEngine(cfg)
@@ -36,18 +59,19 @@ func main() {
 	logEntry := widget.NewMultiLineEntry()
 	logEntry.Wrapping = fyne.TextWrapWord
 	logEntry.SetPlaceHolder("Log entries and sync errors will appear here...")
-	// Keep enabled for maximum contrast (white on dark background) while intercepting edits
-	logEntry.OnChanged = func(s string) {
-		// Prevent accidental user editing while preserving copy-paste selection
-	}
 
 	appendLog := func(msg string) {
 		fyne.Do(func() {
 			timestamp := time.Now().Format("15:04:05")
 			current := logEntry.Text
 			newEntry := fmt.Sprintf("[%s] %s\n", timestamp, msg)
-			if len(current) > 20000 {
-				current = current[len(current)-15000:]
+
+			// Memory / log rotation: keep last 12,000 characters to prevent excessive growth
+			if len(current) > 15000 {
+				lines := strings.Split(current, "\n")
+				if len(lines) > 100 {
+					current = strings.Join(lines[len(lines)-100:], "\n")
+				}
 			}
 			logEntry.SetText(current + newEntry)
 			logEntry.CursorRow = strings.Count(logEntry.Text, "\n")
@@ -94,37 +118,64 @@ func main() {
 		pwdEntry.SetPlaceHolder("Enter password to connect")
 	}
 
-	pauseCheck := widget.NewCheck("Enable Background Syncing", func(checked bool) {
+	pauseCheck := widget.NewCheck("Enable automatic syncing", func(checked bool) {
 		cfg.SyncEnabled = checked
 	})
 	pauseCheck.SetChecked(cfg.SyncEnabled)
 
-	freqSlider := widget.NewSlider(5, 300)
+	// Sync mode dropdown: "On a timer" or "When idle for"
+	modeSelect := widget.NewSelect([]string{"On a timer", "When idle for"}, func(selected string) {
+		cfg.SyncMode = selected
+		cfg.IdleOnly = (selected == "When idle for")
+	})
+	if cfg.SyncMode == "" {
+		cfg.SyncMode = "On a timer"
+	}
+	modeSelect.SetSelected(cfg.SyncMode)
+
+	// Interval Slider: 2 minutes (120s) to 5 hours (18000s)
+	if cfg.SyncIntervalSec < 120 {
+		cfg.SyncIntervalSec = 300 // default 5 mins
+	}
+	freqSlider := widget.NewSlider(120, 18000)
 	freqSlider.SetValue(float64(cfg.SyncIntervalSec))
-	freqLabel := widget.NewLabel(fmt.Sprintf("%d seconds", cfg.SyncIntervalSec))
+	freqLabel := widget.NewLabel(formatInterval(cfg.SyncIntervalSec))
+	freqLabel.TextStyle = fyne.TextStyle{Bold: true}
+
 	freqSlider.OnChanged = func(val float64) {
 		secs := int(val)
-		freqLabel.SetText(fmt.Sprintf("%d seconds", secs))
+		// Round to nearest 30 seconds for clean intervals
+		secs = (secs / 30) * 30
+		if secs < 120 {
+			secs = 120
+		}
+		freqLabel.SetText(formatInterval(secs))
 		cfg.SyncIntervalSec = secs
 	}
 
-	idleCheck := widget.NewCheck("Only perform backup/uploads when computer is idle", func(checked bool) {
-		cfg.IdleOnly = checked
+	syncNowBtn := widget.NewButtonWithIcon("Sync Files Now", theme.MediaPlayIcon(), func() {
+		pwd := pwdEntry.Text
+		go func() {
+			engine.SetStatus("Manual sync initiated...")
+			err := engine.PerformSync(pwd)
+			if err != nil {
+				engine.SetStatus("Sync Error: " + err.Error())
+			}
+		}()
 	})
-	idleCheck.SetChecked(cfg.IdleOnly)
 
 	saveConnBtn := widget.NewButtonWithIcon("Save Connection & Preferences", theme.DocumentSaveIcon(), func() {
 		cfg.ServerEndpoint = strings.TrimSpace(endpointEntry.Text)
 		cfg.Username = strings.TrimSpace(userEntry.Text)
 		if strings.TrimSpace(pwdEntry.Text) != "" {
-			// Hash password immediately so plaintext password is never written to disk
 			cfg.PasswordHash = HashPassword(pwdEntry.Text)
-			cfg.SessionToken = "" // Invalidate old session token for new password
+			cfg.SessionToken = ""
 			pwdEntry.SetText("")
 			pwdEntry.SetPlaceHolder("•••••••• (Credentials Saved)")
 		}
 		cfg.SyncEnabled = pauseCheck.Checked
-		cfg.IdleOnly = idleCheck.Checked
+		cfg.SyncMode = modeSelect.Selected
+		cfg.IdleOnly = (modeSelect.Selected == "When idle for")
 		cfg.SyncIntervalSec = int(freqSlider.Value)
 
 		if err := SaveConfig(cfg); err != nil {
@@ -143,12 +194,12 @@ func main() {
 			widget.NewFormItem("Password", pwdEntry),
 		),
 		widget.NewSeparator(),
-		widget.NewLabelWithStyle("Sync Frequency & Performance", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		container.NewBorder(nil, nil, widget.NewLabel("Background check interval:"), freqLabel, freqSlider),
+		widget.NewLabelWithStyle("Automatic Sync Scheduling", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		pauseCheck,
-		idleCheck,
+		container.NewHBox(widget.NewLabel("Sync mode:"), modeSelect),
+		container.NewBorder(nil, nil, widget.NewLabel("Interval / Wait:"), freqLabel, freqSlider),
 		widget.NewSeparator(),
-		saveConnBtn,
+		container.NewHBox(saveConnBtn, syncNowBtn),
 	)
 	connScroll := container.NewVScroll(connTabContent)
 
@@ -264,18 +315,6 @@ func main() {
 	)
 	foldersScroll := container.NewVScroll(foldersTabContent)
 
-	// Actions: Sync Now
-	syncNowBtn := widget.NewButtonWithIcon("Sync Now", theme.MediaPlayIcon(), func() {
-		pwd := pwdEntry.Text
-		go func() {
-			engine.SetStatus("Manual sync initiated...")
-			err := engine.PerformSync(pwd)
-			if err != nil {
-				engine.SetStatus("Sync Error: " + err.Error())
-			}
-		}()
-	})
-
 	syncNowBrowseBtn := widget.NewButtonWithIcon("Sync Folder Now...", theme.FolderOpenIcon(), func() {
 		dialog.ShowFolderOpen(func(lu fyne.ListableURI, err error) {
 			if err == nil && lu != nil {
@@ -289,71 +328,81 @@ func main() {
 	})
 
 	// ==========================================
-	// TAB 3: SMART Drive Monitoring
+	// TAB 3: SMART Drive Monitoring (Glanceable Tiles, No Scrollbar)
 	// ==========================================
-	smartBox := container.NewVBox()
-	smartScroll := container.NewVScroll(smartBox)
-	smartScroll.SetMinSize(fyne.NewSize(660, 360))
+	smartTilesContainer := container.NewGridWithColumns(2)
 
 	refreshSmart := func() {
 		fyne.Do(func() {
-			smartBox.Objects = nil
-			smartBox.Add(widget.NewLabel("Checking server drive SMART status..."))
-			smartBox.Refresh()
+			smartTilesContainer.Objects = nil
+			smartTilesContainer.Add(widget.NewLabel("Checking server drive SMART status..."))
+			smartTilesContainer.Refresh()
 		})
 
 		pwd := pwdEntry.Text
 		go func() {
 			_ = engine.EnsureAuthenticated(pwd)
-			healthy, disks, err := engine.CheckSMARTDriveHealth()
+			_, disks, err := engine.CheckSMARTDriveHealth()
 
 			fyne.Do(func() {
-				smartBox.Objects = nil
+				smartTilesContainer.Objects = nil
 
 				if err != nil {
-					smartBox.Add(widget.NewLabel("Could not fetch SMART status: " + err.Error()))
-					smartBox.Refresh()
+					smartTilesContainer.Add(widget.NewLabel("Could not fetch SMART status: " + err.Error()))
+					smartTilesContainer.Refresh()
 					return
 				}
 
-				banner := canvas.NewText("", color.White)
-				if healthy {
-					banner.Text = "✅ Storage Drives Healthy / No SMART Failures"
-					banner.Color = color.RGBA{R: 50, G: 200, B: 50, A: 255}
-				} else {
-					banner.Text = "⚠️ WARNING: SMART Hardware Failures Detected on Server!"
-					banner.Color = color.RGBA{R: 255, G: 50, B: 50, A: 255}
-				}
-				banner.TextStyle = fyne.TextStyle{Bold: true}
-				smartBox.Add(banner)
-
 				if len(disks) == 0 {
-					smartBox.Add(widget.NewLabel("No physical storage disks detected or SMART unavailable."))
+					smartTilesContainer.Add(widget.NewLabel("No physical storage disks detected or SMART unavailable."))
 				}
 
 				for _, d := range disks {
-					healthBadge := d.Health
-					if healthBadge == "UNKNOWN" {
-						healthBadge = "UNKNOWN (No SMART errors)"
+					// Title with drive name and first partition name
+					titleName := d.Device
+					if d.FirstPartName != "" {
+						titleName = fmt.Sprintf("%s (%s)", d.Device, d.FirstPartName)
 					}
-					cardText := fmt.Sprintf("Device: %s\nModel: %s\nCapacity: %s\nStatus: %s", d.Device, d.Model, d.Capacity, healthBadge)
-					card := widget.NewCard(d.Device, healthBadge, widget.NewLabel(cardText))
-					smartBox.Add(card)
+
+					// Health text with bold colors: green for PASSED, red for FAILED
+					statusColorText := canvas.NewText("", color.White)
+					statusColorText.TextStyle = fyne.TextStyle{Bold: true}
+
+					isFail := (d.Health == "FAILED")
+					isPassed := (d.Health == "PASSED")
+
+					if isFail {
+						statusColorText.Text = "Status: ❌ FAILED"
+						statusColorText.Color = color.RGBA{R: 255, G: 60, B: 60, A: 255}
+					} else if isPassed {
+						statusColorText.Text = "Status: ✅ PASSED"
+						statusColorText.Color = color.RGBA{R: 50, G: 205, B: 50, A: 255}
+					} else {
+						statusColorText.Text = "Status: ℹ️ UNKNOWN (OK)"
+						statusColorText.Color = color.RGBA{R: 120, G: 180, B: 255, A: 255}
+					}
+
+					detailsText := fmt.Sprintf("Model: %s\nSize: %s", d.Model, d.Capacity)
+					tileContent := container.NewVBox(
+						statusColorText,
+						widget.NewLabel(detailsText),
+					)
+
+					card := widget.NewCard(titleName, "", tileContent)
+					smartTilesContainer.Add(card)
 				}
-				smartBox.Refresh()
+				smartTilesContainer.Refresh()
 			})
 		}()
 	}
 
 	refreshSmartBtn := widget.NewButtonWithIcon("Refresh SMART Data", theme.ViewRefreshIcon(), refreshSmart)
-	smartTab := container.NewBorder(
-		container.NewHBox(
-			widget.NewLabelWithStyle("Server SMART Drive Health", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-			refreshSmartBtn,
-		),
-		nil, nil, nil,
-		smartScroll,
+	smartHeader := container.NewHBox(
+		widget.NewLabelWithStyle("Server Storage SMART Diagnostics", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		refreshSmartBtn,
 	)
+	// Border container with NO scrollbar to fit everything at a glance
+	smartTab := container.NewBorder(smartHeader, nil, nil, nil, smartTilesContainer)
 
 	// ==========================================
 	// TAB 4: Activity & Error Logs
@@ -362,7 +411,6 @@ func main() {
 		widget.NewLabelWithStyle("Activity & Error Logs", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		clearLogBtn,
 	)
-	// Dark contrast background container for log area
 	logTab := container.NewBorder(logHeader, nil, nil, nil, logEntry)
 
 	// Main Layout Tabs
@@ -424,8 +472,8 @@ func main() {
 
 		for {
 			interval := cfg.SyncIntervalSec
-			if interval < 5 {
-				interval = 5
+			if interval < 120 {
+				interval = 120
 			}
 			time.Sleep(time.Duration(interval) * time.Second)
 

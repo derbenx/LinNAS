@@ -16,12 +16,13 @@ import (
 )
 
 type SmartDiskInfo struct {
-	Device   string `json:"device"`
-	Model    string `json:"model"`
-	Capacity string `json:"capacity"`
-	Health   string `json:"health"` // "PASSED", "FAILED", "UNKNOWN"
-	TempC    int    `json:"temp_c,omitempty"`
-	RawInfo  string `json:"raw_info,omitempty"`
+	Device        string `json:"device"`
+	FirstPartName string `json:"first_part_name,omitempty"`
+	Model         string `json:"model"`
+	Capacity      string `json:"capacity"`
+	Health        string `json:"health"` // "PASSED", "FAILED", "UNKNOWN"
+	TempC         int    `json:"temp_c,omitempty"`
+	RawInfo       string `json:"raw_info,omitempty"`
 }
 
 type SyncEngine struct {
@@ -213,6 +214,16 @@ func (s *SyncEngine) writeClientDebugLog(format string, args ...interface{}) {
 		binDir = filepath.Dir(execPath)
 	}
 	logFile := filepath.Join(binDir, "debug.log")
+
+	// Rotate log if exceeds 250KB to keep it trimmed and manageable
+	if fi, err := os.Stat(logFile); err == nil && fi.Size() > 250*1024 {
+		data, rErr := os.ReadFile(logFile)
+		if rErr == nil && len(data) > 120*1024 {
+			// Keep the last 120KB
+			_ = os.WriteFile(logFile, data[len(data)-120*1024:], 0644)
+		}
+	}
+
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err == nil {
 		_, _ = f.WriteString(entry)
