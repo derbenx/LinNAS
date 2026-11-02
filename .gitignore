@@ -7,4 +7,6 @@ client/*.exe
 client/*.log
 client/config.json
 client/test_config.json
+client/sync_manifest.json
+sync_manifest.json
 data/cloud.json

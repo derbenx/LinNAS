@@ -159,12 +159,18 @@ type CloudHistoryEntry struct {
 	Details     string `json:"details,omitempty"`
 }
 
+type CloudDeletedItem struct {
+	RelPath   string `json:"rel_path"`
+	DeletedAt int64  `json:"deleted_at"` // Unix timestamp
+}
+
 type CloudDirMeta struct {
 	Directory   string                       `json:"directory"`
 	ServerMAC   string                       `json:"server_mac"`
 	VolumeUUID  string                       `json:"volume_uuid"`
 	LastScan    string                       `json:"last_scan"`
 	Files       map[string]CloudMetaFile     `json:"files"`
+	Deleted     map[string]int64             `json:"deleted,omitempty"` // basename -> deleted_at unix timestamp
 	History     []CloudHistoryEntry          `json:"history"`
 }
 
@@ -3053,6 +3059,7 @@ func loadCloudDirMeta(rootFolder, relSubdir string) CloudDirMeta {
 	meta.ServerMAC = getPrimaryMAC()
 	meta.VolumeUUID = getVolumeUUID(rootFolder)
 	meta.Files = make(map[string]CloudMetaFile)
+	meta.Deleted = make(map[string]int64)
 	meta.History = make([]CloudHistoryEntry, 0)
 
 	b, err := os.ReadFile(metaFile)
@@ -3060,6 +3067,9 @@ func loadCloudDirMeta(rootFolder, relSubdir string) CloudDirMeta {
 		_ = json.Unmarshal(b, &meta)
 		if meta.Files == nil {
 			meta.Files = make(map[string]CloudMetaFile)
+		}
+		if meta.Deleted == nil {
+			meta.Deleted = make(map[string]int64)
 		}
 		if meta.History == nil {
 			meta.History = make([]CloudHistoryEntry, 0)
@@ -3387,8 +3397,10 @@ func handleCloudList(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var items []CloudItem
+	var deletedItems []CloudDeletedItem
 
 	if recursive {
+		// Collect active items
 		err = filepath.Walk(targetDir, func(p string, info os.FileInfo, walkErr error) error {
 			if walkErr != nil {
 				return nil
@@ -3418,6 +3430,34 @@ func handleCloudList(w http.ResponseWriter, r *http.Request) {
 			items = append(items, item)
 			return nil
 		})
+
+		// Scan .cloud_meta to collect deletion tombstones
+		metaBase := filepath.Join(rootFolder, ".cloud_meta")
+		if _, mErr := os.Stat(metaBase); mErr == nil {
+			_ = filepath.Walk(metaBase, func(p string, info os.FileInfo, walkErr error) error {
+				if walkErr != nil || info.IsDir() {
+					return nil
+				}
+				if strings.HasPrefix(info.Name(), ".cloud-") && strings.HasSuffix(info.Name(), ".json") {
+					metaRelDir, _ := filepath.Rel(metaBase, filepath.Dir(p))
+					if metaRelDir == "." {
+						metaRelDir = ""
+					}
+					metaData := loadCloudDirMeta(rootFolder, metaRelDir)
+					for delName, delTime := range metaData.Deleted {
+						delRel := delName
+						if metaRelDir != "" {
+							delRel = filepath.ToSlash(filepath.Join(metaRelDir, delName))
+						}
+						deletedItems = append(deletedItems, CloudDeletedItem{
+							RelPath:   delRel,
+							DeletedAt: delTime,
+						})
+					}
+				}
+				return nil
+			})
+		}
 	} else {
 		entries, readErr := os.ReadDir(targetDir)
 		if readErr != nil {
@@ -3469,12 +3509,24 @@ func handleCloudList(w http.ResponseWriter, r *http.Request) {
 		if updatedMeta {
 			_ = saveCloudDirMeta(rootFolder, cleanRel, dirMeta)
 		}
+
+		for delName, delTime := range dirMeta.Deleted {
+			delRel := delName
+			if cleanRel != "" {
+				delRel = filepath.ToSlash(filepath.Join(cleanRel, delName))
+			}
+			deletedItems = append(deletedItems, CloudDeletedItem{
+				RelPath:   delRel,
+				DeletedAt: delTime,
+			})
+		}
 	}
 
 	jsonResponse(w, map[string]interface{}{
 		"success":   true,
 		"path":      cleanRel,
 		"items":     items,
+		"deleted":   deletedItems,
 		"timestamp": time.Now().Unix(),
 	})
 }
@@ -3663,6 +3715,9 @@ func handleCloudSave(w http.ResponseWriter, r *http.Request) {
 		SHA256:      newSha,
 		LastUpdated: time.Now().Format(time.RFC3339),
 	}
+	if dirMeta.Deleted != nil {
+		delete(dirMeta.Deleted, baseName) // Clear deletion tombstone on re-save
+	}
 	_ = saveCloudDirMeta(rootFolder, relDir, dirMeta)
 
 	sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
@@ -3840,8 +3895,13 @@ func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Update metadata and history
+	// Update metadata, tombstone deleted map, and history
 	delete(dirMeta.Files, baseName)
+	if dirMeta.Deleted == nil {
+		dirMeta.Deleted = make(map[string]int64)
+	}
+	nowUnix := time.Now().Unix()
+	dirMeta.Deleted[baseName] = nowUnix
 	dirMeta.History = append(dirMeta.History, CloudHistoryEntry{
 		Action:     "delete",
 		OrigPath:   cleanRel,

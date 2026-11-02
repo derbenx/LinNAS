@@ -25,18 +25,28 @@ type SmartDiskInfo struct {
 }
 
 type SyncEngine struct {
-	cfg        ClientConfig
-	crypto     *ClientCrypto
-	httpClient *http.Client
-	cookieJar  *cookiejar.Jar
-	syncLock   sync.Mutex
-	isLoggedIn bool
-	stopChan   chan struct{}
-	lastActive time.Time
-	statusMsg  string
-	statusMu   sync.RWMutex
-	onStatus   func(string)
+	cfg          ClientConfig
+	crypto       *ClientCrypto
+	httpClient   *http.Client
+	cookieJar    *cookiejar.Jar
+	syncLock     sync.Mutex
+	isLoggedIn   bool
+	stopChan     chan struct{}
+	lastActive   time.Time
+	statusMsg    string
+	statusMu     sync.RWMutex
+	onStatus     func(string)
 	onSmartAlert func(string)
+	manifest     map[string]TrackedFile // relPath -> tracked state
+	manifestMu   sync.Mutex
+}
+
+type TrackedFile struct {
+	RelPath string `json:"rel_path"`
+	ModTime int64  `json:"mod_time"`
+	Size    int64  `json:"size"`
+	SHA256  string `json:"sha256,omitempty"`
+	Deleted bool   `json:"deleted,omitempty"`
 }
 
 type ServerItem struct {
@@ -46,6 +56,11 @@ type ServerItem struct {
 	Size    int64  `json:"size"`
 	ModTime int64  `json:"mod_time"`
 	SHA256  string `json:"sha256,omitempty"`
+}
+
+type ServerDeletedItem struct {
+	RelPath   string `json:"rel_path"`
+	DeletedAt int64  `json:"deleted_at"`
 }
 
 func NewSyncEngine(cfg ClientConfig) (*SyncEngine, error) {
@@ -61,7 +76,7 @@ func NewSyncEngine(cfg ClientConfig) (*SyncEngine, error) {
 	if !strings.HasPrefix(serverURL, "http://") && !strings.HasPrefix(serverURL, "https://") {
 		serverURL = "http://" + serverURL
 	}
-	return &SyncEngine{
+	engine := &SyncEngine{
 		cfg:        cfg,
 		crypto:     NewClientCrypto(serverURL),
 		httpClient: client,
@@ -69,7 +84,45 @@ func NewSyncEngine(cfg ClientConfig) (*SyncEngine, error) {
 		stopChan:   make(chan struct{}),
 		lastActive: time.Now(),
 		statusMsg:  "Idle",
-	}, nil
+		manifest:   make(map[string]TrackedFile),
+	}
+	engine.loadManifest()
+	return engine, nil
+}
+
+func (s *SyncEngine) getManifestPath() string {
+	binDir := filepath.Dir(s.cfg.LocalSyncDir)
+	if execPath, err := os.Executable(); err == nil {
+		binDir = filepath.Dir(execPath)
+	}
+	return filepath.Join(binDir, "sync_manifest.json")
+}
+
+func (s *SyncEngine) loadManifest() {
+	s.manifestMu.Lock()
+	defer s.manifestMu.Unlock()
+	data, err := os.ReadFile(s.getManifestPath())
+	if err == nil && len(data) > 0 {
+		var list []TrackedFile
+		if err := json.Unmarshal(data, &list); err == nil {
+			for _, tf := range list {
+				s.manifest[tf.RelPath] = tf
+			}
+		}
+	}
+}
+
+func (s *SyncEngine) saveManifest() {
+	s.manifestMu.Lock()
+	defer s.manifestMu.Unlock()
+	list := make([]TrackedFile, 0, len(s.manifest))
+	for _, tf := range s.manifest {
+		list = append(list, tf)
+	}
+	data, err := json.MarshalIndent(list, "", "  ")
+	if err == nil {
+		_ = os.WriteFile(s.getManifestPath(), data, 0644)
+	}
 }
 
 func (s *SyncEngine) SetStatus(msg string) {
@@ -112,10 +165,8 @@ func (s *SyncEngine) EnsureAuthenticated(password string) error {
 	}
 
 	if password != "" {
-		// If user typed a password in this session
 		payload["password"] = password
 	} else if s.cfg.PasswordHash != "" {
-		// Use saved SHA-256 hash (no plaintext password stored)
 		payload["password_hash"] = s.cfg.PasswordHash
 	}
 
@@ -247,7 +298,7 @@ func (s *SyncEngine) CheckSMARTDriveHealth() (bool, []SmartDiskInfo, error) {
 	return data.OverallHealthy, data.Disks, nil
 }
 
-// PerformSync runs a single pass of lazy two-way sync
+// PerformSync runs a single pass of lazy two-way sync with deletion tracking
 func (s *SyncEngine) PerformSync(password string) error {
 	s.syncLock.Lock()
 	defer s.syncLock.Unlock()
@@ -268,7 +319,6 @@ func (s *SyncEngine) PerformSync(password string) error {
 		return err
 	}
 
-	// Leisurely delay to avoid maxing out hardware
 	leisurelyDelay := func() {
 		if s.cfg.ThrottleKBps > 0 {
 			time.Sleep(100 * time.Millisecond)
@@ -297,7 +347,6 @@ func (s *SyncEngine) PerformSync(password string) error {
 		s.SetStatus("Failed to read server response: " + err.Error())
 		return err
 	}
-	s.writeClientDebugLog("PerformSync list resp: status=%d len=%d body=%s", resp.StatusCode, len(bodyBytes), string(bodyBytes))
 
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		s.SetStatus("Cloud Service Offline (Stopped on Server)")
@@ -313,12 +362,13 @@ func (s *SyncEngine) PerformSync(password string) error {
 	}
 
 	var listData struct {
-		Success bool         `json:"success"`
-		Items   []ServerItem `json:"items"`
-		Error   string       `json:"error,omitempty"`
+		Success bool                `json:"success"`
+		Items   []ServerItem        `json:"items"`
+		Deleted []ServerDeletedItem `json:"deleted"`
+		Error   string              `json:"error,omitempty"`
 	}
 	if err := json.Unmarshal(bodyBytes, &listData); err != nil {
-		s.writeClientDebugLog("PerformSync unmarshal error on '%s': %v", string(bodyBytes), err)
+		s.writeClientDebugLog("PerformSync unmarshal error: %v", err)
 		s.SetStatus("Failed to parse server list: " + err.Error())
 		return err
 	}
@@ -335,24 +385,88 @@ func (s *SyncEngine) PerformSync(password string) error {
 		serverMap[it.RelPath] = it
 	}
 
-	// 1. Download Server Files to Local (if server version is newer)
+	serverDeletedMap := make(map[string]int64)
+	for _, d := range listData.Deleted {
+		serverDeletedMap[d.RelPath] = d.DeletedAt
+	}
+
+	// -------------------------------------------------------------
+	// STEP A: Detect Local Deletions (present in manifest, now missing locally)
+	// -------------------------------------------------------------
+	s.manifestMu.Lock()
+	for relPath, tf := range s.manifest {
+		if tf.Deleted {
+			continue
+		}
+		parentDir := filepath.Dir(relPath)
+		if !IsFolderSelected(parentDir, s.cfg.SelectedFolders) {
+			continue
+		}
+
+		localPath := filepath.Join(s.cfg.LocalSyncDir, filepath.FromSlash(relPath))
+		if _, statErr := os.Stat(localPath); os.IsNotExist(statErr) {
+			// File existed previously in manifest, but is now gone locally -> User deleted it locally
+			s.writeClientDebugLog("Detected local deletion: %s. Propagating delete to server.", relPath)
+			s.SetStatus(fmt.Sprintf("Syncing deletion of %s...", filepath.Base(relPath)))
+			if delErr := s.deleteRemoteFile(relPath); delErr == nil {
+				tf.Deleted = true
+				s.manifest[relPath] = tf
+			}
+		}
+	}
+	s.manifestMu.Unlock()
+	s.saveManifest()
+
+	// -------------------------------------------------------------
+	// STEP B: Process Server Deletions (server reports deleted or absent from server)
+	// -------------------------------------------------------------
+	for delRel, delTime := range serverDeletedMap {
+		localPath := filepath.Join(s.cfg.LocalSyncDir, filepath.FromSlash(delRel))
+		if lInfo, lErr := os.Stat(localPath); lErr == nil {
+			// If local file has not been modified AFTER the deletion timestamp, safely move to local RecycleBin
+			if lInfo.ModTime().Unix() <= delTime {
+				s.writeClientDebugLog("Server deleted file: %s (deletedAt=%d). Moving local copy to RecycleBin.", delRel, delTime)
+				s.SetStatus(fmt.Sprintf("Archiving deleted file %s...", filepath.Base(delRel)))
+				s.moveLocalToRecycle(localPath, delRel, lInfo)
+				s.manifestMu.Lock()
+				s.manifest[delRel] = TrackedFile{RelPath: delRel, Deleted: true}
+				s.manifestMu.Unlock()
+			}
+		}
+	}
+
+	// -------------------------------------------------------------
+	// STEP C: Download Server Files to Local (if server version is newer)
+	// -------------------------------------------------------------
 	for _, sItem := range listData.Items {
 		if sItem.IsDir || strings.HasPrefix(sItem.RelPath, "RecycleBin") {
 			continue
 		}
 
-		// Check selective sync filter
 		parentDir := filepath.Dir(sItem.RelPath)
 		if !IsFolderSelected(parentDir, s.cfg.SelectedFolders) {
 			continue
 		}
+
+		s.manifestMu.Lock()
+		tracked, wasTracked := s.manifest[sItem.RelPath]
+		s.manifestMu.Unlock()
 
 		localPath := filepath.Join(s.cfg.LocalSyncDir, filepath.FromSlash(sItem.RelPath))
 		localInfo, err := os.Stat(localPath)
 
 		shouldDownload := false
 		if os.IsNotExist(err) {
-			shouldDownload = true
+			// If user deleted it locally, do not resurrect unless server has a NEWER version than when tracked
+			if wasTracked && tracked.Deleted {
+				if sItem.ModTime > tracked.ModTime {
+					// Server has updated the file since client deletion
+					shouldDownload = true
+				}
+			} else {
+				// New file on server
+				shouldDownload = true
+			}
 		} else if err == nil {
 			// Compare modification times: download only if server timestamp is newer
 			if sItem.ModTime > localInfo.ModTime().Unix() {
@@ -362,15 +476,27 @@ func (s *SyncEngine) PerformSync(password string) error {
 
 		if shouldDownload {
 			s.SetStatus(fmt.Sprintf("Downloading %s...", sItem.Name))
-			if err := s.downloadFile(sItem.RelPath, localPath, sItem.ModTime); err != nil {
-				// Continue on individual file download error
-				continue
+			if err := s.downloadFile(sItem.RelPath, localPath, sItem.ModTime); err == nil {
+				s.manifestMu.Lock()
+				s.manifest[sItem.RelPath] = TrackedFile{
+					RelPath: sItem.RelPath,
+					ModTime: sItem.ModTime,
+					Size:    sItem.Size,
+					SHA256:  sItem.SHA256,
+					Deleted: false,
+				}
+				s.manifestMu.Unlock()
+			} else {
+				// Failed download is not added to manifest, so it remains queued to retry on next sync cycle
+				s.writeClientDebugLog("Download failed for %s: %v (will retry on next sync interval)", sItem.RelPath, err)
 			}
 			leisurelyDelay()
 		}
 	}
 
-	// 2. Scan Local Files and Upload to Server (if local version is newer or new)
+	// -------------------------------------------------------------
+	// STEP D: Scan Local Files and Upload to Server
+	// -------------------------------------------------------------
 	s.SetStatus("Scanning local changes...")
 	err = filepath.Walk(s.cfg.LocalSyncDir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil || info.IsDir() {
@@ -395,22 +521,92 @@ func (s *SyncEngine) PerformSync(password string) error {
 
 		shouldUpload := false
 		if !existsOnServer {
-			shouldUpload = true
+			// If server recorded this as deleted, only upload if local file was modified AFTER the deletion
+			if delTime, isServerDeleted := serverDeletedMap[relSlash]; isServerDeleted {
+				if localMod > delTime {
+					shouldUpload = true
+				}
+			} else {
+				shouldUpload = true
+			}
 		} else if localMod > sItem.ModTime {
 			shouldUpload = true
 		}
 
 		if shouldUpload {
 			s.SetStatus(fmt.Sprintf("Uploading %s...", info.Name()))
-			_ = s.uploadFile(path, relSlash, localMod)
+			if err := s.uploadFile(path, relSlash, localMod); err == nil {
+				s.manifestMu.Lock()
+				s.manifest[relSlash] = TrackedFile{
+					RelPath: relSlash,
+					ModTime: localMod,
+					Size:    info.Size(),
+					Deleted: false,
+				}
+				s.manifestMu.Unlock()
+			} else {
+				// Failed upload (e.g. server busy/file locked) is not marked in manifest, staying queued for next interval retry
+				s.writeClientDebugLog("Upload failed for %s: %v (will retry on next sync interval)", relSlash, err)
+			}
 			leisurelyDelay()
+		} else {
+			// Update manifest for in-sync local file
+			s.manifestMu.Lock()
+			s.manifest[relSlash] = TrackedFile{
+				RelPath: relSlash,
+				ModTime: localMod,
+				Size:    info.Size(),
+				Deleted: false,
+			}
+			s.manifestMu.Unlock()
 		}
 
 		return nil
 	})
 
+	s.saveManifest()
 	s.SetStatus("Up to Date")
 	return err
+}
+
+func (s *SyncEngine) moveLocalToRecycle(localPath, relPath string, info os.FileInfo) {
+	dateTag := time.Now().Format("2006-01-02_150405")
+	baseName := filepath.Base(relPath)
+	relDir := filepath.Dir(relPath)
+	if relDir == "." {
+		relDir = ""
+	}
+	recycleDir := filepath.Join(s.cfg.LocalSyncDir, "RecycleBin", relDir)
+	_ = os.MkdirAll(recycleDir, 0755)
+	destPath := filepath.Join(recycleDir, fmt.Sprintf("%s.deleted.%s", baseName, dateTag))
+
+	// Move file into RecycleBin
+	if err := os.Rename(localPath, destPath); err != nil {
+		if data, rErr := os.ReadFile(localPath); rErr == nil {
+			_ = os.WriteFile(destPath, data, 0644)
+			_ = os.Remove(localPath)
+		}
+	}
+	s.writeClientDebugLog("Moved local deleted file %s to RecycleBin at %s", relPath, destPath)
+}
+
+func (s *SyncEngine) deleteRemoteFile(relPath string) error {
+	delReq := map[string]string{"path": relPath}
+	encBody, _, err := s.crypto.EncryptPayload(delReq)
+	if err != nil {
+		return err
+	}
+
+	resp, err := s.httpClient.Post(s.crypto.serverURL+"/api/cloud/delete", "application/json", bytes.NewReader(encBody))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("delete failed with HTTP %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func (s *SyncEngine) downloadFile(relPath, localDest string, modTime int64) error {
