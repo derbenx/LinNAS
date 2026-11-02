@@ -214,13 +214,7 @@
                 const container = document.getElementById('fileList');
                 container.innerHTML = '';
 
-                if (data.parent && data.parent !== currentBrowserPath) {
-                    const upDiv = document.createElement('div');
-                    upDiv.className = 'file-item';
-                    upDiv.innerText = '📁 .. (Parent Directory)';
-                    upDiv.onclick = () => openFilePicker(data.parent);
-                    container.appendChild(upDiv);
-                }
+
 
                 if (data.items) {
                     data.items.forEach(item => {

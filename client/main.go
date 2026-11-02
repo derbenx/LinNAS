@@ -35,13 +35,56 @@ func formatInterval(seconds int) string {
 	return fmt.Sprintf("%d mins", mins)
 }
 
+func createCompactSmartTile(d SmartDiskInfo) fyne.CanvasObject {
+	// Clean device name (e.g. "sda" instead of "/dev/sda" or "(sda1)")
+	devName := strings.TrimPrefix(d.Device, "/dev/")
+	headerText := devName
+	if d.PartLabel != "" {
+		headerText = fmt.Sprintf("%s [%s]", devName, d.PartLabel)
+	}
+
+	nameLabel := canvas.NewText(headerText, color.White)
+	nameLabel.TextStyle = fyne.TextStyle{Bold: true}
+	nameLabel.TextSize = 11
+
+	statusColorText := canvas.NewText("", color.White)
+	statusColorText.TextStyle = fyne.TextStyle{Bold: true}
+	statusColorText.TextSize = 10
+
+	isFail := (d.Health == "FAILED")
+	isPassed := (d.Health == "PASSED")
+
+	if isFail {
+		statusColorText.Text = "❌ FAIL"
+		statusColorText.Color = color.RGBA{R: 255, G: 60, B: 60, A: 255}
+	} else if isPassed {
+		statusColorText.Text = "✅ PASS"
+		statusColorText.Color = color.RGBA{R: 50, G: 205, B: 50, A: 255}
+	} else {
+		statusColorText.Text = "ℹ️ OK"
+		statusColorText.Color = color.RGBA{R: 120, G: 180, B: 255, A: 255}
+	}
+
+	capText := d.Capacity
+	if d.TempC > 0 {
+		capText = fmt.Sprintf("%s | 🌡️ %d°C", d.Capacity, d.TempC)
+	}
+	capLabel := canvas.NewText(capText, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+	capLabel.TextSize = 9
+
+	tileBox := container.NewVBox(
+		nameLabel,
+		container.NewHBox(statusColorText, capLabel),
+	)
+	return widget.NewCard("", "", container.NewPadded(tileBox))
+}
+
 func main() {
 	a := app.NewWithID("com.linnas.cloudclient")
 	w := a.NewWindow("LinNAS Local Cloud")
 
-	// Fit on a single monitor: default to 740x540, center on screen, allow user resize
-	initW := float32(740)
-	initH := float32(540)
+	initW := float32(760)
+	initH := float32(560)
 	w.Resize(fyne.NewSize(initW, initH))
 	w.CenterOnScreen()
 
@@ -51,7 +94,7 @@ func main() {
 		fmt.Println("Error initializing sync engine:", err)
 	}
 
-	// Concise Status indicator badge (strictly truncated to prevent expanding the window)
+	// Status indicator badge
 	statusLabel := widget.NewLabel("Status: " + engine.GetStatus())
 	statusLabel.TextStyle = fyne.TextStyle{Bold: true}
 
@@ -66,7 +109,6 @@ func main() {
 			current := logEntry.Text
 			newEntry := fmt.Sprintf("[%s] %s\n", timestamp, msg)
 
-			// Memory / log rotation: keep last 12,000 characters to prevent excessive growth
 			if len(current) > 15000 {
 				lines := strings.Split(current, "\n")
 				if len(lines) > 100 {
@@ -93,14 +135,54 @@ func main() {
 		appendLog(msg)
 	}
 
-	// SMART alert notification (with "this is a test!" in yellow)
+	smartAlertActive := false
+
+	// SMART alert notification: persistent toaster window that stays open until explicitly dismissed
 	engine.onSmartAlert = func(alert string, isTest bool) {
 		fyne.Do(func() {
-			title := "LinNAS Drive Warning"
-			if isTest {
-				title = "⚠️ THIS IS A TEST!"
+			if smartAlertActive {
+				return // Do not spawn duplicate alert if one is already open
 			}
-			a.SendNotification(fyne.NewNotification(title, alert))
+			smartAlertActive = true
+
+			alertWin := a.NewWindow("⚠️ SMART Hardware Alert")
+			alertWin.Resize(fyne.NewSize(460, 240))
+			alertWin.CenterOnScreen()
+			alertWin.SetFixedSize(true)
+
+			titleText := canvas.NewText("", color.White)
+			titleText.TextStyle = fyne.TextStyle{Bold: true}
+			titleText.TextSize = 16
+
+			if isTest {
+				titleText.Text = "⚠️ THIS IS A TEST!"
+				titleText.Color = color.RGBA{R: 255, G: 220, B: 0, A: 255}
+			} else {
+				titleText.Text = "❌ CRITICAL DRIVE FAILURE DETECTED"
+				titleText.Color = color.RGBA{R: 255, G: 60, B: 60, A: 255}
+			}
+
+			msgLabel := widget.NewLabel(alert)
+			msgLabel.Wrapping = fyne.TextWrapWord
+
+			dismissBtn := widget.NewButtonWithIcon("Acknowledge & Close", theme.ConfirmIcon(), func() {
+				smartAlertActive = false
+				alertWin.Close()
+			})
+
+			alertWin.SetContent(container.NewVBox(
+				titleText,
+				widget.NewSeparator(),
+				msgLabel,
+				widget.NewSeparator(),
+				dismissBtn,
+			))
+
+			alertWin.SetOnClosed(func() {
+				smartAlertActive = false
+			})
+
+			alertWin.Show()
 		})
 	}
 
@@ -127,7 +209,6 @@ func main() {
 	})
 	pauseCheck.SetChecked(cfg.SyncEnabled)
 
-	// Sync mode dropdown: "On a timer" or "When idle for"
 	modeSelect := widget.NewSelect([]string{"On a timer", "When idle for"}, func(selected string) {
 		cfg.SyncMode = selected
 		cfg.IdleOnly = (selected == "When idle for")
@@ -137,9 +218,8 @@ func main() {
 	}
 	modeSelect.SetSelected(cfg.SyncMode)
 
-	// Interval Slider: 2 minutes (120s) to 5 hours (18000s)
 	if cfg.SyncIntervalSec < 120 {
-		cfg.SyncIntervalSec = 300 // default 5 mins
+		cfg.SyncIntervalSec = 300
 	}
 	freqSlider := widget.NewSlider(120, 18000)
 	freqSlider.SetValue(float64(cfg.SyncIntervalSec))
@@ -148,7 +228,6 @@ func main() {
 
 	freqSlider.OnChanged = func(val float64) {
 		secs := int(val)
-		// Round to nearest 30 seconds for clean intervals
 		secs = (secs / 30) * 30
 		if secs < 120 {
 			secs = 120
@@ -332,9 +411,9 @@ func main() {
 	})
 
 	// ==========================================
-	// TAB 3: SMART Drive Monitoring (Glanceable Tiles, No Scrollbar)
+	// TAB 3: Server SMART (Glanceable 5-across mini tiles)
 	// ==========================================
-	smartTilesContainer := container.NewGridWithColumns(2)
+	smartTilesContainer := container.NewGridWithColumns(5)
 
 	refreshSmart := func() {
 		fyne.Do(func() {
@@ -346,7 +425,7 @@ func main() {
 		pwd := pwdEntry.Text
 		go func() {
 			_ = engine.EnsureAuthenticated(pwd)
-			healthy, isTest, disks, err := engine.CheckSMARTDriveHealth()
+			healthy, isTest, disks, clientReports, err := engine.CheckSMARTDriveHealth()
 
 			fyne.Do(func() {
 				smartTilesContainer.Objects = nil
@@ -357,56 +436,29 @@ func main() {
 					return
 				}
 
-				// If test mode or unhealthy, show banner
 				if isTest {
 					testBanner := canvas.NewText("⚠️ THIS IS A TEST! (Simulated Bad Drives Alert)", color.RGBA{R: 255, G: 215, B: 0, A: 255})
 					testBanner.TextStyle = fyne.TextStyle{Bold: true}
 					smartTilesContainer.Add(testBanner)
-					smartTilesContainer.Add(widget.NewLabel("Simulated test active on server"))
 				} else if !healthy {
-					failBanner := canvas.NewText("❌ WARNING: Critical SMART Hardware Failure Detected!", color.RGBA{R: 255, G: 60, B: 60, A: 255})
+					failBanner := canvas.NewText("❌ WARNING: Critical SMART Hardware Failure!", color.RGBA{R: 255, G: 60, B: 60, A: 255})
 					failBanner.TextStyle = fyne.TextStyle{Bold: true}
 					smartTilesContainer.Add(failBanner)
-					smartTilesContainer.Add(widget.NewLabel("Check server drive health immediately"))
+				}
+
+				for _, cr := range clientReports {
+					for _, fd := range cr.Failing {
+						fd.Model = fmt.Sprintf("Client %s (%s)", cr.Client, fd.Model)
+						smartTilesContainer.Add(createCompactSmartTile(fd))
+					}
 				}
 
 				if len(disks) == 0 {
-					smartTilesContainer.Add(widget.NewLabel("No physical storage disks detected or SMART unavailable."))
+					smartTilesContainer.Add(widget.NewLabel("No server storage disks detected."))
 				}
 
 				for _, d := range disks {
-					// Title with drive name and first partition name
-					titleName := d.Device
-					if d.FirstPartName != "" {
-						titleName = fmt.Sprintf("%s (%s)", d.Device, d.FirstPartName)
-					}
-
-					// Health text with bold colors: green for PASSED, red for FAILED
-					statusColorText := canvas.NewText("", color.White)
-					statusColorText.TextStyle = fyne.TextStyle{Bold: true}
-
-					isFail := (d.Health == "FAILED")
-					isPassed := (d.Health == "PASSED")
-
-					if isFail {
-						statusColorText.Text = "Status: ❌ FAILED"
-						statusColorText.Color = color.RGBA{R: 255, G: 60, B: 60, A: 255}
-					} else if isPassed {
-						statusColorText.Text = "Status: ✅ PASSED"
-						statusColorText.Color = color.RGBA{R: 50, G: 205, B: 50, A: 255}
-					} else {
-						statusColorText.Text = "Status: ℹ️ UNKNOWN (OK)"
-						statusColorText.Color = color.RGBA{R: 120, G: 180, B: 255, A: 255}
-					}
-
-					detailsText := fmt.Sprintf("Model: %s\nSize: %s", d.Model, d.Capacity)
-					tileContent := container.NewVBox(
-						statusColorText,
-						widget.NewLabel(detailsText),
-					)
-
-					card := widget.NewCard(titleName, "", tileContent)
-					smartTilesContainer.Add(card)
+					smartTilesContainer.Add(createCompactSmartTile(d))
 				}
 				smartTilesContainer.Refresh()
 			})
@@ -418,11 +470,44 @@ func main() {
 		widget.NewLabelWithStyle("Server Storage SMART Diagnostics", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		refreshSmartBtn,
 	)
-	// Border container with NO scrollbar to fit everything at a glance
 	smartTab := container.NewBorder(smartHeader, nil, nil, nil, smartTilesContainer)
 
 	// ==========================================
-	// TAB 4: Activity & Error Logs
+	// TAB 4: Local SMART (Glanceable 5-across mini tiles)
+	// ==========================================
+	localSmartTilesContainer := container.NewGridWithColumns(5)
+
+	refreshLocalSmart := func() {
+		fyne.Do(func() {
+			localSmartTilesContainer.Objects = nil
+			localHealthy, localDisks, _ := CheckLocalSMARTHealth()
+
+			if !localHealthy {
+				failBanner := canvas.NewText("❌ Local Drive Failure Detected!", color.RGBA{R: 255, G: 60, B: 60, A: 255})
+				failBanner.TextStyle = fyne.TextStyle{Bold: true}
+				localSmartTilesContainer.Add(failBanner)
+			} else {
+				okBanner := canvas.NewText("✅ All Local Disks Healthy", color.RGBA{R: 50, G: 205, B: 50, A: 255})
+				okBanner.TextStyle = fyne.TextStyle{Bold: true}
+				localSmartTilesContainer.Add(okBanner)
+			}
+
+			for _, ld := range localDisks {
+				localSmartTilesContainer.Add(createCompactSmartTile(ld))
+			}
+			localSmartTilesContainer.Refresh()
+		})
+	}
+
+	refreshLocalSmartBtn := widget.NewButtonWithIcon("Refresh Local Disks", theme.ViewRefreshIcon(), refreshLocalSmart)
+	localSmartHeader := container.NewHBox(
+		widget.NewLabelWithStyle("Local PC Storage Health", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		refreshLocalSmartBtn,
+	)
+	localSmartTab := container.NewBorder(localSmartHeader, nil, nil, nil, localSmartTilesContainer)
+
+	// ==========================================
+	// TAB 5: Activity & Error Logs
 	// ==========================================
 	logHeader := container.NewHBox(
 		widget.NewLabelWithStyle("Activity & Error Logs", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -434,7 +519,8 @@ func main() {
 	tabs := container.NewAppTabs(
 		container.NewTabItemWithIcon("Connection", theme.SettingsIcon(), connScroll),
 		container.NewTabItemWithIcon("Folders & Sync", theme.FolderIcon(), foldersScroll),
-		container.NewTabItemWithIcon("SMART Health", theme.WarningIcon(), smartTab),
+		container.NewTabItemWithIcon("Server SMART", theme.WarningIcon(), smartTab),
+		container.NewTabItemWithIcon("Local SMART", theme.ComputerIcon(), localSmartTab),
 		container.NewTabItemWithIcon("Logs & Errors", theme.DocumentIcon(), logTab),
 	)
 
@@ -446,12 +532,23 @@ func main() {
 	mainContent := container.NewBorder(nil, bottomBar, nil, nil, tabs)
 	w.SetContent(mainContent)
 
-	// System Tray Integration
+	// System Tray Integration with right-click menu items for Local SMART and Server SMART
 	if desk, ok := a.(desktop.App); ok {
 		menu := fyne.NewMenu("LinNAS Cloud",
 			fyne.NewMenuItem("Open Client", func() {
 				w.Show()
 			}),
+			fyne.NewMenuItem("View Local SMART Health", func() {
+				w.Show()
+				tabs.SelectIndex(3) // Switch to Local SMART
+				refreshLocalSmart()
+			}),
+			fyne.NewMenuItem("View Server SMART Health", func() {
+				w.Show()
+				tabs.SelectIndex(2) // Switch to Server SMART
+				refreshSmart()
+			}),
+			fyne.NewMenuItemSeparator(),
 			fyne.NewMenuItem("Sync Now", func() {
 				var pwd string
 				fyne.DoAndWait(func() {
@@ -475,7 +572,6 @@ func main() {
 		desk.SetSystemTrayMenu(menu)
 		desk.SetSystemTrayIcon(theme.StorageIcon())
 
-		// Intercept close to minimize to tray
 		w.SetCloseIntercept(func() {
 			w.Hide()
 		})
@@ -486,6 +582,7 @@ func main() {
 		time.Sleep(3 * time.Second)
 		refreshTree()
 		refreshSmart()
+		refreshLocalSmart()
 
 		for {
 			interval := cfg.SyncIntervalSec
@@ -501,6 +598,8 @@ func main() {
 				})
 				_ = engine.PerformSync(pwd)
 			}
+			refreshSmart()
+			refreshLocalSmart()
 		}
 	}()
 

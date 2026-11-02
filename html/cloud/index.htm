@@ -180,6 +180,23 @@
             </div>
         </div>
     </div>
+
+    <!-- Server & Client Storage Health Section -->
+    <div class="section">
+        <div class="section-title">
+            <span>Storage Drives & SMART Diagnostics</span>
+            <button class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.35rem 0.75rem;" onclick="loadServerAndClientSmart()">🔄 Refresh SMART</button>
+        </div>
+        <div style="font-size: 0.85rem; color: #8b949e; margin-bottom: 0.8rem;">Local Server Physical Storage Drives:</div>
+        <div id="serverDisksGrid" class="info-grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); margin-top: 0; margin-bottom: 1.5rem;">
+            <div style="color: #8b949e; font-size: 0.85rem;">Checking drive health...</div>
+        </div>
+
+        <div style="font-size: 0.85rem; color: #8b949e; margin-bottom: 0.8rem;">Connected Client Drives (Reported by Remote PCs):</div>
+        <div id="clientDrivesGrid" class="info-grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); margin-top: 0;">
+            <div style="color: #8b949e; font-size: 0.85rem;">No remote client drive reports yet.</div>
+        </div>
+    </div>
     <p class="subtitle">Secure private cloud synchronization service with thread locking, automatic RecycleBin versioning, and encrypted transfers.</p>
 
     <div class="notice-box">
@@ -267,7 +284,89 @@
 
         async function initCloudUI() {
             await refreshStatus();
+            await loadServerAndClientSmart();
             setInterval(refreshStatus, 3000);
+            setInterval(loadServerAndClientSmart, 15000);
+        }
+
+        async function loadServerAndClientSmart() {
+            try {
+                const res = await fetch('/api/cloud/smart');
+                if (!res.ok) return;
+                const data = await res.json();
+
+                // 1. Render Local Server Disks
+                const sGrid = document.getElementById('serverDisksGrid');
+                sGrid.innerHTML = '';
+                if (!data.disks || data.disks.length === 0) {
+                    sGrid.innerHTML = '<div style="color: #8b949e; font-size: 0.85rem;">No local physical drives detected.</div>';
+                } else {
+                    data.disks.forEach(d => {
+                        const devName = (d.device || '').replace('/dev/', '');
+                        const labelPart = d.part_label ? ` [${d.part_label}]` : '';
+                        const isFail = (d.health === 'FAILED');
+                        const isPassed = (d.health === 'PASSED');
+                        const statusColor = isFail ? '#f85149' : (isPassed ? '#3fb950' : '#58a6ff');
+                        const statusBadge = isFail ? '❌ FAILED' : (isPassed ? '✅ PASSED' : 'ℹ️ OK');
+                        const tempHtml = d.temp_c > 0 ? `<span style="color: #f0883e; margin-left: 6px;">🌡️ ${d.temp_c}°C</span>` : '';
+
+                        const card = document.createElement('div');
+                        card.className = 'info-card';
+                        card.style.padding = '0.75rem';
+                        card.style.borderLeft = `3px solid ${statusColor}`;
+                        card.innerHTML = `
+                            <div style="font-weight: 600; font-size: 0.9rem; color: #f0f6fc; display: flex; justify-content: space-between;">
+                                <span>${devName}${labelPart}</span>
+                                <span style="font-size: 0.8rem; font-weight: bold; color: ${statusColor};">${statusBadge}</span>
+                            </div>
+                            <div style="font-size: 0.8rem; color: #8b949e; margin-top: 4px;">
+                                <span>${d.capacity || '--'} | ${d.model || 'Disk'}</span>
+                                ${tempHtml}
+                            </div>
+                        `;
+                        sGrid.appendChild(card);
+                    });
+                }
+
+                // 2. Render Connected Client Disks
+                const cGrid = document.getElementById('clientDrivesGrid');
+                cGrid.innerHTML = '';
+                if (!data.client_drives || data.client_drives.length === 0) {
+                    cGrid.innerHTML = '<div style="color: #8b949e; font-size: 0.85rem;">No remote client drive reports yet.</div>';
+                } else {
+                    data.client_drives.forEach(cd => {
+                        const clientName = cd.client || 'Unknown Client';
+                        (cd.disks || []).forEach(d => {
+                            const devName = (d.device || '').replace('/dev/', '');
+                            const labelPart = d.part_label ? ` [${d.part_label}]` : '';
+                            const isFail = (d.health === 'FAILED');
+                            const isPassed = (d.health === 'PASSED');
+                            const statusColor = isFail ? '#f85149' : (isPassed ? '#3fb950' : '#58a6ff');
+                            const statusBadge = isFail ? '❌ FAILED' : (isPassed ? '✅ PASSED' : 'ℹ️ OK');
+                            const tempHtml = d.temp_c > 0 ? `<span style="color: #f0883e; margin-left: 6px;">🌡️ ${d.temp_c}°C</span>` : '';
+
+                            const card = document.createElement('div');
+                            card.className = 'info-card';
+                            card.style.padding = '0.75rem';
+                            card.style.borderLeft = `3px solid ${statusColor}`;
+                            card.innerHTML = `
+                                <div style="font-size: 0.75rem; color: #58a6ff; font-weight: bold; margin-bottom: 2px;">🖥️ ${clientName}</div>
+                                <div style="font-weight: 600; font-size: 0.9rem; color: #f0f6fc; display: flex; justify-content: space-between;">
+                                    <span>${devName}${labelPart}</span>
+                                    <span style="font-size: 0.8rem; font-weight: bold; color: ${statusColor};">${statusBadge}</span>
+                                </div>
+                                <div style="font-size: 0.8rem; color: #8b949e; margin-top: 4px;">
+                                    <span>${d.capacity || '--'} | ${d.model || 'Disk'}</span>
+                                    ${tempHtml}
+                                </div>
+                            `;
+                            cGrid.appendChild(card);
+                        });
+                    });
+                }
+            } catch (err) {
+                console.error('Failed to load SMART diagnostics:', err);
+            }
         }
 
         function browseCloudStorageInFileManager() {
@@ -430,20 +529,12 @@
                 const container = document.getElementById('fileList');
                 container.innerHTML = '';
 
-                if (data.parent && data.parent !== currentBrowserPath) {
-                    const upDiv = document.createElement('div');
-                    upDiv.className = 'file-item';
-                    upDiv.innerHTML = '📁 .. (Parent Directory)';
-                    upDiv.onclick = () => openFolderBrowser(data.parent);
-                    container.appendChild(upDiv);
-                }
-
                 if (data.items) {
                     data.items.forEach(item => {
                         if (item.is_dir) {
                             const itemDiv = document.createElement('div');
                             itemDiv.className = 'file-item';
-                            itemDiv.innerHTML = '📁 ' + item.name;
+                            itemDiv.innerHTML = (item.name === '..' ? '⬆️ ' : '📁 ') + item.name;
                             itemDiv.onclick = () => openFolderBrowser(item.path);
                             container.appendChild(itemDiv);
                         }

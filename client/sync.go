@@ -17,6 +17,7 @@ import (
 
 type SmartDiskInfo struct {
 	Device        string `json:"device"`
+	PartLabel     string `json:"part_label,omitempty"`
 	FirstPartName string `json:"first_part_name,omitempty"`
 	Model         string `json:"model"`
 	Capacity      string `json:"capacity"`
@@ -63,6 +64,16 @@ type ServerItem struct {
 type ServerDeletedItem struct {
 	RelPath   string `json:"rel_path"`
 	DeletedAt int64  `json:"deleted_at"`
+}
+
+type ServerLedgerEntry struct {
+	RelPath   string `json:"rel_path"`
+	Action    string `json:"action"` // "created", "modified", "deleted", "restored"
+	Timestamp int64  `json:"timestamp"`
+	ModTime   int64  `json:"mod_time"`
+	Size      int64  `json:"size,omitempty"`
+	SHA256    string `json:"sha256,omitempty"`
+	ClientID  string `json:"client_id,omitempty"`
 }
 
 func NewSyncEngine(cfg ClientConfig) (*SyncEngine, error) {
@@ -308,35 +319,80 @@ func (s *SyncEngine) FetchServerFolderTree() ([]ServerItem, error) {
 	return dirsOnly, nil
 }
 
-// CheckSMARTDriveHealth queries server SMART health status
-func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, error) {
+type ClientFailureReport struct {
+	Client  string          `json:"client"`
+	Failing []SmartDiskInfo `json:"failing"`
+}
+
+// ReportLocalSMARTHealthToServer reports local disk statuses to the server
+func (s *SyncEngine) ReportLocalSMARTHealthToServer(disks []SmartDiskInfo) {
+	reqData := map[string]interface{}{
+		"client_id": s.cfg.Username,
+		"disks":     disks,
+	}
+	encBody, _, err := s.crypto.EncryptPayload(reqData)
+	if err != nil {
+		return
+	}
+	resp, err := s.httpClient.Post(s.crypto.serverURL+"/api/cloud/smart/report", "application/json", bytes.NewReader(encBody))
+	if err == nil {
+		_ = resp.Body.Close()
+	}
+}
+
+// CheckSMARTDriveHealth queries server SMART health status and reports local disk health
+func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, []ClientFailureReport, error) {
+	// 1. Report local drives to server
+	localHealthy, localDisks, _ := CheckLocalSMARTHealth()
+	go s.ReportLocalSMARTHealthToServer(localDisks)
+
 	serverURL := s.crypto.serverURL
 	resp, err := s.httpClient.Get(serverURL + "/api/cloud/smart")
 	if err != nil {
-		return true, false, nil, err
+		return true, false, nil, nil, err
 	}
 	defer resp.Body.Close()
 
 	var data struct {
-		Success        bool            `json:"success"`
-		OverallHealthy bool            `json:"overall_healthy"`
-		IsTest         bool            `json:"is_test"`
-		TestMessage    string          `json:"test_message"`
-		Disks          []SmartDiskInfo `json:"disks"`
+		Success        bool                  `json:"success"`
+		OverallHealthy bool                  `json:"overall_healthy"`
+		IsTest         bool                  `json:"is_test"`
+		TestMessage    string                `json:"test_message"`
+		Disks          []SmartDiskInfo       `json:"disks"`
+		ClientReports  []ClientFailureReport `json:"client_reports"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return true, false, nil, err
+		return true, false, nil, nil, err
 	}
 
-	if !data.OverallHealthy && s.onSmartAlert != nil {
+	if (!data.OverallHealthy || !localHealthy) && s.onSmartAlert != nil {
 		if data.IsTest {
 			s.onSmartAlert("this is a test! Simulated drive failures detected on LinNAS server.", true)
 		} else {
-			s.onSmartAlert("SMART Alert: One or more server storage drives report errors!", false)
+			var failDetails []string
+			for _, d := range data.Disks {
+				if d.Health == "FAILED" {
+					failDetails = append(failDetails, fmt.Sprintf("Server drive %s (%s)", d.Device, d.Model))
+				}
+			}
+			for _, cr := range data.ClientReports {
+				for _, fd := range cr.Failing {
+					failDetails = append(failDetails, fmt.Sprintf("Client %s drive %s", cr.Client, fd.Device))
+				}
+			}
+			if !localHealthy {
+				for _, ld := range localDisks {
+					if ld.Health == "FAILED" {
+						failDetails = append(failDetails, fmt.Sprintf("This PC local drive %s (%s)", ld.Device, ld.Model))
+					}
+				}
+			}
+			detailMsg := strings.Join(failDetails, "\n• ")
+			s.onSmartAlert(fmt.Sprintf("SMART Drive Failure Warning:\n• %s", detailMsg), false)
 		}
 	}
 
-	return data.OverallHealthy, data.IsTest, data.Disks, nil
+	return data.OverallHealthy, data.IsTest, data.Disks, data.ClientReports, nil
 }
 
 // PerformSync runs a single pass of lazy two-way sync with deletion tracking
@@ -369,6 +425,11 @@ func (s *SyncEngine) PerformSync(password string) error {
 	}
 
 	_ = os.MkdirAll(s.cfg.LocalSyncDir, 0755)
+
+	// Check server and client SMART health during file check cycle
+	go func() {
+		_, _, _, _, _ = s.CheckSMARTDriveHealth()
+	}()
 
 	s.SetStatus("Fetching server file index...")
 	serverURL := s.crypto.serverURL
@@ -406,6 +467,7 @@ func (s *SyncEngine) PerformSync(password string) error {
 		Success bool                `json:"success"`
 		Items   []ServerItem        `json:"items"`
 		Deleted []ServerDeletedItem `json:"deleted"`
+		Ledger  []ServerLedgerEntry `json:"ledger"`
 		Error   string              `json:"error,omitempty"`
 	}
 	if err := json.Unmarshal(bodyBytes, &listData); err != nil {
@@ -432,28 +494,43 @@ func (s *SyncEngine) PerformSync(password string) error {
 	}
 
 	// -------------------------------------------------------------
-	// STEP A: Detect Local Deletions (present in manifest, now missing locally)
+	// STEP A: Check Local Files for Deletions and User Restorations
 	// -------------------------------------------------------------
 	s.manifestMu.Lock()
 	for relPath, tf := range s.manifest {
-		if tf.Deleted {
-			continue
-		}
 		parentDir := filepath.Dir(relPath)
 		if !IsFolderSelected(parentDir, s.cfg.SelectedFolders) {
 			continue
 		}
 
 		localPath := filepath.Join(s.cfg.LocalSyncDir, filepath.FromSlash(relPath))
-		if _, statErr := os.Stat(localPath); os.IsNotExist(statErr) {
-			// File existed previously in manifest, but is now gone locally -> User deleted it locally
-			nowUnix := time.Now().Unix()
-			s.writeClientDebugLog("Detected local deletion: %s. Propagating delete to server.", relPath)
-			s.SetStatus(fmt.Sprintf("Syncing deletion of %s...", filepath.Base(relPath)))
-			if delErr := s.deleteRemoteFile(relPath); delErr == nil {
-				tf.Deleted = true
-				tf.DeletedAt = nowUnix
+		lInfo, statErr := os.Stat(localPath)
+
+		if os.IsNotExist(statErr) {
+			// File is missing locally
+			if !tf.Deleted {
+				// User deleted it locally -> record deletion and inform server
+				nowUnix := time.Now().Unix()
+				s.writeClientDebugLog("Detected local deletion: %s. Propagating delete to server.", relPath)
+				s.SetStatus(fmt.Sprintf("Syncing deletion of %s...", filepath.Base(relPath)))
+				if delErr := s.deleteRemoteFile(relPath); delErr == nil {
+					tf.Deleted = true
+					tf.DeletedAt = nowUnix
+					s.manifest[relPath] = tf
+				}
+			}
+		} else if statErr == nil && !lInfo.IsDir() {
+			// File EXISTS locally on disk!
+			if tf.Deleted {
+				// User explicitly restored or copied this file back into the folder!
+				s.writeClientDebugLog("User placed previously deleted file back into folder: %s. Revoking deletion.", relPath)
+				tf.Deleted = false
+				tf.DeletedAt = 0
+				tf.ModTime = lInfo.ModTime().Unix()
+				tf.Size = lInfo.Size()
 				s.manifest[relPath] = tf
+				// Clear any server deletion tombstone so it won't be deleted in Step B
+				delete(serverDeletedMap, relPath)
 			}
 		}
 	}
@@ -461,13 +538,18 @@ func (s *SyncEngine) PerformSync(password string) error {
 	s.saveManifest()
 
 	// -------------------------------------------------------------
-	// STEP B: Process Server Deletions (server reports deleted or absent from server)
+	// STEP B: Process Server Deletions
 	// -------------------------------------------------------------
 	for delRel, delTime := range serverDeletedMap {
 		localPath := filepath.Join(s.cfg.LocalSyncDir, filepath.FromSlash(delRel))
 		if lInfo, lErr := os.Stat(localPath); lErr == nil {
-			// If local file has not been modified AFTER the deletion timestamp, safely move to local RecycleBin
-			if lInfo.ModTime().Unix() <= delTime {
+			s.manifestMu.Lock()
+			tracked, wasTracked := s.manifest[delRel]
+			s.manifestMu.Unlock()
+
+			// Only delete if file was tracked by client before the deletion occurred
+			// and has not been un-deleted/placed back by the user
+			if wasTracked && !tracked.Deleted && tracked.ModTime <= delTime {
 				s.writeClientDebugLog("Server deleted file: %s (deletedAt=%d). Moving local copy to RecycleBin.", delRel, delTime)
 				s.SetStatus(fmt.Sprintf("Archiving deleted file %s...", filepath.Base(delRel)))
 				s.moveLocalToRecycle(localPath, delRel, lInfo)
@@ -577,14 +659,7 @@ func (s *SyncEngine) PerformSync(password string) error {
 
 		shouldUpload := false
 		if !existsOnServer {
-			// If server recorded this as deleted, only upload if local file was modified AFTER the deletion
-			if delTime, isServerDeleted := serverDeletedMap[relSlash]; isServerDeleted {
-				if localMod > delTime {
-					shouldUpload = true
-				}
-			} else {
-				shouldUpload = true
-			}
+			shouldUpload = true
 		} else if localMod > sItem.ModTime {
 			shouldUpload = true
 		}
@@ -659,7 +734,11 @@ func (s *SyncEngine) moveLocalToRecycle(localPath, relPath string, info os.FileI
 }
 
 func (s *SyncEngine) deleteRemoteFile(relPath string) error {
-	delReq := map[string]string{"path": relPath}
+	delReq := map[string]interface{}{
+		"path":        relPath,
+		"client_time": time.Now().Unix(),
+		"client_id":   s.cfg.Username,
+	}
 	encBody, _, err := s.crypto.EncryptPayload(delReq)
 	if err != nil {
 		return err
@@ -736,6 +815,8 @@ func (s *SyncEngine) uploadFile(localPath, relPath string, modTime int64) error 
 		"path":        relPath,
 		"content_b64": base64.StdEncoding.EncodeToString(contentBytes),
 		"mod_time":    modTime,
+		"client_time": time.Now().Unix(),
+		"client_id":   s.cfg.Username,
 	}
 
 	encBody, aesKey, err := s.crypto.EncryptPayload(saveReq)

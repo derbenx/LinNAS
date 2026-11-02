@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -135,6 +136,9 @@ var (
 
 	cloudSmartTestMu sync.RWMutex
 	cloudSmartTestSimulated bool
+
+	clientSMARTReportsMu sync.RWMutex
+	clientSMARTReports   = make(map[string][]SmartDiskInfo) // clientIP/ID -> reported disks
 )
 
 type CloudConfig struct {
@@ -152,8 +156,20 @@ type CloudMetaFile struct {
 	LastUpdated string `json:"last_updated"`
 }
 
+type CloudLedgerEntry struct {
+	RelPath   string `json:"rel_path"`
+	Action    string `json:"action"` // "created", "modified", "deleted", "restored"
+	Timestamp int64  `json:"timestamp"` // Unix timestamp when action occurred
+	ModTime   int64  `json:"mod_time"`
+	Size      int64  `json:"size,omitempty"`
+	SHA256    string `json:"sha256,omitempty"`
+	ClientID  string `json:"client_id,omitempty"`
+	ClientIP  string `json:"client_ip,omitempty"` // Remote client IP address
+	Details   string `json:"details,omitempty"`
+}
+
 type CloudHistoryEntry struct {
-	Action      string `json:"action"` // "overwrite", "delete", "conflict_reject"
+	Action      string `json:"action"` // "overwrite", "delete", "conflict_reject", "restore"
 	OrigPath    string `json:"orig_path"`
 	BackupPath  string `json:"backup_path,omitempty"`
 	Timestamp   string `json:"timestamp"`
@@ -174,6 +190,7 @@ type CloudDirMeta struct {
 	LastScan    string                       `json:"last_scan"`
 	Files       map[string]CloudMetaFile     `json:"files"`
 	Deleted     map[string]int64             `json:"deleted,omitempty"` // basename -> deleted_at unix timestamp
+	Ledger      []CloudLedgerEntry           `json:"ledger,omitempty"`
 	History     []CloudHistoryEntry          `json:"history"`
 }
 
@@ -2459,6 +2476,7 @@ func main() {
 	mux.HandleFunc("/api/cloud/delete", authMiddleware(handleCloudDelete))
 	mux.HandleFunc("/api/cloud/mkdir", authMiddleware(handleCloudMkdir))
 	mux.HandleFunc("/api/cloud/smart", authMiddleware(handleCloudSmart))
+	mux.HandleFunc("/api/cloud/smart/report", authMiddleware(handleCloudSmartReport))
 	mux.HandleFunc("/api/cloud/smart/test_toggle", authMiddleware(handleCloudSmartTestToggle))
 	mux.HandleFunc("/api/settings/get", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, map[string]interface{}{
@@ -2955,6 +2973,21 @@ func saveCloudConfig(cfg CloudConfig) error {
 	return nil
 }
 
+func getClientRemoteIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		return strings.TrimSpace(parts[0])
+	}
+	if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+		return strings.TrimSpace(xrip)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
 func getPrimaryIP() string {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err == nil {
@@ -3124,6 +3157,7 @@ func loadCloudDirMeta(rootFolder, relSubdir string) CloudDirMeta {
 	meta.VolumeUUID = getVolumeUUID(rootFolder)
 	meta.Files = make(map[string]CloudMetaFile)
 	meta.Deleted = make(map[string]int64)
+	meta.Ledger = make([]CloudLedgerEntry, 0)
 	meta.History = make([]CloudHistoryEntry, 0)
 
 	// Check .cloud_data in the actual directory first
@@ -3151,6 +3185,9 @@ func loadCloudDirMeta(rootFolder, relSubdir string) CloudDirMeta {
 		if meta.Deleted == nil {
 			meta.Deleted = make(map[string]int64)
 		}
+		if meta.Ledger == nil {
+			meta.Ledger = make([]CloudLedgerEntry, 0)
+		}
 		if meta.History == nil {
 			meta.History = make([]CloudHistoryEntry, 0)
 		}
@@ -3158,8 +3195,34 @@ func loadCloudDirMeta(rootFolder, relSubdir string) CloudDirMeta {
 	return meta
 }
 
+// cleanCloudLedger ensures the ledger is self-cleaning, keeping at most 10 chronological entries per file
+func cleanCloudLedger(entries []CloudLedgerEntry) []CloudLedgerEntry {
+	if len(entries) == 0 {
+		return entries
+	}
+	// Group counts by file from newest to oldest
+	counts := make(map[string]int)
+	var filtered []CloudLedgerEntry
+
+	// Iterate in reverse to keep the newest entries
+	for i := len(entries) - 1; i >= 0; i-- {
+		e := entries[i]
+		if counts[e.RelPath] < 10 {
+			counts[e.RelPath]++
+			filtered = append(filtered, e)
+		}
+	}
+
+	// Reverse back to preserve chronological order
+	for i, j := 0, len(filtered)-1; i < j; i, j = i+1, j-1 {
+		filtered[i], filtered[j] = filtered[j], filtered[i]
+	}
+	return filtered
+}
+
 func saveCloudDirMeta(rootFolder, relSubdir string, meta CloudDirMeta) error {
 	meta.LastScan = time.Now().Format(time.RFC3339)
+	meta.Ledger = cleanCloudLedger(meta.Ledger)
 	b, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return err
@@ -3267,12 +3330,52 @@ func handleCloudStatus(w http.ResponseWriter, r *http.Request) {
 
 type SmartDiskInfo struct {
 	Device        string `json:"device"`
+	PartLabel     string `json:"part_label,omitempty"`     // Volume / partition label e.g. "StorageVault"
 	FirstPartName string `json:"first_part_name,omitempty"` // e.g. "sda1" or "vda1"
 	Model         string `json:"model"`
 	Capacity      string `json:"capacity"`
 	Health        string `json:"health"` // "PASSED", "FAILED", "UNKNOWN"
 	TempC         int    `json:"temp_c,omitempty"`
 	RawInfo       string `json:"raw_info,omitempty"`
+}
+
+func handleCloudSmartReport(w http.ResponseWriter, r *http.Request) {
+	recordCloudActivity()
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+	decryptedBody, _, err := decryptPayloadWithKey(bodyBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"decryption_failed: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		ClientID string          `json:"client_id"`
+		Disks    []SmartDiskInfo `json:"disks"`
+	}
+	if err := json.Unmarshal(decryptedBody, &req); err != nil {
+		http.Error(w, "Invalid JSON data", http.StatusBadRequest)
+		return
+	}
+
+	clientIP := getClientRemoteIP(r)
+	clientKey := clientIP
+	if req.ClientID != "" {
+		clientKey = fmt.Sprintf("%s (%s)", req.ClientID, clientIP)
+	}
+
+	clientSMARTReportsMu.Lock()
+	clientSMARTReports[clientKey] = req.Disks
+	clientSMARTReportsMu.Unlock()
+
+	jsonResponse(w, map[string]interface{}{"success": true})
 }
 
 func handleCloudSmartTestToggle(w http.ResponseWriter, r *http.Request) {
@@ -3315,32 +3418,43 @@ func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
 					model = strings.Join(fields[3:], " ")
 				}
 
-				// Look for first partition name
+				// Look for partition labels and partition names
+				partLabel := ""
 				firstPart := ""
-				partOut, pErr := exec.Command("lsblk", "-n", "-l", "-o", "NAME,TYPE", "/dev/"+dev).CombinedOutput()
+				partOut, pErr := exec.Command("lsblk", "-n", "-l", "-o", "NAME,LABEL,TYPE", "/dev/"+dev).CombinedOutput()
 				if pErr == nil {
 					pLines := strings.Split(strings.TrimSpace(string(partOut)), "\n")
 					for _, pl := range pLines {
 						pFields := strings.Fields(pl)
-						if len(pFields) >= 2 && pFields[1] == "part" {
-							firstPart = pFields[0]
-							break
+						if len(pFields) >= 3 && pFields[len(pFields)-1] == "part" {
+							if firstPart == "" {
+								firstPart = pFields[0]
+							}
+							if len(pFields) == 3 && pFields[1] != "" {
+								partLabel = pFields[1]
+								break
+							}
+						} else if len(pFields) >= 2 && pFields[len(pFields)-1] == "disk" && len(pFields) == 3 {
+							if partLabel == "" {
+								partLabel = pFields[1]
+							}
 						}
 					}
 				}
 
 				info := SmartDiskInfo{
 					Device:        "/dev/" + dev,
+					PartLabel:     partLabel,
 					FirstPartName: firstPart,
 					Capacity:      size,
 					Model:         model,
 					Health:        "UNKNOWN",
 				}
 
-				// Check SMART health via smartctl
-				sCmd := exec.Command("smartctl", "-H", "/dev/"+dev)
+				// Check SMART health and temperature via smartctl
+				sCmd := exec.Command("smartctl", "-A", "-H", "/dev/"+dev)
 				if os.Getuid() != 0 {
-					sCmd = exec.Command("sudo", "-n", "smartctl", "-H", "/dev/"+dev)
+					sCmd = exec.Command("sudo", "-n", "smartctl", "-A", "-H", "/dev/"+dev)
 				}
 				sOut, sErr := sCmd.CombinedOutput()
 				sStr := string(sOut)
@@ -3362,6 +3476,20 @@ func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
 					info.Health = "UNKNOWN"
 				}
 
+				// Extract drive temperature in Celsius if available
+				for _, line := range strings.Split(sStr, "\n") {
+					upLine := strings.ToUpper(line)
+					if strings.Contains(upLine, "TEMPERATURE_CELSIUS") || strings.Contains(upLine, "AIRFLOW_TEMPERATURE_CEL") || strings.Contains(upLine, "CURRENT DRIVE TEMPERATURE") {
+						fields := strings.Fields(line)
+						if len(fields) >= 10 {
+							if val, convErr := strconv.Atoi(fields[9]); convErr == nil && val > 0 && val < 120 {
+								info.TempC = val
+								break
+							}
+						}
+					}
+				}
+
 				info.RawInfo = strings.TrimSpace(sStr)
 				disks = append(disks, info)
 			}
@@ -3374,22 +3502,57 @@ func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
 		disks = append([]SmartDiskInfo{
 			{
 				Device:        "/dev/sda",
-				FirstPartName: "sda1",
-				Model:         "Samsung 980 PRO (SIMULATED ERROR)",
+				PartLabel:     "NVMe-Fast",
+				Model:         "Samsung 980 PRO",
 				Capacity:      "1.0 TB",
 				Health:        "FAILED",
+				TempC:         58,
 				RawInfo:       "SMART overall-health self-assessment test result: FAILED (Test Mode Active)",
 			},
 			{
 				Device:        "/dev/sdb",
-				FirstPartName: "sdb1",
-				Model:         "WDC WD40EFAX (SIMULATED ERROR)",
+				PartLabel:     "MediaVault",
+				Model:         "WDC WD40EFAX",
 				Capacity:      "4.0 TB",
 				Health:        "FAILED",
+				TempC:         42,
 				RawInfo:       "SMART overall-health self-assessment test result: FAILED (Test Mode Active)",
 			},
 		}, disks...)
 	}
+
+	// Include all disks reported by remote clients
+	clientSMARTReportsMu.RLock()
+	type ClientDiskSummary struct {
+		Client string          `json:"client"` // Client ID / IP
+		Disks  []SmartDiskInfo `json:"disks"`
+	}
+	type ClientFailureReport struct {
+		Client  string          `json:"client"`
+		Failing []SmartDiskInfo `json:"failing"`
+	}
+	var allClientDrives []ClientDiskSummary
+	var clientReports []ClientFailureReport
+	for cKey, cDisks := range clientSMARTReports {
+		var failingDisks []SmartDiskInfo
+		for _, d := range cDisks {
+			if d.Health == "FAILED" {
+				failingDisks = append(failingDisks, d)
+				overallHealthy = false
+			}
+		}
+		if len(failingDisks) > 0 {
+			clientReports = append(clientReports, ClientFailureReport{
+				Client:  cKey,
+				Failing: failingDisks,
+			})
+		}
+		allClientDrives = append(allClientDrives, ClientDiskSummary{
+			Client: cKey,
+			Disks:  cDisks,
+		})
+	}
+	clientSMARTReportsMu.RUnlock()
 
 	jsonResponse(w, map[string]interface{}{
 		"success":         true,
@@ -3397,6 +3560,8 @@ func handleCloudSmart(w http.ResponseWriter, r *http.Request) {
 		"is_test":         isTestSimulated,
 		"test_message":    "This is a test!",
 		"disks":           disks,
+		"client_reports":  clientReports,
+		"client_drives":   allClientDrives,
 		"timestamp":       time.Now().Unix(),
 	})
 }
@@ -3550,6 +3715,7 @@ func handleCloudList(w http.ResponseWriter, r *http.Request) {
 
 	var items []CloudItem
 	var deletedItems []CloudDeletedItem
+	var ledgerItems []CloudLedgerEntry
 
 	if recursive {
 		// Collect active items
@@ -3607,6 +3773,7 @@ func handleCloudList(w http.ResponseWriter, r *http.Request) {
 							DeletedAt: delTime,
 						})
 					}
+					ledgerItems = append(ledgerItems, metaData.Ledger...)
 				}
 				return nil
 			})
@@ -3673,13 +3840,20 @@ func handleCloudList(w http.ResponseWriter, r *http.Request) {
 				DeletedAt: delTime,
 			})
 		}
+		ledgerItems = append(ledgerItems, dirMeta.Ledger...)
 	}
+
+	// Sort ledger chronologically
+	sort.Slice(ledgerItems, func(i, j int) bool {
+		return ledgerItems[i].Timestamp < ledgerItems[j].Timestamp
+	})
 
 	jsonResponse(w, map[string]interface{}{
 		"success":   true,
 		"path":      cleanRel,
 		"items":     items,
 		"deleted":   deletedItems,
+		"ledger":    ledgerItems,
 		"timestamp": time.Now().Unix(),
 	})
 }
@@ -3715,6 +3889,8 @@ func handleCloudSave(w http.ResponseWriter, r *http.Request) {
 		ContentB64  string `json:"content_b64"`
 		ContentText string `json:"content_text"`
 		ModTime     int64  `json:"mod_time"`
+		ClientTime  int64  `json:"client_time"` // Client's current system timestamp
+		ClientID    string `json:"client_id"`
 		Force       bool   `json:"force"`
 	}
 	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.Path == "" {
@@ -3764,13 +3940,27 @@ func handleCloudSave(w http.ResponseWriter, r *http.Request) {
 	baseName := filepath.Base(cleanRel)
 	dirMeta := loadCloudDirMeta(rootFolder, relDir)
 
+	// Server clock normalization: adjust incoming client modTime based on client-to-server clock offset
+	nowServer := time.Now().Unix()
+	effectiveModTime := req.ModTime
+	if req.ClientTime > 0 && req.ModTime > 0 {
+		clockOffset := nowServer - req.ClientTime
+		// Normalize to server timeline if client clock drifts
+		if clockOffset > 2 || clockOffset < -2 {
+			effectiveModTime = req.ModTime + clockOffset
+		}
+	}
+	if effectiveModTime <= 0 {
+		effectiveModTime = nowServer
+	}
+
 	// Check if file already exists
 	existingInfo, err := os.Stat(targetFile)
 	if err == nil && !existingInfo.IsDir() {
 		existingModTime := existingInfo.ModTime().Unix()
 
 		// Date comparison: if incoming file is older than server's file and not forced
-		if req.ModTime > 0 && req.ModTime < existingModTime && !req.Force {
+		if effectiveModTime < existingModTime && !req.Force {
 			// Save the attempted older upload to RecycleBin
 			dateTag := time.Now().Format("2006-01-02_150405")
 			olderBackupName := fmt.Sprintf("%s.rejected_older.%s", baseName, dateTag)
@@ -3858,20 +4048,27 @@ func handleCloudSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update mod time if specified
-	if req.ModTime > 0 {
-		mTime := time.Unix(req.ModTime, 0)
+	// Update mod time with normalized timestamp
+	if effectiveModTime > 0 {
+		mTime := time.Unix(effectiveModTime, 0)
 		_ = os.Chtimes(targetFile, mTime, mTime)
 	}
 
 	// Recalculate checksum and update dir metadata
 	newSha := calculateFileSHA256(targetFile)
 	newFi, _ := os.Stat(targetFile)
-	modT := time.Now().Unix()
+	modT := effectiveModTime
 	size := int64(len(fileData))
 	if newFi != nil {
 		modT = newFi.ModTime().Unix()
 		size = newFi.Size()
+	}
+
+	actionType := "modified"
+	if _, wasDeleted := dirMeta.Deleted[baseName]; wasDeleted {
+		actionType = "restored"
+	} else if _, existed := dirMeta.Files[baseName]; !existed {
+		actionType = "created"
 	}
 
 	dirMeta.Files[baseName] = CloudMetaFile{
@@ -3884,6 +4081,21 @@ func handleCloudSave(w http.ResponseWriter, r *http.Request) {
 	if dirMeta.Deleted != nil {
 		delete(dirMeta.Deleted, baseName) // Clear deletion tombstone on re-save
 	}
+
+	clientIP := getClientRemoteIP(r)
+
+	// Record in chronological file ledger with client IP
+	dirMeta.Ledger = append(dirMeta.Ledger, CloudLedgerEntry{
+		RelPath:   cleanRel,
+		Action:    actionType,
+		Timestamp: nowServer,
+		ModTime:   modT,
+		Size:      size,
+		SHA256:    newSha,
+		ClientID:  req.ClientID,
+		ClientIP:  clientIP,
+		Details:   fmt.Sprintf("File %s with modTime %d", actionType, modT),
+	})
 	_ = saveCloudDirMeta(rootFolder, relDir, dirMeta)
 
 	sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
@@ -4000,7 +4212,9 @@ func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Path string `json:"path"`
+		Path       string `json:"path"`
+		ClientTime int64  `json:"client_time"`
+		ClientID   string `json:"client_id"`
 	}
 	if err := json.Unmarshal(decryptedBody, &req); err != nil || req.Path == "" {
 		w.WriteHeader(http.StatusBadRequest)
@@ -4090,13 +4304,27 @@ func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
 		_ = os.WriteFile(backupPath+".restore_info.json", rBytes, 0644)
 	}
 
-	// Update metadata, tombstone deleted map, and history
+	// Update metadata, tombstone deleted map, history, and file ledger
 	delete(dirMeta.Files, baseName)
 	if dirMeta.Deleted == nil {
 		dirMeta.Deleted = make(map[string]int64)
 	}
 	nowUnix := time.Now().Unix()
 	dirMeta.Deleted[baseName] = nowUnix
+
+	clientIP := getClientRemoteIP(r)
+
+	dirMeta.Ledger = append(dirMeta.Ledger, CloudLedgerEntry{
+		RelPath:   cleanRel,
+		Action:    "deleted",
+		Timestamp: nowUnix,
+		ModTime:   fi.ModTime().Unix(),
+		Size:      fi.Size(),
+		ClientID:  req.ClientID,
+		ClientIP:  clientIP,
+		Details:   "Deleted and moved to RecycleBin",
+	})
+
 	dirMeta.History = append(dirMeta.History, CloudHistoryEntry{
 		Action:     "delete",
 		OrigPath:   cleanRel,
