@@ -120,17 +120,19 @@
             pointer-events: none;
         }
 
-        .global-audio-info { display: flex; align-items: center; gap: 8px; max-width: 32%; min-width: 0; }
+        .global-audio-info { display: flex; align-items: center; gap: 8px; width: 220px; min-width: 180px; max-width: 250px; flex-shrink: 0; }
         .global-audio-title { font-size: 0.85rem; font-weight: bold; color: #58a6ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .global-audio-controls { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: center; flex-wrap: wrap; }
-        .global-audio-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 0.3rem 0.55rem; cursor: pointer; font-size: 0.8rem; }
+        .global-audio-controls { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: center; flex-wrap: nowrap; min-width: 0; }
+        .global-audio-transport-group { display: flex; align-items: center; gap: 4px; flex-shrink: 0; width: 195px; justify-content: flex-start; }
+        .global-audio-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 0.3rem 0.5rem; cursor: pointer; font-size: 0.8rem; text-align: center; }
         .global-audio-btn:hover { background: #30363d; color: #fff; }
-        .global-audio-scrubber { flex: 1; max-width: 200px; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #8b949e; font-family: monospace; }
+        .global-audio-scrubber { width: 210px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #8b949e; font-family: monospace; }
         .global-audio-scrubber input[type=range] { flex: 1; accent-color: #238636; cursor: pointer; }
-        .global-audio-volume { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #8b949e; }
-        .global-audio-volume input[type=range] { width: 75px; accent-color: #238636; cursor: pointer; }
-        .global-audio-output { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; }
-        .global-audio-output select { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; font-size: 0.75rem; padding: 2px 4px; outline: none; }
+        .global-audio-volume { width: 135px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #8b949e; }
+        .global-audio-volume input[type=range] { width: 70px; accent-color: #238636; cursor: pointer; }
+        .global-audio-output { width: 250px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; font-size: 0.78rem; justify-content: flex-start; }
+        .global-audio-output select { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; font-size: 0.75rem; padding: 3px 5px; outline: none; }
+        .global-audio-extra-btns { display: flex; align-items: center; gap: 6px; width: 105px; flex-shrink: 0; justify-content: flex-end; }
 
         .badge-root { background: #238636; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
         .badge-user { background: #d29922; color: black; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
@@ -172,12 +174,14 @@
                     <span id="globalAudioTitle" class="global-audio-title">No Audio Playing</span>
                 </div>
                 <div class="global-audio-controls">
-                    <button class="global-audio-btn" onclick="globalAudioPrev()" title="Previous track">⏮</button>
-                    <button id="globalAudioPlayBtn" class="global-audio-btn" onclick="toggleGlobalAudioPlay()">▶</button>
-                    <button class="global-audio-btn" onclick="stopGlobalAudio()" title="Stop">⏹</button>
-                    <button class="global-audio-btn" onclick="globalAudioNext()" title="Next track">⏭</button>
-                    <button id="globalAudioRandBtn" class="global-audio-btn" onclick="toggleGlobalAudioShuffle()" title="Toggle Random/Shuffle">🔀</button>
-                    <button id="globalAudioLoopBtn" class="global-audio-btn" onclick="toggleGlobalAudioLoop()" title="Toggle Loop">🔁</button>
+                    <div class="global-audio-transport-group">
+                        <button class="global-audio-btn" onclick="globalAudioPrev()" title="Previous track">⏮</button>
+                        <button id="globalAudioPlayBtn" class="global-audio-btn" onclick="toggleGlobalAudioPlay()">▶</button>
+                        <button class="global-audio-btn" onclick="stopGlobalAudio()" title="Stop">⏹</button>
+                        <button class="global-audio-btn" onclick="globalAudioNext()" title="Next track">⏭</button>
+                        <button id="globalAudioRandBtn" class="global-audio-btn" onclick="toggleGlobalAudioShuffle()" title="Toggle Random/Shuffle">🔀</button>
+                        <button id="globalAudioLoopBtn" class="global-audio-btn" onclick="toggleGlobalAudioLoop()" title="Toggle Loop">🔁</button>
+                    </div>
                     <div class="global-audio-scrubber">
                         <span id="globalAudioCurrentTime">00:00</span>
                         <input type="range" id="globalAudioSeeker" value="0" min="0" max="100" oninput="seekGlobalAudio(this.value)">
@@ -189,17 +193,17 @@
                         <span id="globalAudioVolumeVal" style="width:28px; font-family:monospace;">80%</span>
                     </div>
                     <div class="global-audio-output">
-                        <select id="globalAudioOutputSelect" onchange="onGlobalAudioOutputChange()">
+                        <select id="globalAudioOutputSelect" style="width: 105px;" onchange="onGlobalAudioOutputChange()">
                             <option value="browser">💻 Browser</option>
                             <option value="http_cast">📡 HTTP Cast</option>
                             <option value="dlna">📻 DLNA</option>
                         </select>
-                        <select id="globalAudioRendererSelect" style="display: none; max-width: 140px;" onchange="onGlobalAudioRendererChange()">
+                        <select id="globalAudioRendererSelect" style="display: none; width: 135px;" onchange="onGlobalAudioRendererChange()">
                             <option value="">Scan devices...</option>
                         </select>
                     </div>
                 </div>
-                <div class="global-audio-extra-btns" style="display: flex; align-items: center; gap: 6px;">
+                <div class="global-audio-extra-btns">
                     <button class="global-audio-btn" onclick="openGlobalAudioPlayerPlugin()" title="Open full Audio Player app">🔊 App</button>
                     <button class="global-audio-btn" style="color: #8b949e;" onclick="collapseGlobalAudioDrawer()" title="Collapse to pull handle">▼</button>
                     <button class="global-audio-btn" style="color: #f85149;" onclick="closeGlobalAudioBar()" title="Stop audio & close">✕</button>
@@ -1030,7 +1034,6 @@
             stopGlobalAudioRemote();
             document.getElementById('globalAudioPlayBtn').innerText = '▶';
             collapseGlobalAudioDrawer();
-            syncAudioStateToPlugin();
         }
         window.closeGlobalAudioBar = closeGlobalAudioBar;
 

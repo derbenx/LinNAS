@@ -178,12 +178,13 @@
         let currentDir = '/';
         let playlist = [];
         let currentTrackIndex = -1;
-        let outputMode = 'browser'; // 'browser' or 'dlna'
+        let outputMode = 'browser'; // 'browser', 'http_cast', 'dlna'
         let discoveredRenderers = [];
         let remoteStatusTimer = null;
         let isRemotePlaying = false;
         let isLocalPlaying = false;
         let isTransitioning = false;
+        let isUpdatingOutput = false;
         let currentVolume = 80;
         let dlnaServerConfig = null;
 
@@ -213,6 +214,9 @@
 
         window.addEventListener('message', function(event) {
             if (event.data && event.data.type === 'sync_audio_from_parent' && event.data.session) {
+                // If local output was just changed, ignore parent outputMode echoes to prevent flipping loops
+                if (isUpdatingOutput) return;
+
                 const s = event.data.session;
                 if (s.volume !== undefined && s.volume !== currentVolume) {
                     currentVolume = s.volume;
@@ -341,6 +345,10 @@
         }
 
         async function onOutputChange(userTriggered) {
+            if (userTriggered) {
+                isUpdatingOutput = true;
+                setTimeout(() => { isUpdatingOutput = false; }, 800);
+            }
             outputMode = document.getElementById('outputSelect').value;
             saveSettings();
 
@@ -448,7 +456,9 @@
 
         async function refreshRenderers() {
             const select = document.getElementById('rendererSelect');
-            select.innerHTML = '<option value="">Scanning for renderers...</option>';
+            if (select.children.length === 0 || select.value === '') {
+                select.innerHTML = '<option value="">Scanning for renderers...</option>';
+            }
 
             try {
                 const res = await fetch('/api/dlna/renderers');
@@ -473,7 +483,7 @@
                     if (match) select.value = match.id;
                 }
             } catch (err) {
-                select.innerHTML = '<option value="">Failed to scan renderers</option>';
+                select.innerHTML = '<option value="">No DLNA devices found</option>';
             }
         }
 
