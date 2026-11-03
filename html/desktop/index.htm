@@ -1784,7 +1784,7 @@
             });
         }
 
-        function desktopAudioOutputChanged(winId) {
+        async function desktopAudioOutputChanged(winId) {
             const wData = windowsMap[winId];
             if (!wData) return;
             const outSelect = document.getElementById(`${winId}_outputSelect`);
@@ -1794,6 +1794,14 @@
             if (wData.state.outputMode === 'dlna') {
                 if (dlnaBar) dlnaBar.style.display = 'flex';
                 desktopAudioScanRenderers(winId);
+                // Check if server is running and offer to load DLNA media folder if playlist is empty
+                try {
+                    const res = await fetch('/api/dlna/status');
+                    const data = await res.json();
+                    if (data.active_running && data.media_folder && (!wData.state.playlist || wData.state.playlist.length === 0)) {
+                        audioAddPathsToPlaylist(winId, [data.media_folder]);
+                    }
+                } catch (e) {}
             } else {
                 if (dlnaBar) dlnaBar.style.display = 'none';
             }

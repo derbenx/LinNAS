@@ -79,18 +79,18 @@
             <option value="dlna">📡 DLNA (AudioCast / Network Renderer)</option>
         </select>
 
-        <div id="dlnaGroup" style="display: none; align-items: center; gap: 8px;">
+        <div id="dlnaGroup" style="display: none; align-items: center; gap: 8px; flex-wrap: wrap;">
             <label for="rendererSelect" style="color: #8b949e; font-weight: normal;">Device:</label>
             <select id="rendererSelect" style="max-width: 250px;">
                 <option value="">Scanning network devices...</option>
             </select>
             <button class="btn btn-secondary" style="padding: 0.35rem 0.6rem; font-size: 0.78rem;" onclick="refreshRenderers()" title="Scan for DLNA / AudioCast devices">🔄 Scan</button>
 
-            <label for="streamModeSelect" style="color: #8b949e; font-weight: normal; margin-left: 6px;">Stream URL:</label>
-            <select id="streamModeSelect">
-                <option value="direct_http">Direct HTTP</option>
-                <option value="dlna_content">DLNA Media URL</option>
-            </select>
+            <div id="dlnaServerStatusBox" style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; margin-left: 6px;">
+                <span id="dlnaServerBadge" style="color: #8b949e;">Checking DLNA server...</span>
+                <button id="dlnaQuickStartBtn" class="btn" style="display: none; padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="quickStartDLNAServer()">▶ Start Server</button>
+                <button id="dlnaLoadFolderBtn" class="btn btn-secondary" style="display: none; padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="loadDLNAServerFolder()">📂 Load DLNA Folder</button>
+            </div>
         </div>
     </div>
 
@@ -177,7 +177,9 @@
             await refreshRenderers();
         }
 
-        function onOutputChange() {
+        let dlnaServerConfig = null;
+
+        async function onOutputChange() {
             outputMode = document.getElementById('outputSelect').value;
             const dlnaGroup = document.getElementById('dlnaGroup');
             const dlnaRemote = document.getElementById('dlnaRemoteControls');
@@ -187,9 +189,8 @@
                 dlnaGroup.style.display = 'flex';
                 dlnaRemote.style.display = 'flex';
                 icon.innerText = '📡';
-                if (discoveredRenderers.length === 0) {
-                    refreshRenderers();
-                }
+                refreshRenderers();
+                await checkDLNAServerStatus();
             } else {
                 dlnaGroup.style.display = 'none';
                 dlnaRemote.style.display = 'none';
@@ -198,6 +199,63 @@
                     clearInterval(remoteStatusTimer);
                     remoteStatusTimer = null;
                 }
+            }
+        }
+
+        async function checkDLNAServerStatus() {
+            const badge = document.getElementById('dlnaServerBadge');
+            const startBtn = document.getElementById('dlnaQuickStartBtn');
+            const loadBtn = document.getElementById('dlnaLoadFolderBtn');
+
+            try {
+                const res = await fetch('/api/dlna/status');
+                const data = await res.json();
+                dlnaServerConfig = data;
+
+                if (data.active_running) {
+                    badge.innerHTML = `<span style="color:#7ee787;">● DLNA Server Active</span> (${data.media_folder})`;
+                    startBtn.style.display = 'none';
+                    if (data.media_folder && data.media_folder !== currentDir) {
+                        loadBtn.style.display = 'inline-flex';
+                        // Auto-load if current playlist is empty
+                        if (playlist.length === 0) {
+                            loadDLNAServerFolder();
+                        }
+                    } else {
+                        loadBtn.style.display = 'none';
+                    }
+                } else {
+                    badge.innerHTML = `<span style="color:#e3b341;">⚠️ DLNA Server Stopped</span>`;
+                    startBtn.style.display = 'inline-flex';
+                    loadBtn.style.display = 'none';
+                }
+            } catch (err) {
+                badge.innerText = 'DLNA status unavailable';
+            }
+        }
+
+        async function quickStartDLNAServer() {
+            try {
+                const res = await fetch('/api/dlna/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: true })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    await checkDLNAServerStatus();
+                } else {
+                    alert('Failed to start DLNA server: ' + data.error);
+                }
+            } catch (err) {
+                alert('Start error: ' + err.message);
+            }
+        }
+
+        function loadDLNAServerFolder() {
+            if (dlnaServerConfig && dlnaServerConfig.media_folder) {
+                loadFolderPlaylist(dlnaServerConfig.media_folder);
+                document.getElementById('dlnaLoadFolderBtn').style.display = 'none';
             }
         }
 
@@ -306,7 +364,6 @@
 
         async function castTrackToDLNA(track) {
             const rendererId = document.getElementById('rendererSelect').value;
-            const streamMode = document.getElementById('streamModeSelect').value;
             const statusEl = document.getElementById('remoteStatusText');
 
             if (!rendererId) {
@@ -325,8 +382,7 @@
                     body: JSON.stringify({
                         renderer_id: rendererId,
                         action: 'play',
-                        file_path: track.path,
-                        stream_mode: streamMode
+                        file_path: track.path
                     })
                 });
                 const data = await res.json();

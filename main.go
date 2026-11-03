@@ -453,6 +453,15 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if !isAuthorized(r) {
+			// Allow direct audio streaming to network renderers (e.g. AudioCast pucks) without session cookies
+			if path == "/api/fs/raw" && r.Method == http.MethodGet {
+				filePath := r.URL.Query().Get("path")
+				if filePath != "" && isAudioFileName(filePath) {
+					next(w, r)
+					return
+				}
+			}
+
 			// Allow unauthenticated GET requests to static HTML/CSS/JS files and status views
 			if r.Method == http.MethodGet && !strings.HasPrefix(path, "/api/") {
 				next(w, r)
@@ -473,11 +482,6 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 func handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if os.Getuid() != 0 {
-		http.Error(w, "Root privileges required for cron operations", http.StatusForbidden)
 		return
 	}
 
@@ -558,11 +562,6 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 func handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if os.Getuid() != 0 {
-		http.Error(w, "Root privileges required for cron operations", http.StatusForbidden)
 		return
 	}
 
@@ -2057,7 +2056,20 @@ func handleFsBrowse(w http.ResponseWriter, r *http.Request) {
 	dirPath = filepath.Clean(dirPath)
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
-		jsonResponse(w, map[string]interface{}{"error": err.Error(), "path": dirPath, "items": []FileEntry{}})
+		// If directory does not exist or cannot be read, still include parent navigation if available
+		parent := filepath.Dir(dirPath)
+		var fallbackItems []FileEntry
+		if dirPath != "/" && dirPath != "." && parent != "" && parent != dirPath {
+			fallbackItems = append(fallbackItems, FileEntry{
+				Name:        "..",
+				Path:        parent,
+				IsDir:       true,
+				Size:        0,
+				Permissions: "rwxr-xr-x",
+				ModeOctal:   "0755",
+			})
+		}
+		jsonResponse(w, map[string]interface{}{"error": err.Error(), "path": dirPath, "items": fallbackItems})
 		return
 	}
 

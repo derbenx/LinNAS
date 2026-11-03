@@ -296,7 +296,7 @@
 
         /* Folder Picker Modal */
         async function openFolderPicker(path) {
-            currentBrowserPath = path || document.getElementById('mediaFolder').value || '/';
+            currentBrowserPath = path || document.getElementById('mediaFolder').value || '/var/media';
             document.getElementById('modalPath').innerText = currentBrowserPath;
             document.getElementById('folderModal').style.display = 'block';
 
@@ -306,20 +306,32 @@
                 const container = document.getElementById('fileList');
                 container.innerHTML = '';
 
-                if (data.items) {
+                if (data.items && data.items.length > 0) {
+                    let dirCount = 0;
                     data.items.forEach(item => {
                         if (item.is_dir) {
+                            dirCount++;
                             const itemDiv = document.createElement('div');
                             itemDiv.className = 'file-item';
-                            itemDiv.innerText = '📁 ' + item.name;
+                            itemDiv.innerHTML = (item.name === '..' ? '⬆️ <strong>.. (Parent Directory)</strong>' : '📁 ' + escapeHtml(item.name));
                             itemDiv.onclick = () => openFolderPicker(item.path);
                             container.appendChild(itemDiv);
                         }
                     });
+                    if (dirCount === 0) {
+                        container.innerHTML = '<div style="color: #8b949e; padding: 1rem; text-align: center;">No subdirectories found in this folder. Click \'Select This Folder\' to use it.</div>';
+                    }
+                } else {
+                    container.innerHTML = '<div style="color: #8b949e; padding: 1rem; text-align: center;">Empty directory. Click \'Select This Folder\' to use it.</div>';
                 }
             } catch (err) {
                 console.error('Picker error:', err);
+                document.getElementById('fileList').innerHTML = `<div style="color:#f85149; padding: 1rem;">Failed to browse folder: ${err.message}</div>`;
             }
+        }
+
+        function escapeHtml(str) {
+            return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
 
         function selectFolderFromModal() {

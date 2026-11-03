@@ -158,11 +158,13 @@ func TestDLNAServerLifecycleAndEndpoints(t *testing.T) {
 		t.Errorf("Expected cast handler to execute and return 200, got %d", wCast.Code)
 	}
 
-	// Clean up: Stop DLNA server
+	// Clean up: Stop DLNA server and remove test config
 	toggleStop := map[string]interface{}{"enabled": false}
 	bStop, _ := json.Marshal(toggleStop)
 	reqStop := httptest.NewRequest(http.MethodPost, "/api/dlna/toggle", bytes.NewReader(bStop))
 	wStop := httptest.NewRecorder()
 	handleDLNAToggle(wStop, reqStop)
 	_ = stopBuiltinDLNAServer()
+	_ = os.Remove(getDLNAConfigPath())
+	_ = os.Remove("html/dlna/data.json")
 }

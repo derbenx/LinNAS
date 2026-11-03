@@ -68,10 +68,20 @@ func loadDLNAConfig() {
 	dlnaConfigMu.Lock()
 	defer dlnaConfigMu.Unlock()
 
+	defaultMedia := "/var/media"
+	if fi, err := os.Stat(defaultMedia); os.IsNotExist(err) || !fi.IsDir() {
+		// Prefer existing directory like /home or working directory if /var/media does not exist
+		if cwd, err := os.Getwd(); err == nil && cwd != "" {
+			defaultMedia = cwd
+		} else {
+			defaultMedia = "/home"
+		}
+	}
+
 	dlnaConfig = DLNAConfig{
 		Enabled:       false,
 		ServerBackend: "builtin",
-		MediaFolder:   "/var/media",
+		MediaFolder:   defaultMedia,
 		FriendlyName:  "LinNAS DLNA",
 		Port:          8200,
 		StreamMode:    "direct_http",
