@@ -56,38 +56,71 @@
         #content-area { flex: 1; display: flex; flex-direction: column; background: #0d1117; position: relative; }
         #plugin-frame { width: 100%; height: 100%; border: none; }
 
-        /* Global Persistent Audio Player Bar - Pop-over Docked Overlay */
-        #globalAudioBar {
-            display: none;
+        /* Global Persistent Audio Player Popup Bar - Separate Floating Top Layer */
+        #globalAudioDrawer {
             position: fixed;
             bottom: 0;
             left: 260px;
             right: 0;
-            background: rgba(22, 27, 34, 0.95);
-            backdrop-filter: blur(8px);
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            pointer-events: none;
+            transition: left 0.2s, transform 0.25s ease-in-out;
+        }
+
+        /* Draggable / Clickable Pull Handle */
+        .audio-pull-handle-bar {
+            align-self: center;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-bottom: none;
+            border-radius: 8px 8px 0 0;
+            padding: 0.25rem 1rem;
+            cursor: pointer;
+            pointer-events: auto;
+            color: #58a6ff;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 -3px 10px rgba(0,0,0,0.5);
+            user-select: none;
+            transition: background 0.2s, color 0.2s;
+        }
+        .audio-pull-handle-bar:hover {
+            background: #21262d;
+            color: #79c0ff;
+        }
+
+        #globalAudioBar {
+            display: flex;
+            background: rgba(22, 27, 34, 0.98);
+            backdrop-filter: blur(10px);
             border-top: 1px solid #30363d;
             padding: 0.45rem 1rem;
             align-items: center;
             justify-content: space-between;
             gap: 0.8rem;
-            z-index: 9999;
-            box-shadow: 0 -4px 16px rgba(0,0,0,0.7);
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.8);
             flex-wrap: wrap;
             pointer-events: auto;
-            transition: transform 0.25s ease-in-out, height 0.2s;
-        }
-        #globalAudioBar.minimized-bar {
-            height: 34px !important;
-            padding: 0.2rem 0.8rem !important;
-            border-top: 1px solid #58a6ff;
-            background: #161b22;
-        }
-        #globalAudioBar.minimized-bar .global-audio-controls,
-        #globalAudioBar.minimized-bar .global-audio-extra-btns {
-            display: none !important;
+            transition: max-height 0.25s ease-in-out, opacity 0.25s, padding 0.25s;
+            max-height: 120px;
+            overflow: hidden;
         }
 
-        .global-audio-info { display: flex; align-items: center; gap: 8px; max-width: 30%; min-width: 0; }
+        #globalAudioDrawer.collapsed-drawer #globalAudioBar {
+            max-height: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            border-top: none !important;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .global-audio-info { display: flex; align-items: center; gap: 8px; max-width: 32%; min-width: 0; }
         .global-audio-title { font-size: 0.85rem; font-weight: bold; color: #58a6ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .global-audio-controls { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: center; flex-wrap: wrap; }
         .global-audio-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 0.3rem 0.55rem; cursor: pointer; font-size: 0.8rem; }
@@ -123,48 +156,54 @@
     <div id="content-area">
         <iframe id="plugin-frame" src="/status/index.htm" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true"></iframe>
 
-        <!-- Persistent Global Audio Bar -->
-        <div id="globalAudioBar">
-            <div class="global-audio-info">
-                <span id="globalAudioIcon">🎵</span>
-                <span id="globalAudioTitle" class="global-audio-title">No Audio Playing</span>
+        <!-- Persistent Global Audio Popup Drawer (Top Z-layer, Separate from Plugins) -->
+        <div id="globalAudioDrawer" class="collapsed-drawer">
+            <!-- Pull Handle -->
+            <div class="audio-pull-handle-bar" id="audioPullHandle" onclick="toggleGlobalAudioDrawer()" title="Click or pull to open/collapse Pop-up Audio Player">
+                <span id="audioPullIcon">▲</span>
+                <span>🎵 Audio Player</span>
+                <span id="audioPullTrackPreview" style="font-size:0.7rem; color:#8b949e; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-left:4px;"></span>
             </div>
-            <div class="global-audio-controls">
-                <button class="global-audio-btn" onclick="globalAudioPrev()" title="Previous track">⏮</button>
-                <button id="globalAudioPlayBtn" class="global-audio-btn" onclick="toggleGlobalAudioPlay()">▶</button>
-                <button class="global-audio-btn" onclick="stopGlobalAudio()" title="Stop">⏹</button>
-                <button class="global-audio-btn" onclick="globalAudioNext()" title="Next track">⏭</button>
-                <button id="globalAudioRandBtn" class="global-audio-btn" onclick="toggleGlobalAudioShuffle()" title="Toggle Random/Shuffle">🔀</button>
-                <button id="globalAudioLoopBtn" class="global-audio-btn" onclick="toggleGlobalAudioLoop()" title="Toggle Loop">🔁</button>
-                <div class="global-audio-scrubber">
-                    <span id="globalAudioCurrentTime">00:00</span>
-                    <input type="range" id="globalAudioSeeker" value="0" min="0" max="100" oninput="seekGlobalAudio(this.value)">
-                    <span id="globalAudioDuration">00:00</span>
+
+            <!-- Main Audio Bar -->
+            <div id="globalAudioBar">
+                <div class="global-audio-info">
+                    <span id="globalAudioIcon">🎵</span>
+                    <span id="globalAudioTitle" class="global-audio-title">No Audio Playing</span>
                 </div>
-                <div class="global-audio-volume">
-                    <span>🔊</span>
-                    <input type="range" id="globalAudioVolumeSlider" min="0" max="100" value="80" oninput="onGlobalVolumeSlider(this.value)">
-                    <span id="globalAudioVolumeVal" style="width:28px; font-family:monospace;">80%</span>
+                <div class="global-audio-controls">
+                    <button class="global-audio-btn" onclick="globalAudioPrev()" title="Previous track">⏮</button>
+                    <button id="globalAudioPlayBtn" class="global-audio-btn" onclick="toggleGlobalAudioPlay()">▶</button>
+                    <button class="global-audio-btn" onclick="stopGlobalAudio()" title="Stop">⏹</button>
+                    <button class="global-audio-btn" onclick="globalAudioNext()" title="Next track">⏭</button>
+                    <button id="globalAudioRandBtn" class="global-audio-btn" onclick="toggleGlobalAudioShuffle()" title="Toggle Random/Shuffle">🔀</button>
+                    <button id="globalAudioLoopBtn" class="global-audio-btn" onclick="toggleGlobalAudioLoop()" title="Toggle Loop">🔁</button>
+                    <div class="global-audio-scrubber">
+                        <span id="globalAudioCurrentTime">00:00</span>
+                        <input type="range" id="globalAudioSeeker" value="0" min="0" max="100" oninput="seekGlobalAudio(this.value)">
+                        <span id="globalAudioDuration">00:00</span>
+                    </div>
+                    <div class="global-audio-volume">
+                        <span>🔊</span>
+                        <input type="range" id="globalAudioVolumeSlider" min="0" max="100" value="80" oninput="onGlobalVolumeSlider(this.value)">
+                        <span id="globalAudioVolumeVal" style="width:28px; font-family:monospace;">80%</span>
+                    </div>
+                    <div class="global-audio-output">
+                        <select id="globalAudioOutputSelect" onchange="onGlobalAudioOutputChange()">
+                            <option value="browser">💻 Browser</option>
+                            <option value="http_cast">📡 HTTP Cast</option>
+                            <option value="dlna">📻 DLNA</option>
+                        </select>
+                        <select id="globalAudioRendererSelect" style="display: none; max-width: 140px;" onchange="onGlobalAudioRendererChange()">
+                            <option value="">Scan devices...</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="global-audio-output">
-                    <select id="globalAudioOutputSelect" onchange="onGlobalAudioOutputChange()">
-                        <option value="browser">💻 Browser</option>
-                        <option value="http_cast">📡 HTTP Cast</option>
-                        <option value="dlna">📻 DLNA</option>
-                    </select>
-                    <select id="globalAudioRendererSelect" style="display: none; max-width: 140px;" onchange="onGlobalAudioRendererChange()">
-                        <option value="">Scan devices...</option>
-                    </select>
+                <div class="global-audio-extra-btns" style="display: flex; align-items: center; gap: 6px;">
+                    <button class="global-audio-btn" onclick="openGlobalAudioPlayerPlugin()" title="Open full Audio Player app">🔊 App</button>
+                    <button class="global-audio-btn" style="color: #8b949e;" onclick="collapseGlobalAudioDrawer()" title="Collapse to pull handle">▼</button>
+                    <button class="global-audio-btn" style="color: #f85149;" onclick="closeGlobalAudioBar()" title="Stop audio & close">✕</button>
                 </div>
-            </div>
-            <div class="global-audio-extra-btns" style="display: flex; align-items: center; gap: 6px;">
-                <button class="global-audio-btn" onclick="toggleMinimizeGlobalAudioBar()" id="globalAudioMinimizeBtn" title="Minimize / Expand audio bar">_</button>
-                <button class="global-audio-btn" onclick="openGlobalAudioPlayerPlugin()" title="Open full Audio Player app">🔊 Open Player</button>
-                <button class="global-audio-btn" style="color: #f85149;" onclick="closeGlobalAudioBar()" title="Close audio player">✕</button>
-            </div>
-            <div id="globalAudioMinRestore" style="display: none; align-items: center; gap: 6px;">
-                <button class="global-audio-btn" onclick="toggleMinimizeGlobalAudioBar()" title="Restore audio bar">🗖 Expand</button>
-                <button class="global-audio-btn" style="color: #f85149;" onclick="closeGlobalAudioBar()" title="Close audio player">✕</button>
             </div>
         </div>
         <audio id="globalAudioPlayer" style="display: none;"></audio>
@@ -242,6 +281,14 @@
             } else if (typeof event.data === 'string' && event.data.startsWith('open_plugin:')) {
                 const pluginId = event.data.split(':')[1];
                 openPlugin(pluginId);
+            } else if (event.data === 'toggle_popup_audio') {
+                toggleGlobalAudioDrawer();
+            } else if (event.data === 'open_popup_audio') {
+                expandGlobalAudioDrawer();
+            } else if (event.data === 'close_popup_audio') {
+                collapseGlobalAudioDrawer();
+            } else if (typeof event.data === 'object' && event.data && event.data.type === 'sync_audio_state') {
+                syncAudioStateFromPlugin(event.data);
             }
         });
 
@@ -322,19 +369,19 @@
         function toggleSidebarCollapse() {
             const sidebar = document.getElementById('sidebar');
             const collapseBtn = document.getElementById('collapseBtn');
-            const audioBar = document.getElementById('globalAudioBar');
+            const drawer = document.getElementById('globalAudioDrawer');
             isSidebarCollapsed = !isSidebarCollapsed;
 
             if (isSidebarCollapsed) {
                 lastSidebarWidth = sidebar.offsetWidth > 100 ? sidebar.offsetWidth : 260;
                 sidebar.classList.add('collapsed');
                 collapseBtn.innerText = '▶';
-                if (audioBar) audioBar.style.left = '60px';
+                if (drawer) drawer.style.left = '60px';
             } else {
                 sidebar.classList.remove('collapsed');
                 sidebar.style.width = lastSidebarWidth + 'px';
                 collapseBtn.innerText = '◀';
-                if (audioBar) audioBar.style.left = lastSidebarWidth + 'px';
+                if (drawer) drawer.style.left = lastSidebarWidth + 'px';
             }
         }
 
@@ -374,6 +421,8 @@
                     sidebar.style.width = newWidth + 'px';
                     lastSidebarWidth = newWidth;
                 }
+                const drawer = document.getElementById('globalAudioDrawer');
+                if (drawer) drawer.style.left = sidebar.style.width;
             });
 
             window.addEventListener('mouseup', () => {
@@ -448,6 +497,105 @@
         let globalAudioRemotePlaying = false;
         let globalAudioPollTimer = null;
 
+        let isGlobalDrawerExpanded = false;
+
+        function toggleGlobalAudioDrawer() {
+            if (isGlobalDrawerExpanded) {
+                collapseGlobalAudioDrawer();
+            } else {
+                expandGlobalAudioDrawer();
+            }
+        }
+        window.toggleGlobalAudioDrawer = toggleGlobalAudioDrawer;
+
+        function expandGlobalAudioDrawer() {
+            const drawer = document.getElementById('globalAudioDrawer');
+            const icon = document.getElementById('audioPullIcon');
+            if (drawer) {
+                drawer.classList.remove('collapsed-drawer');
+                isGlobalDrawerExpanded = true;
+                if (icon) icon.innerText = '▼';
+            }
+        }
+        window.expandGlobalAudioDrawer = expandGlobalAudioDrawer;
+
+        function collapseGlobalAudioDrawer() {
+            const drawer = document.getElementById('globalAudioDrawer');
+            const icon = document.getElementById('audioPullIcon');
+            if (drawer) {
+                drawer.classList.add('collapsed-drawer');
+                isGlobalDrawerExpanded = false;
+                if (icon) icon.innerText = '▲';
+            }
+        }
+        window.collapseGlobalAudioDrawer = collapseGlobalAudioDrawer;
+
+        function syncAudioStateToPlugin() {
+            const activeTrack = (globalPlaylist && globalPlaylistIndex >= 0 && globalPlaylist[globalPlaylistIndex]) ? globalPlaylist[globalPlaylistIndex] : null;
+            const previewEl = document.getElementById('audioPullTrackPreview');
+            if (previewEl) {
+                previewEl.innerText = activeTrack ? (activeTrack.name || activeTrack.path.split('/').pop()) : '';
+            }
+
+            const session = {
+                playlist: globalPlaylist,
+                currentTrackIndex: globalPlaylistIndex,
+                currentDir: globalAudioCurrentDir,
+                outputMode: globalAudioOutput,
+                volume: globalAudioVolume,
+                isShuffle: globalAudioShuffle,
+                isLoop: globalAudioLoop,
+                isPlaying: (!document.getElementById('globalAudioPlayer').paused || globalAudioRemotePlaying),
+                activeRendererId: document.getElementById('globalAudioRendererSelect')?.value || window._globalSavedRendererId || ''
+            };
+            try {
+                localStorage.setItem('linnas_audio_session', JSON.stringify(session));
+            } catch (e) {}
+
+            // Post message to iframe if open
+            const frame = document.getElementById('plugin-frame');
+            if (frame && frame.contentWindow) {
+                frame.contentWindow.postMessage({ type: 'sync_audio_from_parent', session: session }, '*');
+            }
+        }
+
+        function syncAudioStateFromPlugin(data) {
+            if (!data || !data.session) return;
+            const s = data.session;
+            if (s.playlist !== undefined) globalPlaylist = s.playlist;
+            if (s.currentTrackIndex !== undefined) globalPlaylistIndex = s.currentTrackIndex;
+            if (s.currentDir !== undefined) globalAudioCurrentDir = s.currentDir;
+            if (s.outputMode !== undefined) {
+                globalAudioOutput = s.outputMode;
+                const outSel = document.getElementById('globalAudioOutputSelect');
+                if (outSel) outSel.value = globalAudioOutput;
+                syncGlobalAudioOutputUI();
+            }
+            if (s.volume !== undefined) {
+                setGlobalAudioVolume(s.volume);
+            }
+            if (s.isShuffle !== undefined) {
+                globalAudioShuffle = s.isShuffle;
+                const btn = document.getElementById('globalAudioRandBtn');
+                if (btn) btn.style.background = globalAudioShuffle ? '#238636' : 'transparent';
+            }
+            if (s.isLoop !== undefined) {
+                globalAudioLoop = s.isLoop;
+                const btn = document.getElementById('globalAudioLoopBtn');
+                if (btn) btn.style.background = globalAudioLoop ? '#238636' : 'transparent';
+            }
+
+            if (globalPlaylist.length > 0 && globalPlaylistIndex >= 0 && globalPlaylistIndex < globalPlaylist.length) {
+                const track = globalPlaylist[globalPlaylistIndex];
+                const titleEl = document.getElementById('globalAudioTitle');
+                if (titleEl) titleEl.innerText = track.name || track.path.split('/').pop();
+                const previewEl = document.getElementById('audioPullTrackPreview');
+                if (previewEl) previewEl.innerText = track.name || track.path.split('/').pop();
+            }
+
+            saveGlobalAudioSettings();
+        }
+
         function loadGlobalAudioSettings() {
             try {
                 const raw = localStorage.getItem('linnas_audio_settings');
@@ -456,6 +604,17 @@
                     if (saved.outputMode) globalAudioOutput = saved.outputMode;
                     if (saved.volume !== undefined) globalAudioVolume = parseInt(saved.volume, 10);
                     if (saved.savedRendererId) window._globalSavedRendererId = saved.savedRendererId;
+                }
+
+                // Check session
+                const sessRaw = localStorage.getItem('linnas_audio_session');
+                if (sessRaw) {
+                    const sess = JSON.parse(sessRaw);
+                    if (sess.playlist && sess.playlist.length > 0) globalPlaylist = sess.playlist;
+                    if (sess.currentTrackIndex !== undefined) globalPlaylistIndex = sess.currentTrackIndex;
+                    if (sess.currentDir) globalAudioCurrentDir = sess.currentDir;
+                    if (sess.isShuffle !== undefined) globalAudioShuffle = sess.isShuffle;
+                    if (sess.isLoop !== undefined) globalAudioLoop = sess.isLoop;
                 }
             } catch (e) {}
 
@@ -467,6 +626,19 @@
             if (volVal) volVal.innerText = `${globalAudioVolume}%`;
             setGlobalAudioVolume(globalAudioVolume);
             syncGlobalAudioOutputUI();
+
+            const randBtn = document.getElementById('globalAudioRandBtn');
+            if (randBtn) randBtn.style.background = globalAudioShuffle ? '#238636' : 'transparent';
+            const loopBtn = document.getElementById('globalAudioLoopBtn');
+            if (loopBtn) loopBtn.style.background = globalAudioLoop ? '#238636' : 'transparent';
+
+            if (globalPlaylist.length > 0 && globalPlaylistIndex >= 0 && globalPlaylistIndex < globalPlaylist.length) {
+                const track = globalPlaylist[globalPlaylistIndex];
+                const titleEl = document.getElementById('globalAudioTitle');
+                if (titleEl) titleEl.innerText = track.name || track.path.split('/').pop();
+                const previewEl = document.getElementById('audioPullTrackPreview');
+                if (previewEl) previewEl.innerText = track.name || track.path.split('/').pop();
+            }
         }
 
         function saveGlobalAudioSettings() {
@@ -478,6 +650,7 @@
                     savedRendererId: rendSel ? rendSel.value : ''
                 };
                 localStorage.setItem('linnas_audio_settings', JSON.stringify(saved));
+                syncAudioStateToPlugin();
             } catch (e) {}
         }
 
@@ -587,13 +760,13 @@
             if (dirPath) globalAudioCurrentDir = dirPath;
             if (globalAudioShuffle) ensureGlobalShuffleOrder(true);
             loadGlobalAudioSettings();
+            expandGlobalAudioDrawer();
 
             if (globalAudioOutput === 'dlna' || globalAudioOutput === 'http_cast') {
                 const track = globalPlaylist[globalPlaylistIndex];
-                const bar = document.getElementById('globalAudioBar');
                 const titleEl = document.getElementById('globalAudioTitle');
-                titleEl.innerText = track.name || track.path.split('/').pop();
-                bar.style.display = 'flex';
+                if (titleEl) titleEl.innerText = track.name || track.path.split('/').pop();
+                syncAudioStateToPlugin();
                 castGlobalTrackToDLNA(track);
             } else {
                 loadAndPlayGlobalTrack();
@@ -606,17 +779,19 @@
             if (globalPlaylistIndex < 0 || globalPlaylistIndex >= globalPlaylist.length) return;
             const track = globalPlaylist[globalPlaylistIndex];
             const player = document.getElementById('globalAudioPlayer');
-            const bar = document.getElementById('globalAudioBar');
             const titleEl = document.getElementById('globalAudioTitle');
 
             player.src = `/api/fs/raw?path=${encodeURIComponent(track.path)}`;
-            titleEl.innerText = track.name || track.path.split('/').pop();
-            bar.style.display = 'flex';
+            if (titleEl) titleEl.innerText = track.name || track.path.split('/').pop();
+            expandGlobalAudioDrawer();
+            syncAudioStateToPlugin();
 
             player.play().then(() => {
                 document.getElementById('globalAudioPlayBtn').innerText = '⏸';
+                syncAudioStateToPlugin();
             }).catch(() => {
                 document.getElementById('globalAudioPlayBtn').innerText = '▶';
+                syncAudioStateToPlugin();
             });
         }
 
@@ -703,6 +878,12 @@
         }
 
         function toggleGlobalAudioPlay() {
+            if (globalPlaylist.length === 0) return;
+            if (globalPlaylistIndex < 0) {
+                playSelectedGlobalIndex(0);
+                return;
+            }
+
             const player = document.getElementById('globalAudioPlayer');
             const btn = document.getElementById('globalAudioPlayBtn');
 
@@ -720,15 +901,25 @@
                     if (data.success) {
                         globalAudioRemotePlaying = !globalAudioRemotePlaying;
                         btn.innerText = globalAudioRemotePlaying ? '⏸' : '▶';
+                        syncAudioStateToPlugin();
                     }
                 }).catch(() => {});
             } else {
                 if (player.paused) {
-                    player.play();
-                    btn.innerText = '⏸';
+                    // Resume exact track
+                    const track = globalPlaylist[globalPlaylistIndex];
+                    if (track && (!player.src || !player.src.includes(encodeURIComponent(track.path)))) {
+                        loadAndPlayGlobalTrack();
+                        return;
+                    }
+                    player.play().then(() => {
+                        btn.innerText = '⏸';
+                        syncAudioStateToPlugin();
+                    }).catch(() => {});
                 } else {
                     player.pause();
                     btn.innerText = '▶';
+                    syncAudioStateToPlugin();
                 }
             }
         }
@@ -738,6 +929,7 @@
             player.pause();
             stopGlobalAudioRemote();
             document.getElementById('globalAudioPlayBtn').innerText = '▶';
+            syncAudioStateToPlugin();
         }
 
         function playSelectedGlobalIndex(idx) {
@@ -746,6 +938,10 @@
             const track = globalPlaylist[globalPlaylistIndex];
             const titleEl = document.getElementById('globalAudioTitle');
             if (titleEl) titleEl.innerText = track.name || track.path.split('/').pop();
+            const previewEl = document.getElementById('audioPullTrackPreview');
+            if (previewEl) previewEl.innerText = track.name || track.path.split('/').pop();
+
+            syncAudioStateToPlugin();
 
             if (globalAudioOutput === 'http_cast' || globalAudioOutput === 'dlna') {
                 const player = document.getElementById('globalAudioPlayer');
@@ -832,12 +1028,9 @@
             const player = document.getElementById('globalAudioPlayer');
             player.pause();
             stopGlobalAudioRemote();
-            const bar = document.getElementById('globalAudioBar');
-            bar.classList.remove('minimized-bar');
-            bar.style.display = 'none';
-            isGlobalAudioBarMinimized = false;
-            const restoreBox = document.getElementById('globalAudioMinRestore');
-            if (restoreBox) restoreBox.style.display = 'none';
+            document.getElementById('globalAudioPlayBtn').innerText = '▶';
+            collapseGlobalAudioDrawer();
+            syncAudioStateToPlugin();
         }
         window.closeGlobalAudioBar = closeGlobalAudioBar;
 

@@ -75,6 +75,7 @@
             </div>
         </div>
         <div class="toolbar">
+            <button class="btn btn-secondary" onclick="togglePopupPlayer()" title="Open or close persistent Pop-up Audio Player">🗖 Pop-up Player</button>
             <button class="btn btn-secondary" onclick="openFolderPicker()">📂 Browse Folder...</button>
             <button class="btn" onclick="scanAndPlayFolder()">🎵 Grab All Audio in Folder</button>
         </div>
@@ -186,6 +187,58 @@
         let currentVolume = 80;
         let dlnaServerConfig = null;
 
+        function togglePopupPlayer() {
+            if (window.parent) {
+                window.parent.postMessage('toggle_popup_audio', '*');
+            }
+        }
+
+        function syncSessionToParent() {
+            const session = {
+                playlist: playlist,
+                currentTrackIndex: currentTrackIndex,
+                currentDir: currentDir,
+                outputMode: outputMode,
+                volume: currentVolume,
+                activeRendererId: document.getElementById('rendererSelect')?.value || window._savedRendererId || ''
+            };
+            try {
+                localStorage.setItem('linnas_audio_session', JSON.stringify(session));
+            } catch (e) {}
+
+            if (window.parent) {
+                window.parent.postMessage({ type: 'sync_audio_state', session: session }, '*');
+            }
+        }
+
+        window.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'sync_audio_from_parent' && event.data.session) {
+                const s = event.data.session;
+                if (s.volume !== undefined && s.volume !== currentVolume) {
+                    currentVolume = s.volume;
+                    document.getElementById('volumeSlider').value = currentVolume;
+                    document.getElementById('volumeVal').innerText = `${currentVolume}%`;
+                }
+                if (s.outputMode !== undefined && s.outputMode !== outputMode) {
+                    outputMode = s.outputMode;
+                    document.getElementById('outputSelect').value = outputMode;
+                    onOutputChange(false);
+                }
+                if (s.currentTrackIndex !== undefined && s.currentTrackIndex !== currentTrackIndex) {
+                    if (playlist.length > 0 && s.currentTrackIndex >= 0 && s.currentTrackIndex < playlist.length) {
+                        currentTrackIndex = s.currentTrackIndex;
+                        const t = playlist[currentTrackIndex];
+                        document.getElementById('currentTrackTitle').innerText = t.name;
+                        document.getElementById('currentTrackPath').innerText = t.path;
+                        renderPlaylistTable();
+                    }
+                }
+                if (s.isPlaying !== undefined) {
+                    document.getElementById('mainPlayBtn').innerText = s.isPlaying ? '⏸ Pause' : '▶ Play';
+                }
+            }
+        });
+
         // Load Persistent Settings
         function loadSettings() {
             try {
@@ -196,6 +249,16 @@
                     if (saved.volume !== undefined) currentVolume = parseInt(saved.volume, 10);
                     if (saved.savedRendererId) window._savedRendererId = saved.savedRendererId;
                     if (saved.savedFolder) window._savedFolder = saved.savedFolder;
+                }
+
+                const sessRaw = localStorage.getItem('linnas_audio_session');
+                if (sessRaw) {
+                    const sess = JSON.parse(sessRaw);
+                    if (sess.playlist && sess.playlist.length > 0) {
+                        playlist = sess.playlist;
+                        currentTrackIndex = sess.currentTrackIndex || 0;
+                    }
+                    if (sess.currentDir) currentDir = sess.currentDir;
                 }
             } catch (e) {}
 
@@ -214,6 +277,7 @@
                     savedFolder: currentDir || '/'
                 };
                 localStorage.setItem('linnas_audio_settings', JSON.stringify(saved));
+                syncSessionToParent();
             } catch (e) {}
         }
 
@@ -487,6 +551,7 @@
             document.getElementById('currentTrackTitle').innerText = track.name;
             document.getElementById('currentTrackPath').innerText = track.path;
             renderPlaylistTable();
+            syncSessionToParent();
 
             if (outputMode === 'dlna' || outputMode === 'http_cast') {
                 silenceLocalBrowserAudio();
