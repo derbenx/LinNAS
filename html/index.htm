@@ -61,20 +61,25 @@
             display: none;
             background: #161b22;
             border-top: 1px solid #30363d;
-            padding: 0.6rem 1.2rem;
+            padding: 0.5rem 1rem;
             align-items: center;
             justify-content: space-between;
-            gap: 1rem;
+            gap: 0.8rem;
             z-index: 150;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.5);
+            flex-wrap: wrap;
         }
-        .global-audio-info { display: flex; align-items: center; gap: 10px; max-width: 35%; min-width: 0; }
+        .global-audio-info { display: flex; align-items: center; gap: 8px; max-width: 25%; min-width: 0; }
         .global-audio-title { font-size: 0.85rem; font-weight: bold; color: #58a6ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .global-audio-controls { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: center; }
-        .global-audio-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 0.3rem 0.6rem; cursor: pointer; font-size: 0.8rem; }
+        .global-audio-controls { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: center; flex-wrap: wrap; }
+        .global-audio-btn { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; border-radius: 4px; padding: 0.3rem 0.55rem; cursor: pointer; font-size: 0.8rem; }
         .global-audio-btn:hover { background: #30363d; color: #fff; }
-        .global-audio-scrubber { flex: 1; max-width: 250px; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #8b949e; font-family: monospace; }
+        .global-audio-scrubber { flex: 1; max-width: 200px; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: #8b949e; font-family: monospace; }
         .global-audio-scrubber input[type=range] { flex: 1; accent-color: #238636; cursor: pointer; }
+        .global-audio-volume { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #8b949e; }
+        .global-audio-volume input[type=range] { width: 75px; accent-color: #238636; cursor: pointer; }
+        .global-audio-output { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; }
+        .global-audio-output select { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; font-size: 0.75rem; padding: 2px 4px; outline: none; }
 
         .badge-root { background: #238636; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
         .badge-user { background: #d29922; color: black; padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
@@ -103,12 +108,13 @@
         <!-- Persistent Global Audio Bar -->
         <div id="globalAudioBar">
             <div class="global-audio-info">
-                <span>🎵</span>
+                <span id="globalAudioIcon">🎵</span>
                 <span id="globalAudioTitle" class="global-audio-title">No Audio Playing</span>
             </div>
             <div class="global-audio-controls">
                 <button class="global-audio-btn" onclick="globalAudioPrev()" title="Previous track">⏮</button>
                 <button id="globalAudioPlayBtn" class="global-audio-btn" onclick="toggleGlobalAudioPlay()">▶</button>
+                <button class="global-audio-btn" onclick="stopGlobalAudio()" title="Stop">⏹</button>
                 <button class="global-audio-btn" onclick="globalAudioNext()" title="Next track">⏭</button>
                 <button id="globalAudioRandBtn" class="global-audio-btn" onclick="toggleGlobalAudioShuffle()" title="Toggle Random/Shuffle">🔀</button>
                 <button id="globalAudioLoopBtn" class="global-audio-btn" onclick="toggleGlobalAudioLoop()" title="Toggle Loop">🔁</button>
@@ -117,8 +123,23 @@
                     <input type="range" id="globalAudioSeeker" value="0" min="0" max="100" oninput="seekGlobalAudio(this.value)">
                     <span id="globalAudioDuration">00:00</span>
                 </div>
+                <div class="global-audio-volume">
+                    <span>🔊</span>
+                    <input type="range" id="globalAudioVolumeSlider" min="0" max="100" value="80" oninput="onGlobalVolumeSlider(this.value)">
+                    <span id="globalAudioVolumeVal" style="width:28px; font-family:monospace;">80%</span>
+                </div>
+                <div class="global-audio-output">
+                    <select id="globalAudioOutputSelect" onchange="onGlobalAudioOutputChange()">
+                        <option value="browser">💻 Browser</option>
+                        <option value="http_cast">📡 HTTP Cast</option>
+                        <option value="dlna">📻 DLNA</option>
+                    </select>
+                    <select id="globalAudioRendererSelect" style="display: none; max-width: 140px;" onchange="onGlobalAudioRendererChange()">
+                        <option value="">Scan devices...</option>
+                    </select>
+                </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
                 <button class="global-audio-btn" onclick="openGlobalAudioPlayerPlugin()">🔊 Open Player</button>
                 <button class="global-audio-btn" style="color: #f85149;" onclick="closeGlobalAudioBar()">✕</button>
             </div>
@@ -395,13 +416,162 @@
             }
         }
 
+        let globalAudioOutput = 'browser';
+        let globalAudioVolume = 80;
+        let globalAudioDiscoveredRenderers = [];
+        let globalAudioRemotePlaying = false;
+        let globalAudioPollTimer = null;
+
+        function loadGlobalAudioSettings() {
+            try {
+                const raw = localStorage.getItem('linnas_audio_settings');
+                if (raw) {
+                    const saved = JSON.parse(raw);
+                    if (saved.outputMode) globalAudioOutput = saved.outputMode;
+                    if (saved.volume !== undefined) globalAudioVolume = parseInt(saved.volume, 10);
+                    if (saved.savedRendererId) window._globalSavedRendererId = saved.savedRendererId;
+                }
+            } catch (e) {}
+
+            const outSel = document.getElementById('globalAudioOutputSelect');
+            const volSlider = document.getElementById('globalAudioVolumeSlider');
+            const volVal = document.getElementById('globalAudioVolumeVal');
+            if (outSel) outSel.value = globalAudioOutput;
+            if (volSlider) volSlider.value = globalAudioVolume;
+            if (volVal) volVal.innerText = `${globalAudioVolume}%`;
+            setGlobalAudioVolume(globalAudioVolume);
+            syncGlobalAudioOutputUI();
+        }
+
+        function saveGlobalAudioSettings() {
+            try {
+                const rendSel = document.getElementById('globalAudioRendererSelect');
+                const saved = {
+                    outputMode: globalAudioOutput,
+                    volume: globalAudioVolume,
+                    savedRendererId: rendSel ? rendSel.value : ''
+                };
+                localStorage.setItem('linnas_audio_settings', JSON.stringify(saved));
+            } catch (e) {}
+        }
+
+        function syncGlobalAudioOutputUI() {
+            const rendSel = document.getElementById('globalAudioRendererSelect');
+            const icon = document.getElementById('globalAudioIcon');
+            if (globalAudioOutput === 'http_cast') {
+                if (rendSel) rendSel.style.display = 'inline-block';
+                if (icon) icon.innerText = '📡';
+                refreshGlobalAudioRenderers();
+            } else if (globalAudioOutput === 'dlna') {
+                if (rendSel) rendSel.style.display = 'inline-block';
+                if (icon) icon.innerText = '📻';
+                refreshGlobalAudioRenderers();
+            } else {
+                if (rendSel) rendSel.style.display = 'none';
+                if (icon) icon.innerText = '🎵';
+            }
+        }
+
+        function onGlobalAudioOutputChange() {
+            const outSel = document.getElementById('globalAudioOutputSelect');
+            globalAudioOutput = outSel.value;
+            saveGlobalAudioSettings();
+            syncGlobalAudioOutputUI();
+
+            if (globalAudioOutput === 'dlna' || globalAudioOutput === 'http_cast') {
+                const player = document.getElementById('globalAudioPlayer');
+                player.pause();
+                if (globalPlaylist.length > 0 && globalPlaylistIndex >= 0) {
+                    castGlobalTrackToDLNA(globalPlaylist[globalPlaylistIndex]);
+                }
+            } else {
+                stopGlobalAudioRemote();
+                loadAndPlayGlobalTrack();
+            }
+        }
+
+        function onGlobalAudioRendererChange() {
+            saveGlobalAudioSettings();
+            if ((globalAudioOutput === 'dlna' || globalAudioOutput === 'http_cast') && globalPlaylist.length > 0 && globalPlaylistIndex >= 0) {
+                castGlobalTrackToDLNA(globalPlaylist[globalPlaylistIndex]);
+            }
+        }
+
+        async function refreshGlobalAudioRenderers() {
+            const rendSel = document.getElementById('globalAudioRendererSelect');
+            if (!rendSel) return;
+            rendSel.innerHTML = '<option value="">Scanning...</option>';
+            try {
+                const res = await fetch('/api/dlna/renderers');
+                const data = await res.json();
+                globalAudioDiscoveredRenderers = data.renderers || [];
+                rendSel.innerHTML = '';
+                if (globalAudioDiscoveredRenderers.length === 0) {
+                    rendSel.innerHTML = '<option value="">No devices found</option>';
+                    return;
+                }
+                globalAudioDiscoveredRenderers.forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = r.id;
+                    opt.innerText = r.friendly_name || r.ip;
+                    rendSel.appendChild(opt);
+                });
+                if (window._globalSavedRendererId) {
+                    const match = globalAudioDiscoveredRenderers.find(r => r.id === window._globalSavedRendererId || r.ip === window._globalSavedRendererId);
+                    if (match) rendSel.value = match.id;
+                }
+            } catch (e) {
+                rendSel.innerHTML = '<option value="">Scan failed</option>';
+            }
+        }
+
+        function onGlobalVolumeSlider(val) {
+            setGlobalAudioVolume(parseInt(val, 10));
+            saveGlobalAudioSettings();
+        }
+
+        function setGlobalAudioVolume(vol) {
+            globalAudioVolume = vol;
+            const slider = document.getElementById('globalAudioVolumeSlider');
+            const valEl = document.getElementById('globalAudioVolumeVal');
+            if (slider) slider.value = vol;
+            if (valEl) valEl.innerText = `${vol}%`;
+
+            const player = document.getElementById('globalAudioPlayer');
+            if (player) player.volume = vol / 100;
+
+            if (globalAudioOutput === 'dlna' || globalAudioOutput === 'http_cast') {
+                const rendSel = document.getElementById('globalAudioRendererSelect');
+                const rendererId = rendSel ? rendSel.value : '';
+                if (rendererId) {
+                    fetch('/api/dlna/cast', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ renderer_id: rendererId, action: 'volume', volume: vol })
+                    }).catch(() => {});
+                }
+            }
+        }
+        window.setGlobalAudioVolume = setGlobalAudioVolume;
+
         function playGlobalAudioQueue(playlist, startIndex, dirPath) {
             if (!playlist || playlist.length === 0) return;
             globalPlaylist = playlist;
             globalPlaylistIndex = startIndex || 0;
             if (dirPath) globalAudioCurrentDir = dirPath;
             if (globalAudioShuffle) ensureGlobalShuffleOrder(true);
-            loadAndPlayGlobalTrack();
+            loadGlobalAudioSettings();
+
+            if (globalAudioOutput === 'dlna' || globalAudioOutput === 'http_cast') {
+                const track = globalPlaylist[globalPlaylistIndex];
+                const bar = document.getElementById('globalAudioBar');
+                const titleEl = document.getElementById('globalAudioTitle');
+                titleEl.innerText = track.name || track.path.split('/').pop();
+                bar.style.display = 'flex';
+                castGlobalTrackToDLNA(track);
+            } else {
+                loadAndPlayGlobalTrack();
+            }
         }
 
         window.playGlobalAudioQueue = playGlobalAudioQueue;
@@ -424,6 +594,75 @@
             });
         }
 
+        async function castGlobalTrackToDLNA(track) {
+            const rendSel = document.getElementById('globalAudioRendererSelect');
+            const rendererId = rendSel ? rendSel.value : '';
+            if (!rendererId) {
+                await refreshGlobalAudioRenderers();
+            }
+            const activeId = rendSel ? rendSel.value : '';
+            if (!activeId) return;
+
+            const streamMode = (globalAudioOutput === 'http_cast') ? 'direct_http' : 'dlna_content';
+            try {
+                const res = await fetch('/api/dlna/cast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        renderer_id: activeId,
+                        action: 'play',
+                        file_path: track.path,
+                        stream_mode: streamMode
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    globalAudioRemotePlaying = true;
+                    document.getElementById('globalAudioPlayBtn').innerText = '⏸';
+                    startGlobalAudioPolling(activeId);
+                    setGlobalAudioVolume(globalAudioVolume);
+                }
+            } catch (e) {}
+        }
+
+        function startGlobalAudioPolling(rendererId) {
+            if (globalAudioPollTimer) clearInterval(globalAudioPollTimer);
+            globalAudioPollTimer = setInterval(async () => {
+                if (globalAudioOutput !== 'dlna' && globalAudioOutput !== 'http_cast') return;
+                try {
+                    const res = await fetch(`/api/dlna/cast/status?renderer_id=${encodeURIComponent(rendererId)}`);
+                    const data = await res.json();
+                    if (data.success) {
+                        if (data.state === 'STOPPED' && globalAudioRemotePlaying) {
+                            globalAudioNext(true);
+                        } else if (data.state === 'PLAYING') {
+                            globalAudioRemotePlaying = true;
+                            document.getElementById('globalAudioPlayBtn').innerText = '⏸';
+                            if (data.rel_time) document.getElementById('globalAudioCurrentTime').innerText = data.rel_time;
+                            if (data.track_duration) document.getElementById('globalAudioDuration').innerText = data.track_duration;
+                        } else if (data.state === 'PAUSED_PLAYBACK') {
+                            globalAudioRemotePlaying = false;
+                            document.getElementById('globalAudioPlayBtn').innerText = '▶';
+                        }
+                    }
+                } catch (e) {}
+            }, 3000);
+        }
+
+        function stopGlobalAudioRemote() {
+            const rendSel = document.getElementById('globalAudioRendererSelect');
+            const rendererId = rendSel ? rendSel.value : '';
+            if (rendererId) {
+                fetch('/api/dlna/cast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ renderer_id: rendererId, action: 'stop' })
+                }).catch(() => {});
+            }
+            globalAudioRemotePlaying = false;
+            if (globalAudioPollTimer) clearInterval(globalAudioPollTimer);
+        }
+
         function toggleGlobalAudioShuffle() {
             globalAudioShuffle = !globalAudioShuffle;
             if (globalAudioShuffle) ensureGlobalShuffleOrder(true);
@@ -440,13 +679,39 @@
         function toggleGlobalAudioPlay() {
             const player = document.getElementById('globalAudioPlayer');
             const btn = document.getElementById('globalAudioPlayBtn');
-            if (player.paused) {
-                player.play();
-                btn.innerText = '⏸';
+
+            if (globalAudioOutput === 'dlna' || globalAudioOutput === 'http_cast') {
+                const rendSel = document.getElementById('globalAudioRendererSelect');
+                const rendererId = rendSel ? rendSel.value : '';
+                if (!rendererId) return;
+
+                const action = globalAudioRemotePlaying ? 'pause' : 'play';
+                fetch('/api/dlna/cast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ renderer_id: rendererId, action: action })
+                }).then(r => r.json()).then(data => {
+                    if (data.success) {
+                        globalAudioRemotePlaying = !globalAudioRemotePlaying;
+                        btn.innerText = globalAudioRemotePlaying ? '⏸' : '▶';
+                    }
+                }).catch(() => {});
             } else {
-                player.pause();
-                btn.innerText = '▶';
+                if (player.paused) {
+                    player.play();
+                    btn.innerText = '⏸';
+                } else {
+                    player.pause();
+                    btn.innerText = '▶';
+                }
             }
+        }
+
+        function stopGlobalAudio() {
+            const player = document.getElementById('globalAudioPlayer');
+            player.pause();
+            stopGlobalAudioRemote();
+            document.getElementById('globalAudioPlayBtn').innerText = '▶';
         }
 
         function globalAudioPrev() {
@@ -514,8 +779,10 @@
         function closeGlobalAudioBar() {
             const player = document.getElementById('globalAudioPlayer');
             player.pause();
+            stopGlobalAudioRemote();
             document.getElementById('globalAudioBar').style.display = 'none';
         }
+        window.closeGlobalAudioBar = closeGlobalAudioBar;
 
         document.getElementById('globalAudioPlayer').addEventListener('timeupdate', function() {
             const player = document.getElementById('globalAudioPlayer');
@@ -681,6 +948,7 @@
 
         window.onload = async () => {
             initSidebarResizer();
+            loadGlobalAudioSettings();
             await checkAuth();
             await loadPlugins();
             if (isLoggedIn) {
