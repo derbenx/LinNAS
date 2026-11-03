@@ -87,7 +87,7 @@
         .win-btn:hover { background: #30363d; color: #fff; }
         .win-btn-close:hover { background: #da3633; color: #fff; }
 
-        .window-body { flex: 1; position: relative; overflow: auto; background: #0d1117; display: flex; flex-direction: column; }
+        .window-body { flex: 1; position: relative; overflow: hidden; background: #0d1117; display: flex; flex-direction: column; }
 
         /* Window Resizer Handle */
         .window-resizer { position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; cursor: se-resize; z-index: 10; }
@@ -118,7 +118,7 @@
         .drop-target-active .drop-target-overlay { display: flex; }
 
         /* App Specific Layouts */
-        .app-media-container { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1rem; position: relative; background: #0d1117; }
+        .app-media-container { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1rem; position: relative; background: #0d1117; overflow: hidden; }
         .app-empty-state { text-align: center; color: #8b949e; font-size: 0.85rem; display: flex; flex-direction: column; align-items: center; gap: 0.8rem; }
         .app-empty-icon { font-size: 3rem; }
 
@@ -258,8 +258,11 @@
     <div id="pickerModal" class="modal" onclick="closePickerModal()">
         <div class="modal-content" onclick="event.stopPropagation()">
             <div class="modal-header">
-                <span id="pickerModalPath">/</span>
-                <button class="win-btn" onclick="closePickerModal()">✕</button>
+                <span id="pickerModalPath" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%;">/</span>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <button id="pickerFolderSelectBtn" class="btn" style="display: none; padding: 0.25rem 0.6rem; font-size: 0.78rem;" onclick="confirmPickerFolderSelection()">📁 Select This Folder</button>
+                    <button class="win-btn" onclick="closePickerModal()">✕</button>
+                </div>
             </div>
             <div id="pickerFileList" class="file-list"></div>
         </div>
@@ -1106,13 +1109,16 @@
             }, 2800);
         }
 
-        /* Built-in File Picker Modal */
+        /* Built-in File & Folder Picker Modal */
         let activePickerCallback = null;
         let currentPickerExts = [];
+        let isFolderPickerMode = false;
+        let currentPickerLoadedDir = '/';
 
-        async function openNASPickerModal(initialDir, allowedExts, onSelectFile, isSaveAs = false) {
+        async function openNASPickerModal(initialDir, allowedExts, onSelectFile, isSaveAs = false, folderMode = false) {
             currentPickerExts = allowedExts || [];
             activePickerCallback = onSelectFile;
+            isFolderPickerMode = folderMode;
 
             if (isSaveAs) {
                 const targetName = prompt('Enter filename to save:', 'untitled.txt');
@@ -1122,36 +1128,77 @@
                 return;
             }
 
+            const folderBtn = document.getElementById('pickerFolderSelectBtn');
+            if (folderBtn) {
+                folderBtn.style.display = isFolderPickerMode ? 'inline-flex' : 'none';
+            }
+
             loadPickerDirectory(initialDir || '/');
             document.getElementById('pickerModal').style.display = 'flex';
         }
 
+        function confirmPickerFolderSelection() {
+            closePickerModal();
+            if (activePickerCallback) {
+                activePickerCallback(currentPickerLoadedDir);
+            }
+        }
+
         async function loadPickerDirectory(dirPath) {
-            document.getElementById('pickerModalPath').innerText = dirPath;
+            currentPickerLoadedDir = dirPath || '/';
+            document.getElementById('pickerModalPath').innerText = currentPickerLoadedDir;
             try {
-                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(dirPath)}`);
+                const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(currentPickerLoadedDir)}`);
                 const data = await res.json();
                 const container = document.getElementById('pickerFileList');
                 container.innerHTML = '';
 
-
-
                 if (data.items) {
                     data.items.forEach(item => {
-                        const ext = item.name.split('.').pop().toLowerCase();
-                        if (item.is_dir || currentPickerExts.length === 0 || currentPickerExts.includes(ext)) {
-                            const itemDiv = document.createElement('div');
-                            itemDiv.className = 'file-item';
-                            itemDiv.innerText = (item.is_dir ? '📁 ' : '📄 ') + item.name;
-                            itemDiv.onclick = () => {
-                                if (item.is_dir) {
-                                    loadPickerDirectory(item.path);
-                                } else {
-                                    closePickerModal();
-                                    if (activePickerCallback) activePickerCallback(item.path);
+                        if (isFolderPickerMode) {
+                            if (item.is_dir) {
+                                const itemDiv = document.createElement('div');
+                                itemDiv.className = 'file-item';
+                                itemDiv.style.justifyContent = 'space-between';
+
+                                const labelSpan = document.createElement('span');
+                                labelSpan.innerText = (item.name === '..' ? '⬆️ .. (Parent Directory)' : '📁 ' + item.name);
+                                labelSpan.style.flex = '1';
+                                labelSpan.onclick = () => loadPickerDirectory(item.path);
+
+                                itemDiv.appendChild(labelSpan);
+
+                                if (item.name !== '..') {
+                                    const selectBtn = document.createElement('button');
+                                    selectBtn.className = 'btn btn-secondary';
+                                    selectBtn.style.padding = '0.15rem 0.45rem';
+                                    selectBtn.style.fontSize = '0.72rem';
+                                    selectBtn.innerText = 'Select';
+                                    selectBtn.onclick = (e) => {
+                                        e.stopPropagation();
+                                        closePickerModal();
+                                        if (activePickerCallback) activePickerCallback(item.path);
+                                    };
+                                    itemDiv.appendChild(selectBtn);
                                 }
-                            };
-                            container.appendChild(itemDiv);
+                                container.appendChild(itemDiv);
+                            }
+                        } else {
+                            const ext = item.name.split('.').pop().toLowerCase();
+                            if (item.is_dir || currentPickerExts.length === 0 || currentPickerExts.includes(ext)) {
+                                const itemDiv = document.createElement('div');
+                                itemDiv.className = 'file-item';
+                                itemDiv.innerText = (item.is_dir ? '📁 ' : '📄 ') + item.name;
+                                itemDiv.onclick = () => {
+                                    if (item.is_dir) {
+                                        loadPickerDirectory(item.path);
+                                    } else {
+                                        closePickerModal();
+                                        if (activePickerCallback) activePickerCallback(item.path);
+                                    }
+                                };
+                                container.appendChild(itemDiv);
+                            }
                         }
                     });
                 }
@@ -2081,14 +2128,12 @@
 
         function audioBrowseFolderPrompt(winId) {
             const wData = windowsMap[winId];
-            openNASPickerModal(wData?.state?.currentDir || '/', [], (selectedPath) => {
-                // If user picked a file, add its parent folder
-                let folder = selectedPath;
-                if (!folder.endsWith('/')) {
-                    folder = folder.substring(0, folder.lastIndexOf('/')) || '/';
+            openNASPickerModal(wData?.state?.currentDir || '/', [], (selectedFolder) => {
+                if (selectedFolder) {
+                    wData.state.currentDir = selectedFolder;
+                    audioAddPathsToPlaylist(winId, [selectedFolder]);
                 }
-                audioAddPathsToPlaylist(winId, [folder]);
-            });
+            }, false, true);
         }
 
         function audioPlayNext(winId, fromEnd = false) {
