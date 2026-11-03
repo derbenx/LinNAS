@@ -1287,7 +1287,9 @@ func handleDLNACast(w http.ResponseWriter, r *http.Request) {
 				html.EscapeString(mediaURI), html.EscapeString(currentURIMetaData))
 
 			_, _ = sendSOAPAction(renderer.AVTransportURL, "urn:schemas-upnp-org:service:AVTransport:1", "Stop", "<InstanceID>0</InstanceID>")
+			time.Sleep(150 * time.Millisecond)
 			_, _ = sendSOAPAction(renderer.AVTransportURL, "urn:schemas-upnp-org:service:AVTransport:1", "SetAVTransportURI", setURIArgs)
+			time.Sleep(100 * time.Millisecond)
 		}
 
 		playArgs := "<InstanceID>0</InstanceID><Speed>1</Speed>"

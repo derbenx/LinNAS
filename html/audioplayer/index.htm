@@ -480,6 +480,7 @@
         async function playTrackIndex(index) {
             if (index < 0 || index >= playlist.length) return;
 
+            isTransitioning = true;
             currentTrackIndex = index;
             const track = playlist[index];
 
@@ -490,7 +491,11 @@
             if (outputMode === 'dlna' || outputMode === 'http_cast') {
                 silenceLocalBrowserAudio();
                 await castTrackToDLNA(track);
+                setTimeout(() => {
+                    isTransitioning = false;
+                }, 3000);
             } else {
+                isTransitioning = false;
                 stopDLNARemote();
                 isLocalPlaying = true;
                 document.getElementById('mainPlayBtn').innerText = '⏸ Pause';

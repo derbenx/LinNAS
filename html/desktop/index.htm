@@ -1762,23 +1762,47 @@
             if (!wData.state.playlist) wData.state.playlist = [];
 
             if (replaceSingle && paths.length === 1 && !paths[0].endsWith('/')) {
-                wData.state.playlist = [{ path: paths[0], name: paths[0].split('/').pop() }];
-                wData.state.currentTrackIndex = 0;
+                // Check if this single path is actually a directory
+                let isDirectory = false;
+                try {
+                    const probe = await fetch(`/api/fs/browse?path=${encodeURIComponent(paths[0])}`);
+                    const probeData = await probe.json();
+                    if (probeData && probeData.items && !probeData.error) {
+                        isDirectory = true;
+                        probeData.items.filter(i => !i.is_dir && checkAppFileCapability('audioplayer', i.name)).forEach(i => {
+                            if (!wData.state.playlist.some(t => t.path === i.path)) {
+                                wData.state.playlist.push({ path: i.path, name: i.name });
+                            }
+                        });
+                    }
+                } catch (e) {}
+
+                if (!isDirectory) {
+                    wData.state.playlist = [{ path: paths[0], name: paths[0].split('/').pop() }];
+                    wData.state.currentTrackIndex = 0;
+                } else {
+                    if (wData.state.currentTrackIndex === -1 && wData.state.playlist.length > 0) {
+                        wData.state.currentTrackIndex = 0;
+                    }
+                }
             } else {
                 for (const p of paths) {
-                    if (p.endsWith('/')) {
-                        try {
-                            const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(p)}`);
-                            const data = await res.json();
-                            if (data.items) {
-                                data.items.filter(i => !i.is_dir && checkAppFileCapability('audioplayer', i.name)).forEach(i => {
-                                    if (!wData.state.playlist.some(t => t.path === i.path)) {
-                                        wData.state.playlist.push({ path: i.path, name: i.name });
-                                    }
-                                });
-                            }
-                        } catch (e) {}
-                    } else if (checkAppFileCapability('audioplayer', p.split('/').pop())) {
+                    // Check if path is a directory (either ends with / or returns browse items)
+                    let loadedAsDir = false;
+                    try {
+                        const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(p)}`);
+                        const data = await res.json();
+                        if (data && data.items && !data.error) {
+                            loadedAsDir = true;
+                            data.items.filter(i => !i.is_dir && checkAppFileCapability('audioplayer', i.name)).forEach(i => {
+                                if (!wData.state.playlist.some(t => t.path === i.path)) {
+                                    wData.state.playlist.push({ path: i.path, name: i.name });
+                                }
+                            });
+                        }
+                    } catch (e) {}
+
+                    if (!loadedAsDir && checkAppFileCapability('audioplayer', p.split('/').pop())) {
                         if (!wData.state.playlist.some(t => t.path === p)) {
                             wData.state.playlist.push({ path: p, name: p.split('/').pop() });
                         }
