@@ -1,8 +1,16 @@
-# Build flags to hide Windows CMD console window: -ldflags="-H=windowsgui"
-.PHONY: build build-windows
+# Makefile for LinNAS Local Cloud Client (Wails v2)
+.PHONY: build build-linux build-windows test clean
 
-build:
-	go build -o linnas-client .
+build: build-linux
+
+build-linux:
+	wails build -tags webkit2_41 -o linnas-client
 
 build-windows:
-	GOOS=windows GOARCH=amd64 go build -ldflags="-H=windowsgui -s -w" -o linnas-client.exe .
+	wails build -platform windows/amd64 -windowsconsole=false -o linnas-client.exe
+
+test:
+	go test -v ./...
+
+clean:
+	rm -rf build/bin

@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LinNAS Local Cloud Client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    /* Top Navigation Tabs */
+    .tab-nav {
+      display: flex;
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      padding: 0 12px;
+      gap: 6px;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #8b949e;
+      padding: 12px 16px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+    }
+    .tab-btn:hover {
+      color: #c9d1d9;
+    }
+    .tab-btn.active {
+      color: #58a6ff;
+      border-bottom-color: #58a6ff;
+    }
+
+    /* Tab Content Area */
+    .tab-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    .tab-pane {
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+      max-width: 800px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .tab-pane.active {
+      display: flex;
+    }
+
+    /* Form and Card Layouts */
+    .section-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 16px 20px;
+    }
+    .section-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #f0f6fc;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .form-group {
+      margin-bottom: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+    label {
+      font-size: 0.82rem;
+      color: #8b949e;
+      font-weight: 500;
+    }
+    input[type="text"], input[type="password"], select {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus, input[type="password"]:focus, select:focus {
+      border-color: #58a6ff;
+    }
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+    .input-row input {
+      flex: 1;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    .checkbox-row input[type="checkbox"] {
+      cursor: pointer;
+      width: 16px;
+      height: 16px;
+      accent-color: #238636;
+    }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .btn {
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn:hover {
+      background: #30363d;
+      border-color: #8b949e;
+    }
+    .btn-primary {
+      background: #238636;
+      border-color: #2ea043;
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: #2ea043;
+    }
+    .btn-danger {
+      background: #b62324;
+      border-color: #da3633;
+      color: #ffffff;
+    }
+    .btn-danger:hover {
+      background: #da3633;
+    }
+
+    /* Range slider */
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .slider-container input[type="range"] {
+      flex: 1;
+      accent-color: #58a6ff;
+      cursor: pointer;
+    }
+    .slider-val {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #58a6ff;
+      min-width: 90px;
+    }
+
+    /* Folder list */
+    .folder-tree {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 10px;
+      max-height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .folder-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      color: #c9d1d9;
+    }
+
+    /* SMART Diagnostics Section */
+    .smart-section {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .smart-section-header {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #58a6ff;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #21262d;
+      padding-bottom: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .smart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .smart-tile {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      height: 95px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .smart-tile.failing {
+      border: 1px solid #f85149;
+      background: rgba(248, 81, 73, 0.08);
+      animation: pulseAlert 2s infinite ease-in-out;
+    }
+    @keyframes pulseAlert {
+      0%, 100% { border-color: #f85149; }
+      50% { border-color: #ff7b72; }
+    }
+    .tile-name {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tile-model {
+      font-size: 0.72rem;
+      color: #8b949e;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tile-status {
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .tile-status.pass { color: #3fb950; }
+    .tile-status.fail { color: #f85149; }
+    .tile-status.ok { color: #58a6ff; }
+    .tile-cap {
+      font-size: 0.72rem;
+      color: #8b949e;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* Warning Banner */
+    .alert-banner {
+      background: rgba(218, 54, 51, 0.2);
+      border: 1px solid #da3633;
+      border-radius: 6px;
+      padding: 12px 16px;
+      display: none;
+      align-items: flex-start;
+      gap: 12px;
+      color: #ff7b72;
+      font-size: 0.85rem;
+    }
+    .alert-banner.test {
+      background: rgba(210, 153, 34, 0.2);
+      border-color: #d29922;
+      color: #e3b341;
+    }
+    .alert-banner-actions {
+      margin-left: auto;
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Bottom Status Bar */
+    .bottom-bar {
+      background: #161b22;
+      border-top: 1px solid #30363d;
+      padding: 8px 16px;
+      font-size: 0.8rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #8b949e;
+    }
+    .status-text {
+      color: #c9d1d9;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3fb950;
+      display: inline-block;
+    }
+    .status-dot.disconnected {
+      background: #f85149;
+    }
+  </style>
+</head>
+<body>
+  <!-- Tab Navigation -->
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('conn')">⚙️ Connection & Sync</button>
+    <button class="tab-btn" onclick="switchTab('folders')">📁 Folders</button>
+    <button class="tab-btn" id="tabSmartBtn" onclick="switchTab('smart')">⚠️ SMART Diagnostics</button>
+  </div>
+
+  <!-- Persistent Warning Banner (Top of Window) -->
+  <div id="alertBanner" class="alert-banner" style="margin: 12px 20px 0 20px;">
+    <div style="font-size: 1.2rem;">⚠️</div>
+    <div style="flex: 1;">
+      <div id="alertTitle" style="font-weight: 700; margin-bottom: 4px;">CRITICAL HARDWARE FAILURE DETECTED</div>
+      <div id="alertMessage" style="white-space: pre-line; font-size: 0.8rem; color: #c9d1d9;"></div>
+    </div>
+    <div class="alert-banner-actions">
+      <button class="btn btn-danger" onclick="muteAlert()">Mute (12h)</button>
+      <button class="btn" onclick="dismissBanner()">Dismiss</button>
+    </div>
+  </div>
+
+  <div class="tab-container">
+    <!-- TAB 1: Connection & Sync -->
+    <div id="pane-conn" class="tab-pane active">
+      <div class="section-card">
+        <div class="section-title">🌐 Server Connection</div>
+        <div class="form-group">
+          <label>LinNAS Server Endpoint (IP:Port)</label>
+          <input type="text" id="serverEndpoint" placeholder="192.168.1.50:8080">
+        </div>
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="username" placeholder="admin">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="password" placeholder="•••••••• (Enter to update password)">
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-title">⏱️ Synchronization Scheduling</div>
+        <div class="form-group">
+          <label class="checkbox-row">
+            <input type="checkbox" id="syncEnabled">
+            <span>Enable automatic background synchronization</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-row">
+            <input type="checkbox" id="runOnStartup">
+            <span>Start LinNAS Client automatically on system startup</span>
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Sync Mode</label>
+          <select id="syncMode" onchange="updateModeLabel()">
+            <option value="On a timer">On a timer</option>
+            <option value="When idle for">When idle for</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label id="sliderLabel">Sync Interval</label>
+          <div class="slider-container">
+            <input type="range" id="syncFreqSlider" min="120" max="18000" step="30" oninput="onFreqSlider(this.value)">
+            <span class="slider-val" id="syncFreqText">5 mins</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-title">🛠️ Diagnostics & Preferences</div>
+        <div class="form-group">
+          <label class="checkbox-row">
+            <input type="checkbox" id="logToFile">
+            <span>Log activity to file (debug.log, capped at 1MB)</span>
+          </label>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="saveConnectionSettings()">💾 Save Connection & Preferences</button>
+          <button class="btn" onclick="syncNow()">🔄 Sync Files Now</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Folders -->
+    <div id="pane-folders" class="tab-pane">
+      <div class="section-card">
+        <div class="section-title">💻 Local Synchronization Folder</div>
+        <div class="form-group">
+          <label>Local directory to synchronize files to and from:</label>
+          <div class="input-row">
+            <input type="text" id="localSyncDir" placeholder="/path/to/folder">
+            <button class="btn" onclick="browseLocalFolder()">📂 Browse...</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-card">
+        <div class="section-title" style="justify-content: space-between;">
+          <span>☁️ Server Selective Sync</span>
+          <button class="btn" onclick="refreshFolders()">🔄 Refresh Folders</button>
+        </div>
+        <div style="font-size: 0.82rem; color: #8b949e; margin-bottom: 10px;">
+          Choose which cloud folders to mirror to your local computer:
+        </div>
+        <div class="folder-tree" id="folderTreeList">
+          <div style="color: #8b949e; font-size: 0.82rem;">Loading folders...</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="saveFolderSettings()">💾 Save Folder Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: SMART Diagnostics (Unified) -->
+    <div id="pane-smart" class="tab-pane">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-size: 1.05rem; font-weight: 700; color: #f0f6fc;">
+          SMART Drive Diagnostics
+        </div>
+        <button class="btn" onclick="refreshSMART()">🔄 Refresh SMART Data</button>
+      </div>
+
+      <!-- Section 1: Server Drives -->
+      <div class="smart-section" id="section-server">
+        <div class="smart-section-header">
+          <span>🖥️ Server Storage Drives</span>
+          <span id="serverDiskCount" style="font-size: 0.75rem; color: #8b949e;"></span>
+        </div>
+        <div class="smart-grid" id="serverSmartGrid">
+          <div style="color: #8b949e; font-size: 0.82rem;">Checking server drives...</div>
+        </div>
+      </div>
+
+      <!-- Section 2: Local PC Drives -->
+      <div class="smart-section" id="section-local">
+        <div class="smart-section-header">
+          <span>💻 Local PC Storage Drives</span>
+          <span id="localDiskCount" style="font-size: 0.75rem; color: #8b949e;"></span>
+        </div>
+        <div class="smart-grid" id="localSmartGrid">
+          <div style="color: #8b949e; font-size: 0.82rem;">Checking local drives...</div>
+        </div>
+      </div>
+
+      <!-- Section 3: Other Client IPs -->
+      <div class="smart-section" id="section-clients">
+        <div class="smart-section-header">
+          <span>🌐 Remote Client Devices (By IP)</span>
+          <span id="clientsDiskCount" style="font-size: 0.75rem; color: #8b949e;"></span>
+        </div>
+        <div id="clientsSmartContainer" style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="color: #8b949e; font-size: 0.82rem;">No remote client drive failures reported.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Status Bar -->
+  <div class="bottom-bar">
+    <div class="status-text">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusLabel">Status: Idle</span>
+    </div>
+    <div id="lastSyncTime" style="font-size: 0.75rem;">Connected to LinNAS</div>
+  </div>
+
+  <script>
+    let currentConfig = {};
+    let selectedFoldersMap = {};
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+
+      const pane = document.getElementById('pane-' + name);
+      if (pane) pane.classList.add('active');
+
+      if (name === 'conn') document.querySelectorAll('.tab-btn')[0].classList.add('active');
+      if (name === 'folders') document.querySelectorAll('.tab-btn')[1].classList.add('active');
+      if (name === 'smart') document.querySelectorAll('.tab-btn')[2].classList.add('active');
+    }
+
+    function formatInterval(seconds) {
+      if (seconds < 60) return seconds + " secs";
+      const mins = Math.floor(seconds / 60);
+      const hours = Math.floor(mins / 60);
+      const remMins = mins % 60;
+      if (hours > 0) {
+        if (remMins === 0) return hours === 1 ? "1 hour" : hours + " hours";
+        return hours + " hr " + remMins + " min";
+      }
+      return mins + " mins";
+    }
+
+    function onFreqSlider(val) {
+      const secs = Math.max(120, Math.floor(val / 30) * 30);
+      document.getElementById('syncFreqText').innerText = formatInterval(secs);
+    }
+
+    function updateModeLabel() {
+      const mode = document.getElementById('syncMode').value;
+      document.getElementById('sliderLabel').innerText = (mode === 'When idle for') ? 'Idle Wait Duration' : 'Sync Interval';
+    }
+
+    async function loadConfig() {
+      try {
+        currentConfig = await window.go.main.App.GetConfig();
+        document.getElementById('serverEndpoint').value = currentConfig.server_endpoint || '';
+        document.getElementById('username').value = currentConfig.username || '';
+        document.getElementById('syncEnabled').checked = currentConfig.sync_enabled !== false;
+        document.getElementById('logToFile').checked = !!currentConfig.log_to_file;
+        document.getElementById('syncMode').value = currentConfig.sync_mode || 'On a timer';
+        updateModeLabel();
+
+        const secs = currentConfig.sync_interval_sec || 300;
+        document.getElementById('syncFreqSlider').value = secs;
+        document.getElementById('syncFreqText').innerText = formatInterval(secs);
+
+        document.getElementById('localSyncDir').value = currentConfig.local_sync_dir || '';
+        selectedFoldersMap = currentConfig.selected_folders || {};
+
+        const autostart = await window.go.main.App.GetStartupOnBoot();
+        document.getElementById('runOnStartup').checked = autostart;
+      } catch (err) {
+        console.error("Failed to load config:", err);
+      }
+    }
+
+    async function saveConnectionSettings() {
+      try {
+        currentConfig.server_endpoint = document.getElementById('serverEndpoint').value.trim();
+        currentConfig.username = document.getElementById('username').value.trim();
+        currentConfig.sync_enabled = document.getElementById('syncEnabled').checked;
+        currentConfig.log_to_file = document.getElementById('logToFile').checked;
+        currentConfig.sync_mode = document.getElementById('syncMode').value;
+        currentConfig.idle_only = (currentConfig.sync_mode === 'When idle for');
+        currentConfig.sync_interval_sec = parseInt(document.getElementById('syncFreqSlider').value, 10);
+
+        const pwd = document.getElementById('password').value;
+        if (pwd.trim()) {
+          await window.go.main.App.SetPassword(pwd.trim());
+          document.getElementById('password').value = '';
+        }
+
+        await window.go.main.App.SaveConfig(currentConfig);
+        await window.go.main.App.SetStartupOnBoot(document.getElementById('runOnStartup').checked);
+        alert("Connection settings and preferences saved successfully!");
+      } catch (err) {
+        alert("Error saving settings: " + err);
+      }
+    }
+
+    async function saveFolderSettings() {
+      try {
+        currentConfig.local_sync_dir = document.getElementById('localSyncDir').value.trim();
+        currentConfig.selected_folders = selectedFoldersMap;
+        await window.go.main.App.SaveConfig(currentConfig);
+        alert("Folder preferences saved successfully!");
+      } catch (err) {
+        alert("Error saving folder settings: " + err);
+      }
+    }
+
+    async function browseLocalFolder() {
+      try {
+        const path = await window.go.main.App.PickDirectory();
+        if (path) {
+          document.getElementById('localSyncDir').value = path;
+          currentConfig.local_sync_dir = path;
+        }
+      } catch (err) {
+        console.error("Browse directory failed:", err);
+      }
+    }
+
+    async function syncNow() {
+      try {
+        await window.go.main.App.PerformSync();
+      } catch (err) {
+        console.error("Manual sync failed:", err);
+      }
+    }
+
+    async function refreshFolders() {
+      const container = document.getElementById('folderTreeList');
+      container.innerHTML = '<div style="color: #8b949e; font-size: 0.82rem;">Fetching server folders...</div>';
+      try {
+        const dirs = await window.go.main.App.FetchServerFolders();
+        container.innerHTML = '';
+
+        const rootChk = document.createElement('label');
+        rootChk.className = 'folder-item';
+        const isRootChecked = Object.keys(selectedFoldersMap).length === 0;
+        rootChk.innerHTML = `<input type="checkbox" ${isRootChecked ? 'checked' : ''}> 📁 / (Root Cloud Folder - Sync Everything)`;
+        rootChk.querySelector('input').onchange = (e) => {
+          if (e.target.checked) {
+            selectedFoldersMap = {};
+            refreshFolders();
+          }
+        };
+        container.appendChild(rootChk);
+
+        if (dirs && dirs.length > 0) {
+          dirs.forEach(d => {
+            const row = document.createElement('label');
+            row.className = 'folder-item';
+            const checked = !!selectedFoldersMap[d.rel_path];
+            row.innerHTML = `<input type="checkbox" ${checked ? 'checked' : ''}> 📁 ${d.rel_path}`;
+            row.querySelector('input').onchange = (e) => {
+              if (e.target.checked) {
+                selectedFoldersMap[d.rel_path] = true;
+                const parts = d.rel_path.split('/');
+                let cur = '';
+                parts.forEach(p => {
+                  cur = cur ? cur + '/' + p : p;
+                  selectedFoldersMap[cur] = true;
+                });
+              } else {
+                delete selectedFoldersMap[d.rel_path];
+              }
+            };
+            container.appendChild(row);
+          });
+        }
+      } catch (err) {
+        container.innerHTML = `<div style="color: #f85149; font-size: 0.82rem;">Could not load folders: ${err}</div>`;
+      }
+    }
+
+    function createDriveTile(d) {
+      const tile = document.createElement('div');
+      const isFail = (d.health === 'FAILED');
+      const isPass = (d.health === 'PASSED');
+
+      tile.className = 'smart-tile' + (isFail ? ' failing' : '');
+      if (isFail) {
+        tile.id = 'fail-drive-' + (d.device || '').replace(/[^a-zA-Z0-9]/g, '_');
+      }
+
+      let devName = (d.device || '').replace(/^\/dev\//, '');
+      let header = devName;
+      if (d.part_label && d.part_label !== devName) {
+        header = `${devName} [${d.part_label}]`;
+      }
+
+      let statusBadge = '<span class="tile-status ok">ℹ️ OK</span>';
+      if (isFail) statusBadge = '<span class="tile-status fail">❌ FAIL</span>';
+      else if (isPass) statusBadge = '<span class="tile-status pass">✅ PASS</span>';
+
+      let tempStr = d.temp_c > 0 ? `🌡️ ${d.temp_c}°C` : '';
+
+      tile.innerHTML = `
+        <div>
+          <div class="tile-name" title="${header}">${header}</div>
+          <div class="tile-model" title="${d.model || ''}">${d.model || 'Generic Storage'}</div>
+        </div>
+        <div>
+          <div style="margin-bottom: 4px;">${statusBadge}</div>
+          <div class="tile-cap">
+            <span>${d.capacity || ''}</span>
+            <span>${tempStr}</span>
+          </div>
+        </div>
+      `;
+      return tile;
+    }
+
+    async function refreshSMART() {
+      const serverGrid = document.getElementById('serverSmartGrid');
+      const localGrid = document.getElementById('localSmartGrid');
+      const clientsContainer = document.getElementById('clientsSmartContainer');
+
+      serverGrid.innerHTML = '<div style="color: #8b949e; font-size: 0.82rem;">Refreshing server drives...</div>';
+      localGrid.innerHTML = '<div style="color: #8b949e; font-size: 0.82rem;">Refreshing local drives...</div>';
+
+      try {
+        const data = await window.go.main.App.CheckSMARTStatus();
+
+        // 1. Server Disks
+        serverGrid.innerHTML = '';
+        if (data.server_disks && data.server_disks.length > 0) {
+          document.getElementById('serverDiskCount').innerText = `(${data.server_disks.length} drives)`;
+          data.server_disks.forEach(d => serverGrid.appendChild(createDriveTile(d)));
+        } else {
+          serverGrid.innerHTML = '<div style="color: #8b949e; font-size: 0.82rem;">No server drives detected.</div>';
+        }
+
+        // 2. Local Disks
+        localGrid.innerHTML = '';
+        if (data.local_disks && data.local_disks.length > 0) {
+          document.getElementById('localDiskCount').innerText = `(${data.local_disks.length} drives)`;
+          data.local_disks.forEach(d => localGrid.appendChild(createDriveTile(d)));
+        } else {
+          localGrid.innerHTML = '<div style="color: #8b949e; font-size: 0.82rem;">No local drives detected.</div>';
+        }
+
+        // 3. Other IP client groups
+        clientsContainer.innerHTML = '';
+        if (data.client_groups && data.client_groups.length > 0) {
+          data.client_groups.forEach(grp => {
+            const grpBox = document.createElement('div');
+            grpBox.style.background = '#161b22';
+            grpBox.style.padding = '10px 14px';
+            grpBox.style.borderRadius = '6px';
+            grpBox.style.border = '1px solid #30363d';
+
+            const grpHeader = document.createElement('div');
+            grpHeader.style.fontSize = '0.82rem';
+            grpHeader.style.fontWeight = '700';
+            grpHeader.style.color = '#58a6ff';
+            grpHeader.style.marginBottom = '8px';
+            grpHeader.innerText = `IP: ${grp.ip} (${grp.client || 'Client'})`;
+
+            const grpGrid = document.createElement('div');
+            grpGrid.className = 'smart-grid';
+            grp.disks.forEach(d => grpGrid.appendChild(createDriveTile(d)));
+
+            grpBox.appendChild(grpHeader);
+            grpBox.appendChild(grpGrid);
+            clientsContainer.appendChild(grpBox);
+          });
+        } else {
+          clientsContainer.innerHTML = '<div style="color: #8b949e; font-size: 0.82rem;">No remote client drive failures reported.</div>';
+        }
+
+      } catch (err) {
+        console.error("SMART refresh failed:", err);
+      }
+    }
+
+    function showBannerAlert(title, message, isTest) {
+      const banner = document.getElementById('alertBanner');
+      const titleElem = document.getElementById('alertTitle');
+      const msgElem = document.getElementById('alertMessage');
+
+      titleElem.innerText = title;
+      msgElem.innerText = message;
+      if (isTest) {
+        banner.classList.add('test');
+      } else {
+        banner.classList.remove('test');
+      }
+      banner.style.display = 'flex';
+
+      // Switch to SMART tab
+      switchTab('smart');
+
+      // Scroll smoothly to first failing drive after render
+      setTimeout(() => {
+        const failElem = document.querySelector('.smart-tile.failing');
+        if (failElem) {
+          failElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+    }
+
+    function dismissBanner() {
+      document.getElementById('alertBanner').style.display = 'none';
+    }
+
+    async function muteAlert() {
+      dismissBanner();
+      try {
+        await window.go.main.App.MuteSmartAlerts();
+      } catch (err) {
+        console.error("Failed to mute alert:", err);
+      }
+    }
+
+    // Wails runtime event listeners
+    window.addEventListener('DOMContentLoaded', () => {
+      loadConfig();
+      refreshFolders();
+      refreshSMART();
+
+      if (window.runtime) {
+        window.runtime.EventsOn('status-update', (msg) => {
+          const lbl = document.getElementById('statusLabel');
+          const dot = document.getElementById('statusDot');
+          lbl.innerText = 'Status: ' + msg;
+          if (msg.includes('Disconnected') || msg.includes('Error')) {
+            dot.classList.add('disconnected');
+          } else {
+            dot.classList.remove('disconnected');
+          }
+        });
+
+        window.runtime.EventsOn('smart-alert', (data) => {
+          const title = data.is_test ? '⚠️ SIMULATED SMART HARDWARE FAILURE TEST' : '❌ CRITICAL DRIVE FAILURE DETECTED';
+          showBannerAlert(title, data.message, data.is_test);
+          refreshSMART();
+        });
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "linnas-client",
+  "outputfilename": "linnas-client",
+  "frontend:dir": "frontend",
+  "frontend:install": "",
+  "frontend:build": "",
+  "author": {
+    "name": "LinNAS",
+    "email": "support@linnas.local"
+  },
+  "info": {
+    "companyName": "LinNAS",
+    "productName": "LinNAS Local Cloud Client",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright 2026"
+  }
+}
