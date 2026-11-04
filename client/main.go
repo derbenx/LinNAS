@@ -308,7 +308,7 @@ func main() {
 	localFolderRow := container.NewBorder(nil, nil, nil, browseLocalBtn, localDirEntry)
 
 	treeBox := container.NewVBox()
-	treeScroll := container.NewVScroll(treeBox)
+	treeScroll := container.NewScroll(treeBox)
 	treeScroll.SetMinSize(fyne.NewSize(660, 220))
 
 	refreshTree := func() {
@@ -411,8 +411,8 @@ func main() {
 	// TAB 3: Server SMART (Square tiles, 4-5 across default width)
 	// ==========================================
 	serverSmartBannerBox := container.NewVBox()
-	smartTilesContainer := container.NewGridWithColumns(5)
-	serverSmartScroll := container.NewVScroll(container.NewVBox(
+	smartTilesContainer := container.NewGridWrap(fyne.NewSize(135, 88))
+	serverSmartScroll := container.NewScroll(container.NewVBox(
 		serverSmartBannerBox,
 		smartTilesContainer,
 	))
@@ -487,8 +487,8 @@ func main() {
 	// TAB 4: Local SMART (Square tiles, 4-5 across default width)
 	// ==========================================
 	localSmartBannerBox := container.NewVBox()
-	localSmartTilesContainer := container.NewGridWithColumns(5)
-	localSmartScroll := container.NewVScroll(container.NewVBox(
+	localSmartTilesContainer := container.NewGridWrap(fyne.NewSize(135, 88))
+	localSmartScroll := container.NewScroll(container.NewVBox(
 		localSmartBannerBox,
 		localSmartTilesContainer,
 	))
@@ -601,6 +601,12 @@ func main() {
 	// Periodic Background Lazy Sync Worker
 	go func() {
 		time.Sleep(3 * time.Second)
+		// Guard against background refreshes pushing window width if Fyne recalculates
+		currSize := w.Canvas().Size()
+		if currSize.Width < initW || currSize.Height < initH {
+			w.Resize(fyne.NewSize(initW, initH))
+		}
+
 		refreshTree()
 		refreshSmart()
 		refreshLocalSmart()
