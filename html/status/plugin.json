@@ -8,7 +8,7 @@
   "check_cmd": "which smartctl",
   "install_sudo": "apt-get update && apt-get install -y smartmontools",
   "commands": {
-    "sys_info_cmd": "echo '===HOST==='; hostname; uname -r; echo '===CPU==='; lscpu | grep -E 'Model name|CPU\\(s\\):'; echo '===LOAD==='; cat /proc/loadavg; echo '===MEM==='; free -m; echo '===UPTIME==='; uptime; echo '===NET==='; ip -brief addr",
+    "sys_info_cmd": "echo '===HOST==='; hostname; uname -r; echo '===CPU==='; lscpu | grep -E 'Model name|CPU\\(s\\):'; echo '===LOAD==='; cat /proc/loadavg; echo '===MEM==='; free -m; echo '===UPTIME==='; (cat /proc/uptime 2>/dev/null || uptime); echo '===NET==='; ip -brief addr",
     "disk_space_cmd": "df -h -x tmpfs -x devtmpfs -x squashfs",
     "smart_info_sudo": "smartctl -A /dev/{drive} || smartctl -i /dev/{drive}",
     "smart_health_sudo": "smartctl -H /dev/{drive}",

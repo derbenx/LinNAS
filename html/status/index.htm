@@ -339,9 +339,27 @@
                         }
                     });
                 } else if (tag === 'UPTIME') {
-                    if (content.includes('up ')) {
-                        const m = content.match(/up\s+(.*?)(?:,\s+\d+\s+user|$)/);
-                        const upPart = m ? m[1].trim() : content.split('up ')[1].trim();
+                    const trimmed = content.trim();
+                    const procParts = trimmed.split(/\s+/);
+                    const totalSec = parseFloat(procParts[0]);
+
+                    // If /proc/uptime raw seconds are provided (e.g. "18892.63 64815.42")
+                    if (!isNaN(totalSec) && totalSec > 0 && procParts.length <= 3 && !trimmed.includes(':')) {
+                        const total = Math.floor(totalSec);
+                        const days = Math.floor(total / 86400);
+                        const rem = total % 86400;
+                        const hours = Math.floor(rem / 3600);
+                        const mins = Math.floor((rem % 3600) / 60);
+
+                        const res = [];
+                        if (days > 0) res.push(days + (days === 1 ? ' day' : ' days'));
+                        if (hours > 0) res.push(hours + (hours === 1 ? ' hr' : ' hrs'));
+                        if (mins > 0 || (days === 0 && hours === 0)) res.push(mins + (mins === 1 ? ' min' : ' mins'));
+                        uptimeText = res.join(' ');
+                    } else if (trimmed.includes('up ')) {
+                        // Standard `uptime` output parsing
+                        const m = trimmed.match(/up\s+(.*?)(?:,\s+\d+\s+user|$)/);
+                        const upPart = m ? m[1].trim() : trimmed.split('up ')[1].trim();
 
                         let days = 0;
                         let hours = 0;
@@ -368,8 +386,8 @@
                         if (mins > 0 || (days === 0 && hours === 0)) res.push(mins + (mins === 1 ? ' min' : ' mins'));
 
                         uptimeText = res.length > 0 ? res.join(' ') : upPart;
-                    } else if (content) {
-                        uptimeText = content.trim();
+                    } else if (trimmed) {
+                        uptimeText = trimmed;
                     }
                 } else if (tag === 'NET') {
                     const lines = content.split('\n');

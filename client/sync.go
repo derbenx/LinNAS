@@ -207,6 +207,14 @@ func (s *SyncEngine) UpdateConfig(cfg ClientConfig) {
 	s.isLoggedIn = false
 }
 
+func (s *SyncEngine) InvalidateSession() {
+	s.isLoggedIn = false
+	if s.cfg.SessionToken != "" {
+		s.cfg.SessionToken = ""
+		_ = SaveConfig(s.cfg)
+	}
+}
+
 func (s *SyncEngine) EnsureAuthenticated(password string) error {
 	if s.isLoggedIn {
 		return nil
@@ -243,6 +251,12 @@ func (s *SyncEngine) EnsureAuthenticated(password string) error {
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		s.writeClientDebugLog("EnsureAuthenticated failed HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+		// If authentication failed with a stale session token (e.g. server restarted and wiped memory),
+		// clear the session token and retry immediately using stored password or password_hash.
+		if s.cfg.SessionToken != "" && (password != "" || s.cfg.PasswordHash != "") {
+			s.InvalidateSession()
+			return s.EnsureAuthenticated(password)
+		}
 		return fmt.Errorf("login failed with HTTP %d", resp.StatusCode)
 	}
 
