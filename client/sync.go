@@ -366,16 +366,67 @@ func (s *SyncEngine) ReportLocalSMARTHealthToServer(disks []SmartDiskInfo) {
 
 // CheckSMARTDriveHealth queries server SMART health status and reports local disk health
 func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, []ClientFailureReport, error) {
-	// 1. Report local drives to server
+	// Helper to format drive failure line
+	formatDriveDetail := func(source string, d SmartDiskInfo) string {
+		var parts []string
+		parts = append(parts, fmt.Sprintf("Source: %s", source))
+		if d.HostName != "" {
+			parts = append(parts, fmt.Sprintf("Host: %s", d.HostName))
+		}
+		if d.IP != "" {
+			parts = append(parts, fmt.Sprintf("IP: %s", d.IP))
+		}
+		parts = append(parts, fmt.Sprintf("Drive: %s", d.Device))
+		if d.PartLabel != "" {
+			parts = append(parts, fmt.Sprintf("Partition: %s", d.PartLabel))
+		}
+		if d.Model != "" {
+			parts = append(parts, fmt.Sprintf("Model: %s", d.Model))
+		}
+		if d.Serial != "" {
+			parts = append(parts, fmt.Sprintf("Serial: %s", d.Serial))
+		}
+		if d.TempC > 0 {
+			parts = append(parts, fmt.Sprintf("Temp: %d°C", d.TempC))
+		}
+		parts = append(parts, fmt.Sprintf("Health: %s", d.Health))
+		return strings.Join(parts, " | ")
+	}
+
+	// 1. Evaluate local disks and report to server
 	localHealthy, localDisks, _ := CheckLocalSMARTHealth()
 	go s.ReportLocalSMARTHealthToServer(localDisks)
+
+	// Collect local failure details if any
+	var localFailDetails []string
+	if !localHealthy {
+		for _, ld := range localDisks {
+			if ld.Health == "FAILED" {
+				localFailDetails = append(localFailDetails, formatDriveDetail("This PC (Local)", ld))
+			}
+		}
+	}
 
 	serverURL := s.crypto.serverURL
 	resp, err := s.httpClient.Get(serverURL + "/api/cloud/smart")
 	if err != nil {
-		return true, false, nil, nil, err
+		// Network problems / server offline: ignore network error, but if local disk is failing, trigger alert
+		if len(localFailDetails) > 0 && s.onSmartAlert != nil && !s.IsSmartAlertMuted() {
+			detailMsg := "• " + strings.Join(localFailDetails, "\n\n• ")
+			s.onSmartAlert(detailMsg, false)
+		}
+		return localHealthy, false, nil, nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		// HTTP error: ignore, but if local disk is failing, trigger alert
+		if len(localFailDetails) > 0 && s.onSmartAlert != nil && !s.IsSmartAlertMuted() {
+			detailMsg := "• " + strings.Join(localFailDetails, "\n\n• ")
+			s.onSmartAlert(detailMsg, false)
+		}
+		return localHealthy, false, nil, nil, fmt.Errorf("server returned status %d", resp.StatusCode)
+	}
 
 	var data struct {
 		Success        bool                  `json:"success"`
@@ -386,43 +437,26 @@ func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, []Cli
 		ClientReports  []ClientFailureReport `json:"client_reports"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return true, false, nil, nil, err
+		// Bad/malformed JSON: ignore, but if local disk is failing, trigger alert
+		if len(localFailDetails) > 0 && s.onSmartAlert != nil && !s.IsSmartAlertMuted() {
+			detailMsg := "• " + strings.Join(localFailDetails, "\n\n• ")
+			s.onSmartAlert(detailMsg, false)
+		}
+		return localHealthy, false, nil, nil, err
 	}
 
-	if (!data.OverallHealthy || !localHealthy) && s.onSmartAlert != nil {
+	// Trigger alert if server specifically reported errors/test, client failures, OR local failure exists
+	serverHasError := data.Success && (!data.OverallHealthy || data.IsTest || len(data.ClientReports) > 0)
+	if (serverHasError || len(localFailDetails) > 0) && s.onSmartAlert != nil {
 		if !s.IsSmartAlertMuted() {
-			formatDriveDetail := func(source string, d SmartDiskInfo) string {
-				var parts []string
-				parts = append(parts, fmt.Sprintf("Source: %s", source))
-				if d.HostName != "" {
-					parts = append(parts, fmt.Sprintf("Host: %s", d.HostName))
-				}
-				if d.IP != "" {
-					parts = append(parts, fmt.Sprintf("IP: %s", d.IP))
-				}
-				parts = append(parts, fmt.Sprintf("Drive: %s", d.Device))
-				if d.PartLabel != "" {
-					parts = append(parts, fmt.Sprintf("Partition: %s", d.PartLabel))
-				}
-				if d.Model != "" {
-					parts = append(parts, fmt.Sprintf("Model: %s", d.Model))
-				}
-				if d.Serial != "" {
-					parts = append(parts, fmt.Sprintf("Serial: %s", d.Serial))
-				}
-				if d.TempC > 0 {
-					parts = append(parts, fmt.Sprintf("Temp: %d°C", d.TempC))
-				}
-				parts = append(parts, fmt.Sprintf("Health: %s", d.Health))
-				return strings.Join(parts, " | ")
-			}
-
 			var failDetails []string
+			// Add server-reported drive failures
 			for _, d := range data.Disks {
 				if d.Health == "FAILED" {
 					failDetails = append(failDetails, formatDriveDetail("Server", d))
 				}
 			}
+			// Add server-reported remote client failure reports
 			for _, cr := range data.ClientReports {
 				for _, fd := range cr.Failing {
 					if fd.IP == "" && strings.Contains(cr.Client, "(") {
@@ -435,23 +469,20 @@ func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, []Cli
 					failDetails = append(failDetails, formatDriveDetail(fmt.Sprintf("Client %s", cr.Client), fd))
 				}
 			}
-			if !localHealthy {
-				for _, ld := range localDisks {
-					if ld.Health == "FAILED" {
-						failDetails = append(failDetails, formatDriveDetail("This PC (Local)", ld))
-					}
-				}
-			}
+			// Add local failures
+			failDetails = append(failDetails, localFailDetails...)
 
 			detailMsg := strings.Join(failDetails, "\n\n• ")
 			if detailMsg != "" {
 				detailMsg = "• " + detailMsg
+			} else if data.IsTest {
+				detailMsg = "• Simulated SMART hardware failure test active on server"
 			}
 			s.onSmartAlert(detailMsg, data.IsTest)
 		}
 	}
 
-	return data.OverallHealthy, data.IsTest, data.Disks, data.ClientReports, nil
+	return data.OverallHealthy && localHealthy, data.IsTest, data.Disks, data.ClientReports, nil
 }
 
 // PerformSync runs a single pass of lazy two-way sync with deletion tracking
