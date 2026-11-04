@@ -262,6 +262,10 @@ func (s *SyncEngine) EnsureAuthenticated(password string) error {
 }
 
 func (s *SyncEngine) writeClientDebugLog(format string, args ...interface{}) {
+	if !s.cfg.LogToFile {
+		return
+	}
+
 	entry := fmt.Sprintf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), fmt.Sprintf(format, args...))
 	binDir := filepath.Dir(s.cfg.LocalSyncDir)
 	if execPath, err := os.Executable(); err == nil {
@@ -269,12 +273,13 @@ func (s *SyncEngine) writeClientDebugLog(format string, args ...interface{}) {
 	}
 	logFile := filepath.Join(binDir, "debug.log")
 
-	// Rotate log if exceeds 250KB to keep it trimmed and manageable
-	if fi, err := os.Stat(logFile); err == nil && fi.Size() > 250*1024 {
+	// Limit log file to 1MB; rotate down to 500KB when exceeded
+	const maxLogSize = 1024 * 1024    // 1MB
+	const trimmedLogSize = 500 * 1024 // 500KB
+	if fi, err := os.Stat(logFile); err == nil && fi.Size() > maxLogSize {
 		data, rErr := os.ReadFile(logFile)
-		if rErr == nil && len(data) > 120*1024 {
-			// Keep the last 120KB
-			_ = os.WriteFile(logFile, data[len(data)-120*1024:], 0644)
+		if rErr == nil && len(data) > trimmedLogSize {
+			_ = os.WriteFile(logFile, data[len(data)-trimmedLogSize:], 0644)
 		}
 	}
 

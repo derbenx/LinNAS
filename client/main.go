@@ -111,32 +111,6 @@ func main() {
 	statusLabel := widget.NewLabel("Status: " + engine.GetStatus())
 	statusLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	// High contrast, scrollable, selectable, copy-pasteable Activity & Error Log Area
-	logEntry := widget.NewMultiLineEntry()
-	logEntry.Wrapping = fyne.TextWrapWord
-	logEntry.SetPlaceHolder("Log entries and sync errors will appear here...")
-
-	appendLog := func(msg string) {
-		fyne.Do(func() {
-			timestamp := time.Now().Format("15:04:05")
-			current := logEntry.Text
-			newEntry := fmt.Sprintf("[%s] %s\n", timestamp, msg)
-
-			if len(current) > 15000 {
-				lines := strings.Split(current, "\n")
-				if len(lines) > 100 {
-					current = strings.Join(lines[len(lines)-100:], "\n")
-				}
-			}
-			logEntry.SetText(current + newEntry)
-			logEntry.CursorRow = strings.Count(logEntry.Text, "\n")
-		})
-	}
-
-	clearLogBtn := widget.NewButtonWithIcon("Clear Log", theme.DeleteIcon(), func() {
-		logEntry.SetText("")
-	})
-
 	engine.onStatus = func(msg string) {
 		fyne.Do(func() {
 			shortMsg := msg
@@ -145,7 +119,6 @@ func main() {
 			}
 			statusLabel.SetText("Status: " + shortMsg)
 		})
-		appendLog(msg)
 	}
 
 	smartAlertActive := false
@@ -232,6 +205,11 @@ func main() {
 	})
 	pauseCheck.SetChecked(cfg.SyncEnabled)
 
+	logToFileCheck := widget.NewCheck("Log activity to file (debug.log, max 1MB)", func(checked bool) {
+		cfg.LogToFile = checked
+	})
+	logToFileCheck.SetChecked(cfg.LogToFile)
+
 	modeSelect := widget.NewSelect([]string{"On a timer", "When idle for"}, func(selected string) {
 		cfg.SyncMode = selected
 		cfg.IdleOnly = (selected == "When idle for")
@@ -280,6 +258,7 @@ func main() {
 			pwdEntry.SetPlaceHolder("•••••••• (Credentials Saved)")
 		}
 		cfg.SyncEnabled = pauseCheck.Checked
+		cfg.LogToFile = logToFileCheck.Checked
 		cfg.SyncMode = modeSelect.Selected
 		cfg.IdleOnly = (modeSelect.Selected == "When idle for")
 		cfg.SyncIntervalSec = int(freqSlider.Value)
@@ -304,6 +283,9 @@ func main() {
 		pauseCheck,
 		container.NewHBox(widget.NewLabel("Sync mode:"), modeSelect),
 		container.NewBorder(nil, nil, widget.NewLabel("Interval / Wait:"), freqLabel, freqSlider),
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Diagnostics & Logging", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		logToFileCheck,
 		widget.NewSeparator(),
 		container.NewHBox(saveConnBtn, syncNowBtn),
 	)
@@ -554,22 +536,12 @@ func main() {
 	)
 	localSmartTab := container.NewBorder(localSmartHeader, nil, nil, nil, localSmartScroll)
 
-	// ==========================================
-	// TAB 5: Activity & Error Logs
-	// ==========================================
-	logHeader := container.NewHBox(
-		widget.NewLabelWithStyle("Activity & Error Logs", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		clearLogBtn,
-	)
-	logTab := container.NewBorder(logHeader, nil, nil, nil, logEntry)
-
 	// Main Layout Tabs
 	tabs := container.NewAppTabs(
 		container.NewTabItemWithIcon("Connection", theme.SettingsIcon(), connScroll),
 		container.NewTabItemWithIcon("Folders & Sync", theme.FolderIcon(), foldersScroll),
 		container.NewTabItemWithIcon("Server SMART", theme.WarningIcon(), smartTab),
 		container.NewTabItemWithIcon("Local SMART", theme.ComputerIcon(), localSmartTab),
-		container.NewTabItemWithIcon("Logs & Errors", theme.DocumentIcon(), logTab),
 	)
 
 	bottomBar := container.NewBorder(

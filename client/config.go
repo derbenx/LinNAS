@@ -22,6 +22,7 @@ type ClientConfig struct {
 	ThrottleKBps    int             `json:"throttle_kbps"`            // 0 = unlimited, otherwise speed cap
 	IdleOnly        bool            `json:"idle_only"`                // Only upload/sync when idle
 	SelectedFolders map[string]bool `json:"selected_folders"`         // checked folders (relative paths)
+	LogToFile       bool            `json:"log_to_file"`              // Defaults to false (off)
 }
 
 var (
@@ -42,6 +43,7 @@ func getDefaultConfig() ClientConfig {
 		ThrottleKBps:    500, // Leisurely default ~500 KB/s
 		IdleOnly:        false,
 		SelectedFolders: make(map[string]bool),
+		LogToFile:       false,
 	}
 }
 
