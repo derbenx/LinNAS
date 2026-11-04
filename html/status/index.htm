@@ -340,9 +340,36 @@
                     });
                 } else if (tag === 'UPTIME') {
                     if (content.includes('up ')) {
-                        uptimeText = content.split('up ')[1].split(',')[0].trim();
+                        const m = content.match(/up\s+(.*?)(?:,\s+\d+\s+user|$)/);
+                        const upPart = m ? m[1].trim() : content.split('up ')[1].trim();
+
+                        let days = 0;
+                        let hours = 0;
+                        let mins = 0;
+
+                        const dayMatch = upPart.match(/(\d+)\s+day/i);
+                        if (dayMatch) days = parseInt(dayMatch[1], 10);
+
+                        const hmMatch = upPart.match(/(?:^|,\s*)(\d+):(\d+)/);
+                        if (hmMatch) {
+                            hours = parseInt(hmMatch[1], 10);
+                            mins = parseInt(hmMatch[2], 10);
+                        } else {
+                            const hrMatch = upPart.match(/(\d+)\s+hr/i);
+                            if (hrMatch) hours = parseInt(hrMatch[1], 10);
+
+                            const minMatch = upPart.match(/(\d+)\s+min/i);
+                            if (minMatch) mins = parseInt(minMatch[1], 10);
+                        }
+
+                        const res = [];
+                        if (days > 0) res.push(days + (days === 1 ? ' day' : ' days'));
+                        if (hours > 0) res.push(hours + (hours === 1 ? ' hr' : ' hrs'));
+                        if (mins > 0 || (days === 0 && hours === 0)) res.push(mins + (mins === 1 ? ' min' : ' mins'));
+
+                        uptimeText = res.length > 0 ? res.join(' ') : upPart;
                     } else if (content) {
-                        uptimeText = content;
+                        uptimeText = content.trim();
                     }
                 } else if (tag === 'NET') {
                     const lines = content.split('\n');
