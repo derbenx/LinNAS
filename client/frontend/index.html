@@ -909,6 +909,14 @@
           showBannerAlert(title, data.message, data.is_test);
           refreshSMART();
         });
+
+        window.runtime.EventsOn('navigate-tab', (tab) => {
+          switchTab(tab);
+        });
+
+        window.runtime.EventsOn('sync-toggle', (enabled) => {
+          document.getElementById('syncEnabled').checked = enabled;
+        });
       }
     });
   </script>

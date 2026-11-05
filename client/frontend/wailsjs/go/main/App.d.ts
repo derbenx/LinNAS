@@ -12,6 +12,8 @@ export function GetStartupOnBoot():Promise<boolean>;
 
 export function GetStatus():Promise<string>;
 
+export function IsConnected():Promise<boolean>;
+
 export function MuteSmartAlerts():Promise<void>;
 
 export function PerformSync():Promise<void>;

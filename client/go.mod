@@ -2,7 +2,10 @@ module linnas-client
 
 go 1.26.0
 
-require github.com/wailsapp/wails/v2 v2.17.1
+require (
+	fyne.io/systray v1.12.2
+	github.com/wailsapp/wails/v2 v2.17.1
+)
 
 require (
 	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect

@@ -22,6 +22,10 @@ export function GetStatus() {
   return window['go']['main']['App']['GetStatus']();
 }
 
+export function IsConnected() {
+  return window['go']['main']['App']['IsConnected']();
+}
+
 export function MuteSmartAlerts() {
   return window['go']['main']['App']['MuteSmartAlerts']();
 }
