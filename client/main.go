@@ -4,6 +4,9 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"os"
+	"sync/atomic"
+	"time"
 
 	"fyne.io/systray"
 	"github.com/wailsapp/wails/v2"
@@ -19,6 +22,7 @@ var assets embed.FS
 
 func main() {
 	app := NewApp()
+	var isQuitting atomic.Bool
 
 	// Initialize system tray menu in background
 	go systray.Run(func() {
@@ -68,10 +72,15 @@ func main() {
 					wailsRuntime.EventsEmit(app.ctx, "sync-toggle", enabled)
 				}
 			case <-mQuit.ClickedCh:
+				isQuitting.Store(true)
 				systray.Quit()
 				if app.ctx != nil {
 					wailsRuntime.Quit(app.ctx)
 				}
+				go func() {
+					time.Sleep(300 * time.Millisecond)
+					os.Exit(0)
+				}()
 				return
 			}
 		}
@@ -89,6 +98,10 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 13, G: 17, B: 23, A: 255},
 		OnStartup:        app.startup,
 		OnBeforeClose: func(ctx context.Context) (prevent bool) {
+			if isQuitting.Load() {
+				// Allow clean application exit
+				return false
+			}
 			// Hide to tray when 'X' is pressed instead of exiting process
 			wailsRuntime.WindowHide(ctx)
 			return true
