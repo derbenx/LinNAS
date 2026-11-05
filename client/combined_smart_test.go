@@ -86,3 +86,22 @@ func TestRemoteAndLocalDriveTemperaturesPreserved(t *testing.T) {
 		t.Fatalf("Expected remote disk temperature 43 preserved, got %+v", group.Disks)
 	}
 }
+
+func TestCheckLocalSMARTHealthReturnsDisksWithValidTemp(t *testing.T) {
+	healthy, disks, err := CheckLocalSMARTHealth()
+	if err != nil {
+		t.Fatalf("CheckLocalSMARTHealth returned error: %v", err)
+	}
+	if !healthy {
+		t.Log("Note: local machine evaluated unhealthy")
+	}
+	if len(disks) == 0 {
+		t.Fatal("Expected at least one local disk to be returned")
+	}
+	for _, d := range disks {
+		t.Logf("Evaluated disk %s (%s) temp=%dC health=%s", d.Device, d.Model, d.TempC, d.Health)
+		if d.TempC < 0 || d.TempC > 150 {
+			t.Fatalf("Invalid temperature %d on disk %s", d.TempC, d.Device)
+		}
+	}
+}

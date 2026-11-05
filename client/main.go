@@ -22,7 +22,8 @@ func main() {
 
 	// Initialize system tray menu in background
 	go systray.Run(func() {
-		systray.SetIcon(defaultTrayIcon)
+		icoData := GetLnIcoBytes()
+		systray.SetIcon(icoData)
 		systray.SetTitle("LinNAS Cloud")
 		systray.SetTooltip("LinNAS Local Cloud Client")
 
