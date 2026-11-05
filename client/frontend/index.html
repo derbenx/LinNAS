@@ -334,6 +334,46 @@
     .status-dot.disconnected {
       background: #f85149;
     }
+
+    /* Toast Notification */
+    .toast-container {
+      position: fixed;
+      bottom: 45px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 10000;
+      pointer-events: none;
+    }
+    .toast-item {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-left: 4px solid #58a6ff;
+      color: #c9d1d9;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 0.84rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: toastFadeIn 0.25s ease-out;
+      pointer-events: auto;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    .toast-item.success {
+      border-left-color: #3fb950;
+      color: #f0f6fc;
+    }
+    .toast-item.error {
+      border-left-color: #f85149;
+      color: #ff7b72;
+    }
+    @keyframes toastFadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
@@ -415,7 +455,6 @@
           </label>
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary" onclick="saveConnectionSettings()">💾 Save Connection & Preferences</button>
           <button class="btn" onclick="syncNow()">🔄 Sync Files Now</button>
         </div>
       </div>
@@ -444,9 +483,6 @@
         </div>
         <div class="folder-tree" id="folderTreeList">
           <div style="color: #8b949e; font-size: 0.82rem;">Loading folders...</div>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary" onclick="saveFolderSettings()">💾 Save Folder Settings</button>
         </div>
       </div>
     </div>
@@ -497,12 +533,21 @@
 
   <!-- Bottom Status Bar -->
   <div class="bottom-bar">
-    <div class="status-text">
-      <span class="status-dot" id="statusDot"></span>
-      <span id="statusLabel">Status: Idle</span>
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <button class="btn btn-primary" style="padding: 5px 12px; font-size: 0.78rem;" onclick="saveAllSettings()">💾 Save Settings</button>
+      <div class="status-text">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusLabel">Status: Idle</span>
+      </div>
     </div>
-    <div id="lastSyncTime" style="font-size: 0.75rem;">Connected to LinNAS</div>
+    <div id="connIndicator" style="font-size: 0.75rem; display: flex; align-items: center; gap: 6px;">
+      <span class="status-dot" id="connDot" style="width: 7px; height: 7px;"></span>
+      <span id="connLabel">Connected to LinNAS</span>
+    </div>
   </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
 
   <script>
     let currentConfig = {};
@@ -566,7 +611,23 @@
       }
     }
 
-    async function saveConnectionSettings() {
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      toast.className = `toast-item ${type}`;
+
+      const icon = type === 'success' ? '✅' : (type === 'error' ? '❌' : 'ℹ️');
+      toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    async function saveAllSettings() {
       try {
         currentConfig.server_endpoint = document.getElementById('serverEndpoint').value.trim();
         currentConfig.username = document.getElementById('username').value.trim();
@@ -575,6 +636,8 @@
         currentConfig.sync_mode = document.getElementById('syncMode').value;
         currentConfig.idle_only = (currentConfig.sync_mode === 'When idle for');
         currentConfig.sync_interval_sec = parseInt(document.getElementById('syncFreqSlider').value, 10);
+        currentConfig.local_sync_dir = document.getElementById('localSyncDir').value.trim();
+        currentConfig.selected_folders = selectedFoldersMap;
 
         const pwd = document.getElementById('password').value;
         if (pwd.trim()) {
@@ -584,20 +647,9 @@
 
         await window.go.main.App.SaveConfig(currentConfig);
         await window.go.main.App.SetStartupOnBoot(document.getElementById('runOnStartup').checked);
-        alert("Connection settings and preferences saved successfully!");
+        showToast("Settings saved successfully!", "success");
       } catch (err) {
-        alert("Error saving settings: " + err);
-      }
-    }
-
-    async function saveFolderSettings() {
-      try {
-        currentConfig.local_sync_dir = document.getElementById('localSyncDir').value.trim();
-        currentConfig.selected_folders = selectedFoldersMap;
-        await window.go.main.App.SaveConfig(currentConfig);
-        alert("Folder preferences saved successfully!");
-      } catch (err) {
-        alert("Error saving folder settings: " + err);
+        showToast("Error saving settings: " + err, "error");
       }
     }
 
@@ -807,22 +859,49 @@
       }
     }
 
+    function updateConnectionDisplay(isConnected) {
+      const connDot = document.getElementById('connDot');
+      const connLabel = document.getElementById('connLabel');
+      if (isConnected) {
+        connDot.classList.remove('disconnected');
+        connLabel.innerText = 'Connected to LinNAS';
+        connLabel.style.color = '#3fb950';
+      } else {
+        connDot.classList.add('disconnected');
+        connLabel.innerText = 'Disconnected from LinNAS';
+        connLabel.style.color = '#f85149';
+      }
+    }
+
     // Wails runtime event listeners
-    window.addEventListener('DOMContentLoaded', () => {
+    window.addEventListener('DOMContentLoaded', async () => {
       loadConfig();
       refreshFolders();
       refreshSMART();
+
+      if (window.go && window.go.main && window.go.main.App) {
+        try {
+          const connected = await window.go.main.App.IsConnected();
+          updateConnectionDisplay(connected);
+        } catch (e) {
+          updateConnectionDisplay(false);
+        }
+      }
 
       if (window.runtime) {
         window.runtime.EventsOn('status-update', (msg) => {
           const lbl = document.getElementById('statusLabel');
           const dot = document.getElementById('statusDot');
           lbl.innerText = 'Status: ' + msg;
-          if (msg.includes('Disconnected') || msg.includes('Error')) {
+          if (msg.includes('Disconnected') || msg.includes('Error') || msg.includes('Offline')) {
             dot.classList.add('disconnected');
           } else {
             dot.classList.remove('disconnected');
           }
+        });
+
+        window.runtime.EventsOn('connection-state', (isConnected) => {
+          updateConnectionDisplay(isConnected);
         });
 
         window.runtime.EventsOn('smart-alert', (data) => {

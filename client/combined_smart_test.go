@@ -62,3 +62,27 @@ func TestCombinedSmartStructureOrdering(t *testing.T) {
 
 	_ = app
 }
+
+func TestRemoteAndLocalDriveTemperaturesPreserved(t *testing.T) {
+	d := SmartDiskInfo{
+		Device:   "nvme0n1",
+		Model:    "Samsung 980",
+		Health:   "PASSED",
+		Capacity: "1.0 TB",
+		TempC:    43,
+	}
+
+	if d.TempC != 43 {
+		t.Fatalf("Expected TempC to be 43, got %d", d.TempC)
+	}
+
+	group := ClientGroupInfo{
+		IP:     "192.168.1.80",
+		Client: "BackupServer (192.168.1.80)",
+		Disks:  []SmartDiskInfo{d},
+	}
+
+	if len(group.Disks) != 1 || group.Disks[0].TempC != 43 {
+		t.Fatalf("Expected remote disk temperature 43 preserved, got %+v", group.Disks)
+	}
+}

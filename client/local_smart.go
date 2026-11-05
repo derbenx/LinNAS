@@ -251,19 +251,55 @@ $results | ConvertTo-Json -Depth 3 -Compress
 					info.Health = "PASSED"
 				}
 
-				// Extract drive temperature in Celsius if available
+				// Extract drive temperature in Celsius if available (supporting ATA, NVMe, and SCSI/SAS)
+				parsedTemp := 0
 				for _, line := range strings.Split(sStr, "\n") {
 					upLine := strings.ToUpper(line)
 					if strings.Contains(upLine, "TEMPERATURE_CELSIUS") || strings.Contains(upLine, "AIRFLOW_TEMPERATURE_CEL") || strings.Contains(upLine, "CURRENT DRIVE TEMPERATURE") {
 						fields := strings.Fields(line)
 						if len(fields) >= 10 {
 							if val, convErr := strconv.Atoi(fields[9]); convErr == nil && val > 0 && val < 120 {
-								info.TempC = val
+								parsedTemp = val
+								break
+							}
+						}
+					} else if strings.HasPrefix(strings.TrimSpace(upLine), "TEMPERATURE:") {
+						parts := strings.Fields(line)
+						if len(parts) >= 2 {
+							if val, convErr := strconv.Atoi(parts[1]); convErr == nil && val > 0 && val < 120 {
+								parsedTemp = val
 								break
 							}
 						}
 					}
 				}
+
+				// Check NVMe/hwmon fallbacks if temp not found via standard table
+				if parsedTemp == 0 {
+					// Fallback to /sys/class/block/<dev>/device/hwmon*/temp1_input or /sys/block/<dev>/device/hwmon*/temp1_input
+					hwmonDirs := []string{
+						fmt.Sprintf("/sys/block/%s/device/hwmon", dev),
+						fmt.Sprintf("/sys/class/block/%s/device/hwmon", dev),
+					}
+					for _, hd := range hwmonDirs {
+						if entries, rErr := os.ReadDir(hd); rErr == nil {
+							for _, e := range entries {
+								tempFile := fmt.Sprintf("%s/%s/temp1_input", hd, e.Name())
+								if tBytes, tErr := os.ReadFile(tempFile); tErr == nil {
+									rawMilli, convErr := strconv.Atoi(strings.TrimSpace(string(tBytes)))
+									if convErr == nil && rawMilli > 0 && rawMilli < 150000 {
+										parsedTemp = rawMilli / 1000
+										break
+									}
+								}
+							}
+						}
+						if parsedTemp > 0 {
+							break
+						}
+					}
+				}
+				info.TempC = parsedTemp
 
 				info.RawInfo = strings.TrimSpace(sStr)
 				disks = append(disks, info)

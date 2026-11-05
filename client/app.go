@@ -56,6 +56,7 @@ func NewApp() *App {
 			app.engine.SetStatus(status)
 			if app.ctx != nil {
 				wailsRuntime.EventsEmit(app.ctx, "status-update", status)
+				wailsRuntime.EventsEmit(app.ctx, "connection-state", false)
 			}
 		},
 	)
@@ -69,6 +70,12 @@ func (a *App) startup(ctx context.Context) {
 	// Wire engine callbacks
 	a.engine.onStatus = func(status string) {
 		wailsRuntime.EventsEmit(a.ctx, "status-update", status)
+		// If status indicates connected or up to date, emit connected true
+		if strings.Contains(status, "Connected") || strings.Contains(status, "Up to Date") {
+			wailsRuntime.EventsEmit(a.ctx, "connection-state", true)
+		} else if strings.Contains(status, "Disconnected") || strings.Contains(status, "Offline") || strings.Contains(status, "Failed") {
+			wailsRuntime.EventsEmit(a.ctx, "connection-state", false)
+		}
 	}
 
 	a.engine.onSmartAlert = func(alertMsg string, isTest bool) {
@@ -83,9 +90,15 @@ func (a *App) handlePostReconnect() {
 	a.engine.SetStatus("Re-authenticating...")
 	if err := a.engine.EnsureAuthenticated(""); err != nil {
 		a.reconnectMgr.MarkDisconnected("re-auth failed: " + err.Error())
+		if a.ctx != nil {
+			wailsRuntime.EventsEmit(a.ctx, "connection-state", false)
+		}
 		return
 	}
 	a.engine.SetStatus("Connected")
+	if a.ctx != nil {
+		wailsRuntime.EventsEmit(a.ctx, "connection-state", true)
+	}
 
 	// Trigger SMART check immediately
 	go a.CheckSMARTStatus()
@@ -186,11 +199,17 @@ func (a *App) PerformSync() error {
 	if err != nil {
 		if strings.Contains(err.Error(), "connection") || strings.Contains(err.Error(), "refused") || strings.Contains(err.Error(), "timeout") {
 			a.reconnectMgr.MarkDisconnected(err.Error())
+			if a.ctx != nil {
+				wailsRuntime.EventsEmit(a.ctx, "connection-state", false)
+			}
 		}
 		a.engine.SetStatus("Sync Error: " + err.Error())
 		return err
 	}
 	a.reconnectMgr.MarkConnected()
+	if a.ctx != nil {
+		wailsRuntime.EventsEmit(a.ctx, "connection-state", true)
+	}
 	return nil
 }
 
@@ -200,6 +219,9 @@ func (a *App) FetchServerFolders() ([]ServerItem, error) {
 	if err != nil {
 		if strings.Contains(err.Error(), "network") || strings.Contains(err.Error(), "refused") || strings.Contains(err.Error(), "timeout") {
 			a.reconnectMgr.MarkDisconnected("connection failed")
+			if a.ctx != nil {
+				wailsRuntime.EventsEmit(a.ctx, "connection-state", false)
+			}
 		}
 		return nil, err
 	}
@@ -207,10 +229,16 @@ func (a *App) FetchServerFolders() ([]ServerItem, error) {
 	if err != nil {
 		if strings.Contains(err.Error(), "connection") || strings.Contains(err.Error(), "refused") || strings.Contains(err.Error(), "timeout") {
 			a.reconnectMgr.MarkDisconnected(err.Error())
+			if a.ctx != nil {
+				wailsRuntime.EventsEmit(a.ctx, "connection-state", false)
+			}
 		}
 		return nil, err
 	}
 	a.reconnectMgr.MarkConnected()
+	if a.ctx != nil {
+		wailsRuntime.EventsEmit(a.ctx, "connection-state", true)
+	}
 	return items, nil
 }
 
@@ -223,6 +251,7 @@ func (a *App) CheckSMARTStatus() CombinedSmartData {
 	result.LocalDisks = localDisks
 
 	// 2. Server & Remote Client drives
+	_ = a.engine.EnsureAuthenticated("")
 	healthy, isTest, serverDisks, clientReports, err := a.engine.CheckSMARTDriveHealth()
 	result.ServerDisks = serverDisks
 	result.IsTest = isTest
@@ -232,9 +261,15 @@ func (a *App) CheckSMARTStatus() CombinedSmartData {
 		result.Error = err.Error()
 		if strings.Contains(err.Error(), "connection") || strings.Contains(err.Error(), "refused") || strings.Contains(err.Error(), "timeout") {
 			a.reconnectMgr.MarkDisconnected(err.Error())
+			if a.ctx != nil {
+				wailsRuntime.EventsEmit(a.ctx, "connection-state", false)
+			}
 		}
 	} else {
 		a.reconnectMgr.MarkConnected()
+		if a.ctx != nil {
+			wailsRuntime.EventsEmit(a.ctx, "connection-state", true)
+		}
 	}
 
 	// 3. Other IP client groups
@@ -290,6 +325,11 @@ func (a *App) SetStartupOnBoot(enabled bool) error {
 // GetStatus returns the current status message
 func (a *App) GetStatus() string {
 	return a.engine.GetStatus()
+}
+
+// IsConnected returns whether the client is currently connected to LinNAS
+func (a *App) IsConnected() bool {
+	return !a.reconnectMgr.IsDisconnected() && a.engine.isLoggedIn
 }
 
 // Background scheduler worker

@@ -1,6 +1,10 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -139,5 +143,71 @@ func TestSmartAlertOnlyOnServerExplicitError(t *testing.T) {
 	engine.CheckSMARTDriveHealth()
 	if !alertTriggered || !alertIsTest {
 		t.Fatal("Alert NOT triggered when server specifically reported is_test: true!")
+	}
+}
+
+func TestCheckSMARTDriveHealthReportsLocalAndFetchesRemoteClients(t *testing.T) {
+	var reportedToServer bool
+	var rsaPriv *rsa.PrivateKey
+	rsaPriv, _ = rsa.GenerateKey(rand.Reader, 2048)
+	derBytes, _ := x509.MarshalPKIXPublicKey(&rsaPriv.PublicKey)
+	pubB64 := base64.StdEncoding.EncodeToString(derBytes)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/crypto/pubkey" {
+			json.NewEncoder(w).Encode(map[string]string{"public_key": pubB64})
+			return
+		}
+		if r.URL.Path == "/api/cloud/smart/report" {
+			reportedToServer = true
+			w.Write([]byte(`{"success":true}`))
+			return
+		}
+		if r.URL.Path == "/api/cloud/smart" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success":         true,
+				"overall_healthy": true,
+				"is_test":         false,
+				"disks":           []SmartDiskInfo{{Device: "/dev/sda", Health: "PASSED"}},
+				"client_reports": []ClientFailureReport{
+					{
+						Client: "RemoteOffice (10.0.0.45)",
+						Failing: []SmartDiskInfo{
+							{Device: "nvme0n1", Model: "Remote SSD", Health: "FAILED"},
+						},
+					},
+				},
+			})
+			return
+		}
+	}))
+	defer server.Close()
+
+	cfg := ClientConfig{
+		ServerEndpoint: server.Listener.Addr().String(),
+		Username:       "testuser",
+	}
+	engine, err := NewSyncEngine(cfg)
+	if err != nil {
+		t.Fatalf("Failed to init sync engine: %v", err)
+	}
+	engine.crypto.serverURL = server.URL
+	engine.crypto.pubKey = &rsaPriv.PublicKey
+
+	_, _, disks, clientReports, err := engine.CheckSMARTDriveHealth()
+	if err != nil {
+		t.Fatalf("CheckSMARTDriveHealth failed: %v", err)
+	}
+
+	if !reportedToServer {
+		t.Fatal("Expected local SMART data to be reported to server")
+	}
+
+	if len(disks) != 1 || disks[0].Device != "/dev/sda" {
+		t.Fatalf("Expected server disks returned, got: %+v", disks)
+	}
+
+	if len(clientReports) != 1 || clientReports[0].Client != "RemoteOffice (10.0.0.45)" {
+		t.Fatalf("Expected remote client report returned, got: %+v", clientReports)
 	}
 }

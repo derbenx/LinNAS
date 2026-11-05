@@ -213,6 +213,10 @@ func (s *SyncEngine) InvalidateSession() {
 		s.cfg.SessionToken = ""
 		_ = SaveConfig(s.cfg)
 	}
+	if jar, err := cookiejar.New(nil); err == nil {
+		s.cookieJar = jar
+		s.httpClient.Jar = jar
+	}
 }
 
 func (s *SyncEngine) EnsureAuthenticated(password string) error {
@@ -324,6 +328,22 @@ func (s *SyncEngine) FetchServerFolderTree() ([]ServerItem, error) {
 	}
 	s.writeClientDebugLog("FetchServerFolderTree status=%d body_len=%d", resp.StatusCode, len(bodyBytes))
 
+	if resp.StatusCode == http.StatusUnauthorized {
+		s.writeClientDebugLog("FetchServerFolderTree got 401 Unauthorized, re-authenticating...")
+		s.InvalidateSession()
+		if aErr := s.EnsureAuthenticated(""); aErr == nil {
+			// Retry once after re-authenticating
+			retryResp, rErr := s.httpClient.Get(listURL)
+			if rErr == nil {
+				defer retryResp.Body.Close()
+				if retryBytes, rbErr := io.ReadAll(retryResp.Body); rbErr == nil && retryResp.StatusCode == http.StatusOK {
+					resp = retryResp
+					bodyBytes = retryBytes
+				}
+			}
+		}
+	}
+
 	if resp.StatusCode == http.StatusServiceUnavailable {
 		return nil, fmt.Errorf("server cloud service is currently stopped")
 	}
@@ -360,6 +380,11 @@ func (s *SyncEngine) FetchServerFolderTree() ([]ServerItem, error) {
 type ClientFailureReport struct {
 	Client  string          `json:"client"`
 	Failing []SmartDiskInfo `json:"failing"`
+}
+
+type ClientDiskSummary struct {
+	Client string          `json:"client"`
+	Disks  []SmartDiskInfo `json:"disks"`
 }
 
 // ReportLocalSMARTHealthToServer reports local disk statuses to the server
@@ -407,9 +432,9 @@ func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, []Cli
 		return strings.Join(parts, " | ")
 	}
 
-	// 1. Evaluate local disks and report to server
+	// 1. Evaluate local disks and synchronously report to server so server has latest status
 	localHealthy, localDisks, _ := CheckLocalSMARTHealth()
-	go s.ReportLocalSMARTHealthToServer(localDisks)
+	s.ReportLocalSMARTHealthToServer(localDisks)
 
 	// Collect local failure details if any
 	var localFailDetails []string
@@ -433,6 +458,20 @@ func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, []Cli
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusUnauthorized {
+		s.writeClientDebugLog("CheckSMARTDriveHealth got 401 Unauthorized, re-authenticating...")
+		s.InvalidateSession()
+		if aErr := s.EnsureAuthenticated(""); aErr == nil {
+			// Retry after re-authenticating
+			retryResp, rErr := s.httpClient.Get(serverURL + "/api/cloud/smart")
+			if rErr == nil {
+				resp.Body.Close()
+				resp = retryResp
+				defer resp.Body.Close()
+			}
+		}
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		// HTTP error: ignore, but if local disk is failing, trigger alert
 		if len(localFailDetails) > 0 && s.onSmartAlert != nil && !s.IsSmartAlertMuted() {
@@ -449,6 +488,7 @@ func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, []Cli
 		TestMessage    string                `json:"test_message"`
 		Disks          []SmartDiskInfo       `json:"disks"`
 		ClientReports  []ClientFailureReport `json:"client_reports"`
+		ClientDrives   []ClientDiskSummary   `json:"client_drives"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
 		// Bad/malformed JSON: ignore, but if local disk is failing, trigger alert
@@ -493,6 +533,23 @@ func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, []Cli
 				detailMsg = "• Simulated SMART hardware failure test active on server"
 			}
 			s.onSmartAlert(detailMsg, data.IsTest)
+		}
+	}
+
+	// If client_drives was sent and client_reports has missing healthy drives or temp info, merge them
+	if len(data.ClientDrives) > 0 {
+		existingClients := make(map[string]bool)
+		for _, cr := range data.ClientReports {
+			existingClients[cr.Client] = true
+		}
+		for _, cd := range data.ClientDrives {
+			if !existingClients[cd.Client] {
+				// Include non-failing client report summary so remote drives and their temperatures are visible
+				data.ClientReports = append(data.ClientReports, ClientFailureReport{
+					Client:  cd.Client,
+					Failing: cd.Disks,
+				})
+			}
 		}
 	}
 
