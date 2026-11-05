@@ -220,6 +220,10 @@ func (s *SyncEngine) InvalidateSession() {
 }
 
 func (s *SyncEngine) EnsureAuthenticated(password string) error {
+	return s.ensureAuthenticatedInternal(password, true)
+}
+
+func (s *SyncEngine) ensureAuthenticatedInternal(password string, allowRetry bool) error {
 	if s.isLoggedIn {
 		return nil
 	}
@@ -255,11 +259,20 @@ func (s *SyncEngine) EnsureAuthenticated(password string) error {
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		s.writeClientDebugLog("EnsureAuthenticated failed HTTP %d: %s", resp.StatusCode, string(bodyBytes))
-		// If authentication failed with a stale session token (e.g. server restarted and wiped memory),
+
+		// If server returned 400 (decryption failed due to server restart changing RSA keys),
+		// or 401 (invalid credentials / session token expired), invalidate pubkey & session and retry once.
+		if allowRetry && (resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnauthorized) {
+			s.crypto.InvalidatePublicKey()
+			s.InvalidateSession()
+			return s.ensureAuthenticatedInternal(password, false)
+		}
+
+		// If authentication failed with a stale session token (e.g. server wiped memory),
 		// clear the session token and retry immediately using stored password or password_hash.
 		if s.cfg.SessionToken != "" && (password != "" || s.cfg.PasswordHash != "") {
 			s.InvalidateSession()
-			return s.EnsureAuthenticated(password)
+			return s.ensureAuthenticatedInternal(password, false)
 		}
 		return fmt.Errorf("login failed with HTTP %d", resp.StatusCode)
 	}
@@ -328,8 +341,9 @@ func (s *SyncEngine) FetchServerFolderTree() ([]ServerItem, error) {
 	}
 	s.writeClientDebugLog("FetchServerFolderTree status=%d body_len=%d", resp.StatusCode, len(bodyBytes))
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		s.writeClientDebugLog("FetchServerFolderTree got 401 Unauthorized, re-authenticating...")
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest {
+		s.writeClientDebugLog("FetchServerFolderTree got HTTP %d, re-authenticating...", resp.StatusCode)
+		s.crypto.InvalidatePublicKey()
 		s.InvalidateSession()
 		if aErr := s.EnsureAuthenticated(""); aErr == nil {
 			// Retry once after re-authenticating
@@ -389,6 +403,10 @@ type ClientDiskSummary struct {
 
 // ReportLocalSMARTHealthToServer reports local disk statuses to the server
 func (s *SyncEngine) ReportLocalSMARTHealthToServer(disks []SmartDiskInfo) {
+	s.reportLocalSMARTHealthToServerInternal(disks, true)
+}
+
+func (s *SyncEngine) reportLocalSMARTHealthToServerInternal(disks []SmartDiskInfo, allowRetry bool) {
 	reqData := map[string]interface{}{
 		"client_id": s.cfg.Username,
 		"disks":     disks,
@@ -398,8 +416,17 @@ func (s *SyncEngine) ReportLocalSMARTHealthToServer(disks []SmartDiskInfo) {
 		return
 	}
 	resp, err := s.httpClient.Post(s.crypto.serverURL+"/api/cloud/smart/report", "application/json", bytes.NewReader(encBody))
-	if err == nil {
-		_ = resp.Body.Close()
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	if allowRetry && (resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnauthorized) {
+		s.crypto.InvalidatePublicKey()
+		s.InvalidateSession()
+		if aErr := s.EnsureAuthenticated(""); aErr == nil {
+			s.reportLocalSMARTHealthToServerInternal(disks, false)
+		}
 	}
 }
 
@@ -458,8 +485,9 @@ func (s *SyncEngine) CheckSMARTDriveHealth() (bool, bool, []SmartDiskInfo, []Cli
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		s.writeClientDebugLog("CheckSMARTDriveHealth got 401 Unauthorized, re-authenticating...")
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest {
+		s.writeClientDebugLog("CheckSMARTDriveHealth got HTTP %d, re-authenticating...", resp.StatusCode)
+		s.crypto.InvalidatePublicKey()
 		s.InvalidateSession()
 		if aErr := s.EnsureAuthenticated(""); aErr == nil {
 			// Retry after re-authenticating

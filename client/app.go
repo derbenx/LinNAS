@@ -332,6 +332,30 @@ func (a *App) IsConnected() bool {
 	return !a.reconnectMgr.IsDisconnected() && a.engine.isLoggedIn
 }
 
+// TriggerRefresh performs updates based on the configured "On refresh update" target
+func (a *App) TriggerRefresh(manualTarget string) {
+	target := manualTarget
+	if target == "" {
+		target = a.cfg.RefreshTarget
+	}
+	target = strings.ToLower(target)
+
+	shouldCloud := target == "cloud only" || target == "cloud and smart" || target == ""
+	shouldSmart := target == "smart only" || target == "cloud and smart" || target == ""
+
+	if shouldCloud {
+		go func() {
+			_, _ = a.FetchServerFolders()
+		}()
+	}
+
+	if shouldSmart {
+		go func() {
+			_ = a.CheckSMARTStatus()
+		}()
+	}
+}
+
 // Background scheduler worker
 func (a *App) startBackgroundWorker() {
 	time.Sleep(2 * time.Second)
@@ -358,7 +382,7 @@ func (a *App) startBackgroundWorker() {
 				}
 			}
 
-			// Periodic SMART health check every 60s
+			// Periodic sync & SMART health check
 			now := time.Now()
 			intervalSec := a.cfg.SyncIntervalSec
 			if intervalSec < 120 {
@@ -367,11 +391,14 @@ func (a *App) startBackgroundWorker() {
 
 			if now.Sub(lastSyncPass) >= time.Duration(intervalSec)*time.Second {
 				lastSyncPass = now
-				if a.cfg.SyncEnabled {
+
+				// Respect SyncMode: disabled vs timer vs on idle
+				isSyncDisabled := a.cfg.SyncMode == "disabled" || !a.cfg.SyncEnabled
+				if !isSyncDisabled {
 					if a.reconnectMgr.IsDisconnected() {
 						a.reconnectMgr.RecordMissedTimerSync()
 					} else {
-						if !a.cfg.IdleOnly {
+						if a.cfg.SyncMode != "on idle" && !a.cfg.IdleOnly {
 							go func() {
 								_ = a.engine.PerformSync("")
 							}()

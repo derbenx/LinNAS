@@ -41,6 +41,12 @@ func NewClientCrypto(serverURL string) *ClientCrypto {
 	}
 }
 
+func (c *ClientCrypto) InvalidatePublicKey() {
+	c.mu.Lock()
+	c.pubKey = nil
+	c.mu.Unlock()
+}
+
 func (c *ClientCrypto) FetchServerPublicKey() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

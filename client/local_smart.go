@@ -63,6 +63,28 @@ foreach ($d in $disks) {
         }
     } catch {}
 
+    if ($temp -eq 0) {
+        try {
+            $wmi = Get-CimInstance -Namespace "root/wmi" -ClassName "MSStorageDriver_ATAPISmartData" -ErrorAction SilentlyContinue
+            if ($wmi) {
+                # Look for attribute 194 (0xC2) Temperature Celsius
+                foreach ($inst in $wmi) {
+                    $bytes = $inst.VendorSpecific
+                    for ($i = 2; $i -lt $bytes.Length - 12; $i += 12) {
+                        if ($bytes[$i] -eq 194 -or $bytes[$i] -eq 190) {
+                            $tVal = [int]$bytes[$i + 5]
+                            if ($tVal -gt 0 -and $tVal -lt 120) {
+                                $temp = $tVal
+                                break
+                            }
+                        }
+                    }
+                    if ($temp -gt 0) { break }
+                }
+            }
+        } catch {}
+    }
+
     $partLetters = @()
     try {
         $diskNum = $d.DeviceId

@@ -26,27 +26,6 @@
         .dot-red { background: #f85149; }
 
         /* Hardware Activity Indicators */
-        .activity-indicators {
-            display: inline-flex;
-            align-items: center;
-            gap: 12px;
-            margin-left: auto;
-            background: #161b22;
-            padding: 6px 12px;
-            border-radius: 6px;
-            border: 1px solid #30363d;
-            font-size: 0.8rem;
-        }
-        .indicator-item { display: flex; align-items: center; gap: 6px; color: #8b949e; }
-        .flicker-led {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #30363d;
-            transition: background 0.15s, box-shadow 0.15s;
-        }
-        .flicker-led.active-lan { background: #58a6ff; box-shadow: 0 0 8px #58a6ff; }
-        .flicker-led.active-hdd { background: #e3b341; box-shadow: 0 0 8px #e3b341; }
 
         .section { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
         .section-title { font-size: 1.1rem; font-weight: 600; color: #f0f6fc; margin-bottom: 1rem; border-bottom: 1px solid #30363d; padding-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between; }
@@ -169,16 +148,6 @@
                 <span>Stopped</span>
             </span>
         </h2>
-        <div class="activity-indicators">
-            <div class="indicator-item">
-                <span id="lanLed" class="flicker-led"></span>
-                <span>LAN</span>
-            </div>
-            <div class="indicator-item">
-                <span id="hddLed" class="flicker-led"></span>
-                <span>DISK</span>
-            </div>
-        </div>
     </div>
 
     <!-- Server & Client Storage Health Section -->
@@ -422,17 +391,6 @@
                 document.getElementById('infoLocks').innerText = `${data.active_file_locks || 0} in-use`;
                 document.getElementById('infoEndpoint').innerText = data.server_endpoint || '--';
 
-                // Activity LED flicker
-                const lanLed = document.getElementById('lanLed');
-                const hddLed = document.getElementById('hddLed');
-                if (data.activity_flicker) {
-                    lanLed.classList.add('active-lan');
-                    hddLed.classList.add('active-hdd');
-                    setTimeout(() => {
-                        lanLed.classList.remove('active-lan');
-                        hddLed.classList.remove('active-hdd');
-                    }, 500);
-                }
 
             } catch (err) {
                 console.error('Error fetching cloud status:', err);

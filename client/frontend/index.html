@@ -420,12 +420,6 @@
         <div class="section-title">⏱️ Synchronization Scheduling</div>
         <div class="form-group">
           <label class="checkbox-row">
-            <input type="checkbox" id="syncEnabled">
-            <span>Enable automatic background synchronization</span>
-          </label>
-        </div>
-        <div class="form-group">
-          <label class="checkbox-row">
             <input type="checkbox" id="runOnStartup">
             <span>Start LinNAS Client automatically on system startup</span>
           </label>
@@ -433,16 +427,25 @@
         <div class="form-group">
           <label>Sync Mode</label>
           <select id="syncMode" onchange="updateModeLabel()">
-            <option value="On a timer">On a timer</option>
-            <option value="When idle for">When idle for</option>
+            <option value="disabled">Disabled</option>
+            <option value="timer">Timer</option>
+            <option value="on idle">On idle</option>
           </select>
         </div>
-        <div class="form-group">
+        <div class="form-group" id="freqRow">
           <label id="sliderLabel">Sync Interval</label>
           <div class="slider-container">
             <input type="range" id="syncFreqSlider" min="120" max="18000" step="30" oninput="onFreqSlider(this.value)">
             <span class="slider-val" id="syncFreqText">5 mins</span>
           </div>
+        </div>
+        <div class="form-group">
+          <label>On refresh update</label>
+          <select id="refreshTarget">
+            <option value="smart only">Smart only</option>
+            <option value="cloud only">Cloud only</option>
+            <option value="cloud and smart">Cloud and smart</option>
+          </select>
         </div>
       </div>
 
@@ -584,7 +587,13 @@
 
     function updateModeLabel() {
       const mode = document.getElementById('syncMode').value;
-      document.getElementById('sliderLabel').innerText = (mode === 'When idle for') ? 'Idle Wait Duration' : 'Sync Interval';
+      const freqRow = document.getElementById('freqRow');
+      if (mode === 'disabled') {
+        freqRow.style.display = 'none';
+      } else {
+        freqRow.style.display = 'flex';
+        document.getElementById('sliderLabel').innerText = (mode === 'on idle') ? 'Idle Wait Duration' : 'Sync Interval';
+      }
     }
 
     async function loadConfig() {
@@ -592,10 +601,14 @@
         currentConfig = await window.go.main.App.GetConfig();
         document.getElementById('serverEndpoint').value = currentConfig.server_endpoint || '';
         document.getElementById('username').value = currentConfig.username || '';
-        document.getElementById('syncEnabled').checked = currentConfig.sync_enabled !== false;
         document.getElementById('logToFile').checked = !!currentConfig.log_to_file;
-        document.getElementById('syncMode').value = currentConfig.sync_mode || 'On a timer';
+
+        const mode = (currentConfig.sync_mode || 'timer').toLowerCase();
+        document.getElementById('syncMode').value = (mode === 'disabled' || currentConfig.sync_enabled === false) ? 'disabled' : (mode === 'on idle' ? 'on idle' : 'timer');
         updateModeLabel();
+
+        const target = (currentConfig.refresh_target || 'cloud and smart').toLowerCase();
+        document.getElementById('refreshTarget').value = target;
 
         const secs = currentConfig.sync_interval_sec || 300;
         document.getElementById('syncFreqSlider').value = secs;
@@ -631,10 +644,12 @@
       try {
         currentConfig.server_endpoint = document.getElementById('serverEndpoint').value.trim();
         currentConfig.username = document.getElementById('username').value.trim();
-        currentConfig.sync_enabled = document.getElementById('syncEnabled').checked;
+        const modeVal = document.getElementById('syncMode').value;
+        currentConfig.sync_mode = modeVal;
+        currentConfig.sync_enabled = (modeVal !== 'disabled');
+        currentConfig.idle_only = (modeVal === 'on idle');
+        currentConfig.refresh_target = document.getElementById('refreshTarget').value;
         currentConfig.log_to_file = document.getElementById('logToFile').checked;
-        currentConfig.sync_mode = document.getElementById('syncMode').value;
-        currentConfig.idle_only = (currentConfig.sync_mode === 'When idle for');
         currentConfig.sync_interval_sec = parseInt(document.getElementById('syncFreqSlider').value, 10);
         currentConfig.local_sync_dir = document.getElementById('localSyncDir').value.trim();
         currentConfig.selected_folders = selectedFoldersMap;
@@ -739,7 +754,7 @@
       if (isFail) statusBadge = '<span class="tile-status fail">❌ FAIL</span>';
       else if (isPass) statusBadge = '<span class="tile-status pass">✅ PASS</span>';
 
-      let tempStr = d.temp_c > 0 ? `🌡️ ${d.temp_c}°C` : '';
+      let tempStr = (d.temp_c && d.temp_c > 0) ? `🌡️ ${d.temp_c}°C` : '🌡️ N/A';
 
       tile.innerHTML = `
         <div>
@@ -750,7 +765,7 @@
           <div style="margin-bottom: 4px;">${statusBadge}</div>
           <div class="tile-cap">
             <span>${d.capacity || ''}</span>
-            <span>${tempStr}</span>
+            <span style="color: ${d.temp_c > 0 ? '#e6edf3' : '#8b949e'};">${tempStr}</span>
           </div>
         </div>
       `;

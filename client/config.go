@@ -17,7 +17,8 @@ type ClientConfig struct {
 	SessionToken    string          `json:"session_token,omitempty"` // Long-lived auth session token
 	LocalSyncDir    string          `json:"local_sync_dir"`
 	SyncEnabled     bool            `json:"sync_enabled"`
-	SyncMode        string          `json:"sync_mode"`                // "On a timer" or "When idle for"
+	SyncMode        string          `json:"sync_mode"`                // "disabled", "timer", or "on idle"
+	RefreshTarget   string          `json:"refresh_target"`           // "smart only", "cloud only", or "cloud and smart"
 	SyncIntervalSec int             `json:"sync_interval_sec"`        // 120 (2 mins) to 18000 (5 hours)
 	ThrottleKBps    int             `json:"throttle_kbps"`            // 0 = unlimited, otherwise speed cap
 	IdleOnly        bool            `json:"idle_only"`                // Only upload/sync when idle
@@ -38,7 +39,8 @@ func getDefaultConfig() ClientConfig {
 		Username:        "admin",
 		LocalSyncDir:    defaultLocalDir,
 		SyncEnabled:     true,
-		SyncMode:        "On a timer",
+		SyncMode:        "timer",
+		RefreshTarget:   "cloud and smart",
 		SyncIntervalSec: 300, // Default 5 mins
 		ThrottleKBps:    500, // Leisurely default ~500 KB/s
 		IdleOnly:        false,
@@ -73,11 +75,24 @@ func LoadConfig() ClientConfig {
 			appCfg.SelectedFolders = make(map[string]bool)
 		}
 		if appCfg.SyncMode == "" {
-			if appCfg.IdleOnly {
-				appCfg.SyncMode = "When idle for"
+			if !appCfg.SyncEnabled {
+				appCfg.SyncMode = "disabled"
+			} else if appCfg.IdleOnly {
+				appCfg.SyncMode = "on idle"
 			} else {
-				appCfg.SyncMode = "On a timer"
+				appCfg.SyncMode = "timer"
 			}
+		} else {
+			// Normalize older strings
+			switch strings.ToLower(appCfg.SyncMode) {
+			case "on a timer":
+				appCfg.SyncMode = "timer"
+			case "when idle for":
+				appCfg.SyncMode = "on idle"
+			}
+		}
+		if appCfg.RefreshTarget == "" {
+			appCfg.RefreshTarget = "cloud and smart"
 		}
 		if appCfg.SyncIntervalSec < 120 {
 			appCfg.SyncIntervalSec = 300 // default 5 mins

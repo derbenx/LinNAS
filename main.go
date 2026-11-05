@@ -3308,7 +3308,6 @@ func sendCloudJSONResponse(w http.ResponseWriter, r *http.Request, aesKey []byte
 // HTTP Handlers for Local Cloud Server
 
 func handleCloudStatus(w http.ResponseWriter, r *http.Request) {
-	recordCloudActivity()
 	cloudConfigMu.RLock()
 	cfg := cloudConfig
 	cloudConfigMu.RUnlock()
@@ -3354,7 +3353,6 @@ func handleCloudStatus(w http.ResponseWriter, r *http.Request) {
 		"server_endpoint":    serverEndpoint,
 		"active_file_locks":  activeLocksCount,
 		"last_activity_sec":  activeSecondsAgo,
-		"activity_flicker":   activeSecondsAgo >= 0 && activeSecondsAgo < 3,
 	})
 }
 
