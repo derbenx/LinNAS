@@ -447,6 +447,17 @@
             <option value="cloud and smart">Cloud and smart</option>
           </select>
         </div>
+        <div class="form-group">
+          <label>Transfer Speed Limit (Throttle)</label>
+          <select id="throttleSpeed">
+            <option value="0">Unlimited (Fastest)</option>
+            <option value="250">250 KB/s</option>
+            <option value="500">500 KB/s (Normal)</option>
+            <option value="1000">1 MB/s</option>
+            <option value="2500">2.5 MB/s</option>
+            <option value="5000">5 MB/s</option>
+          </select>
+        </div>
       </div>
 
       <div class="section-card">
@@ -610,6 +621,9 @@
         const target = (currentConfig.refresh_target || 'cloud and smart').toLowerCase();
         document.getElementById('refreshTarget').value = target;
 
+        const throttleVal = (currentConfig.throttle_kbps !== undefined) ? currentConfig.throttle_kbps : 500;
+        document.getElementById('throttleSpeed').value = throttleVal.toString();
+
         const secs = currentConfig.sync_interval_sec || 300;
         document.getElementById('syncFreqSlider').value = secs;
         document.getElementById('syncFreqText').innerText = formatInterval(secs);
@@ -649,6 +663,7 @@
         currentConfig.sync_enabled = (modeVal !== 'disabled');
         currentConfig.idle_only = (modeVal === 'on idle');
         currentConfig.refresh_target = document.getElementById('refreshTarget').value;
+        currentConfig.throttle_kbps = parseInt(document.getElementById('throttleSpeed').value, 10);
         currentConfig.log_to_file = document.getElementById('logToFile').checked;
         currentConfig.sync_interval_sec = parseInt(document.getElementById('syncFreqSlider').value, 10);
         currentConfig.local_sync_dir = document.getElementById('localSyncDir').value.trim();

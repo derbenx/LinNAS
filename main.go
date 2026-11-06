@@ -3287,6 +3287,28 @@ func calculateFileSHA256(filePath string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+func findExistingRecycledCopy(recycleDir, baseName, targetSHA string) string {
+	entries, err := os.ReadDir(recycleDir)
+	if err != nil {
+		return ""
+	}
+	prefixDeleted := baseName + ".deleted."
+	prefixOverwrite := baseName + "."
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasSuffix(name, ".restore_info.json") || e.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(name, prefixDeleted) || strings.HasPrefix(name, prefixOverwrite) {
+			p := filepath.Join(recycleDir, name)
+			if calculateFileSHA256(p) == targetSHA {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
 func sendCloudJSONResponse(w http.ResponseWriter, r *http.Request, aesKey []byte, data interface{}) {
 	rawJSON, err := json.Marshal(data)
 	if err != nil {
@@ -4051,38 +4073,43 @@ func handleCloudSave(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Overwrite case: Move existing version into RecycleBin
-		dateTag := existingInfo.ModTime().Format("2006-01-02_150405")
-		backupName := fmt.Sprintf("%s.%s", baseName, dateTag)
+		// Overwrite case: Move existing version into RecycleBin (if not already archived)
 		recycleDir := filepath.Join(rootFolder, "RecycleBin", relDir)
 		_ = os.MkdirAll(recycleDir, 0755)
-		backupPath := filepath.Join(recycleDir, backupName)
+		existingSHA := calculateFileSHA256(targetFile)
+		alreadyArchived := (existingSHA != "" && findExistingRecycledCopy(recycleDir, baseName, existingSHA) != "")
 
-		// Copy existing file to RecycleBin and record restore origin metadata
-		if existingData, readErr := os.ReadFile(targetFile); readErr == nil {
-			_ = os.WriteFile(backupPath, existingData, 0644)
-			restoreMeta := map[string]interface{}{
-				"original_path": cleanRel,
-				"archived_path": filepath.ToSlash(filepath.Join("RecycleBin", relDir, backupName)),
-				"reason":        "overwrite",
-				"archived_at":   time.Now().Format(time.RFC3339),
-				"mod_time":      existingModTime,
-				"size":          existingInfo.Size(),
-				"sha256":        calculateFileSHA256(targetFile),
-			}
-			if rBytes, mErr := json.MarshalIndent(restoreMeta, "", "  "); mErr == nil {
-				_ = os.WriteFile(backupPath+".restore_info.json", rBytes, 0644)
-			}
+		if !alreadyArchived {
+			dateTag := existingInfo.ModTime().Format("2006-01-02_150405")
+			backupName := fmt.Sprintf("%s.%s", baseName, dateTag)
+			backupPath := filepath.Join(recycleDir, backupName)
 
-			dirMeta.History = append(dirMeta.History, CloudHistoryEntry{
-				Action:     "overwrite",
-				OrigPath:   cleanRel,
-				BackupPath: filepath.ToSlash(filepath.Join("RecycleBin", relDir, backupName)),
-				Timestamp:  time.Now().Format(time.RFC3339),
-				ModTime:    existingModTime,
-				Size:       existingInfo.Size(),
-				Details:    "Overwritten by newer file save",
-			})
+			// Copy existing file to RecycleBin and record restore origin metadata
+			if existingData, readErr := os.ReadFile(targetFile); readErr == nil {
+				_ = os.WriteFile(backupPath, existingData, 0644)
+				restoreMeta := map[string]interface{}{
+					"original_path": cleanRel,
+					"archived_path": filepath.ToSlash(filepath.Join("RecycleBin", relDir, backupName)),
+					"reason":        "overwrite",
+					"archived_at":   time.Now().Format(time.RFC3339),
+					"mod_time":      existingModTime,
+					"size":          existingInfo.Size(),
+					"sha256":        existingSHA,
+				}
+				if rBytes, mErr := json.MarshalIndent(restoreMeta, "", "  "); mErr == nil {
+					_ = os.WriteFile(backupPath+".restore_info.json", rBytes, 0644)
+				}
+
+				dirMeta.History = append(dirMeta.History, CloudHistoryEntry{
+					Action:     "overwrite",
+					OrigPath:   cleanRel,
+					BackupPath: filepath.ToSlash(filepath.Join("RecycleBin", relDir, backupName)),
+					Timestamp:  time.Now().Format(time.RFC3339),
+					ModTime:    existingModTime,
+					Size:       existingInfo.Size(),
+					Details:    "Overwritten by newer file save",
+				})
+			}
 		}
 	}
 
@@ -4330,41 +4357,58 @@ func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
 	dirMeta := loadCloudDirMeta(rootFolder, relDir)
 
 	// Move file or directory to RecycleBin in the shared root folder
-	dateTag := time.Now().Format("2006-01-02_150405")
-	backupName := fmt.Sprintf("%s.deleted.%s", baseName, dateTag)
 	recycleDir := filepath.Join(rootFolder, "RecycleBin", relDir)
 	_ = os.MkdirAll(recycleDir, 0755)
+
+	targetSHA := ""
+	if !fi.IsDir() {
+		targetSHA = calculateFileSHA256(targetFile)
+	}
+
+	existingRecycled := ""
+	if targetSHA != "" {
+		existingRecycled = findExistingRecycledCopy(recycleDir, baseName, targetSHA)
+	}
+
+	dateTag := time.Now().Format("2006-01-02_150405")
+	backupName := fmt.Sprintf("%s.deleted.%s", baseName, dateTag)
 	backupPath := filepath.Join(recycleDir, backupName)
 
-	if err := os.Rename(targetFile, backupPath); err != nil {
-		if fi.IsDir() {
-			w.WriteHeader(http.StatusInternalServerError)
-			sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": fmt.Sprintf("failed to move directory to RecycleBin: %v", err)})
-			return
+	if existingRecycled != "" {
+		// An identical copy of this deleted file is already in the RecycleBin; simply remove the original
+		_ = os.Remove(targetFile)
+		backupPath = existingRecycled
+	} else {
+		if err := os.Rename(targetFile, backupPath); err != nil {
+			if fi.IsDir() {
+				w.WriteHeader(http.StatusInternalServerError)
+				sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": fmt.Sprintf("failed to move directory to RecycleBin: %v", err)})
+				return
+			}
+			// If file rename fails (e.g. cross-device), copy and remove
+			data, readErr := os.ReadFile(targetFile)
+			if readErr == nil {
+				_ = os.WriteFile(backupPath, data, 0644)
+				_ = os.Remove(targetFile)
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+				sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": err.Error()})
+				return
+			}
 		}
-		// If file rename fails (e.g. cross-device), copy and remove
-		data, readErr := os.ReadFile(targetFile)
-		if readErr == nil {
-			_ = os.WriteFile(backupPath, data, 0644)
-			_ = os.Remove(targetFile)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-			sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": err.Error()})
-			return
-		}
-	}
 
-	// Record restore origin info so the user knows where to restore the file
-	restoreMeta := map[string]interface{}{
-		"original_path": cleanRel,
-		"archived_path": filepath.ToSlash(filepath.Join("RecycleBin", relDir, backupName)),
-		"reason":        "deleted",
-		"deleted_at":    time.Now().Format(time.RFC3339),
-		"mod_time":      fi.ModTime().Unix(),
-		"size":          fi.Size(),
-	}
-	if rBytes, mErr := json.MarshalIndent(restoreMeta, "", "  "); mErr == nil {
-		_ = os.WriteFile(backupPath+".restore_info.json", rBytes, 0644)
+		// Record restore origin info so the user knows where to restore the file
+		restoreMeta := map[string]interface{}{
+			"original_path": cleanRel,
+			"archived_path": filepath.ToSlash(filepath.Join("RecycleBin", relDir, backupName)),
+			"reason":        "deleted",
+			"deleted_at":    time.Now().Format(time.RFC3339),
+			"mod_time":      fi.ModTime().Unix(),
+			"size":          fi.Size(),
+		}
+		if rBytes, mErr := json.MarshalIndent(restoreMeta, "", "  "); mErr == nil {
+			_ = os.WriteFile(backupPath+".restore_info.json", rBytes, 0644)
+		}
 	}
 
 	// Update metadata, tombstone deleted map, history, and file ledger

@@ -863,7 +863,7 @@ func (s *SyncEngine) PerformSync(password string) error {
 		}
 		relSlash := filepath.ToSlash(rel)
 		baseName := filepath.Base(relSlash)
-		if strings.HasPrefix(relSlash, ".cloud_meta") ||
+		if strings.HasPrefix(relSlash, ".cloud_meta") || strings.HasPrefix(relSlash, "RecycleBin") ||
 			baseName == ".cloud_data" || strings.HasPrefix(baseName, ".cloud-") {
 			return nil
 		}
