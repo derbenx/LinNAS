@@ -125,10 +125,19 @@ func (s *SyncEngine) getManifestPath() string {
 func (s *SyncEngine) loadManifest() {
 	s.manifestMu.Lock()
 	defer s.manifestMu.Unlock()
+
+	// 1. Load from all per-folder .cloud_data files in LocalSyncDir
+	if s.cfg.LocalSyncDir != "" {
+		folderMeta := LoadAllClientMeta(s.cfg.LocalSyncDir)
+		for k, v := range folderMeta {
+			s.manifest[k] = v
+		}
+	}
+
+	// 2. Also load/merge root .cloud_data or legacy sync_manifest.json
 	p := s.getManifestPath()
 	data, err := os.ReadFile(p)
 	if err != nil || len(data) == 0 {
-		// fallback to .cloud_meta/.client_meta.json or sync_manifest.json
 		if s.cfg.LocalSyncDir != "" {
 			data, _ = os.ReadFile(filepath.Join(s.cfg.LocalSyncDir, ".cloud_meta", ".client_meta.json"))
 		}
@@ -146,7 +155,9 @@ func (s *SyncEngine) loadManifest() {
 		var list []TrackedFile
 		if err := json.Unmarshal([]byte(raw), &list); err == nil {
 			for _, tf := range list {
-				s.manifest[tf.RelPath] = tf
+				if _, exists := s.manifest[tf.RelPath]; !exists {
+					s.manifest[tf.RelPath] = tf
+				}
 			}
 		}
 	}
@@ -384,7 +395,7 @@ func (s *SyncEngine) FetchServerFolderTree() ([]ServerItem, error) {
 
 	var dirsOnly []ServerItem
 	for _, it := range data.Items {
-		if it.IsDir && !strings.HasPrefix(it.RelPath, "RecycleBin") {
+		if it.IsDir {
 			dirsOnly = append(dirsOnly, it)
 		}
 	}
@@ -653,11 +664,12 @@ func (s *SyncEngine) PerformSync(password string) error {
 	}
 
 	var listData struct {
-		Success bool                `json:"success"`
-		Items   []ServerItem        `json:"items"`
-		Deleted []ServerDeletedItem `json:"deleted"`
-		Ledger  []ServerLedgerEntry `json:"ledger"`
-		Error   string              `json:"error,omitempty"`
+		Success   bool                `json:"success"`
+		Items     []ServerItem        `json:"items"`
+		Deleted   []ServerDeletedItem `json:"deleted"`
+		Ledger    []ServerLedgerEntry `json:"ledger"`
+		Timestamp int64               `json:"timestamp"` // Server system timestamp
+		Error     string              `json:"error,omitempty"`
 	}
 	if err := json.Unmarshal(bodyBytes, &listData); err != nil {
 		s.writeClientDebugLog("PerformSync unmarshal error: %v", err)
@@ -669,11 +681,16 @@ func (s *SyncEngine) PerformSync(password string) error {
 		return fmt.Errorf("server reported error: %s", listData.Error)
 	}
 
+	// Calculate client-to-server clock offset to compare timestamps accurately
+	nowClient := time.Now().Unix()
+	clockOffset := ComputeClockOffset(listData.Timestamp, nowClient)
+	s.writeClientDebugLog("Clock synchronization: serverTime=%d clientTime=%d offset=%d", listData.Timestamp, nowClient, clockOffset)
+
+	// Clean up any locally unchecked (opted-out) directories on client PC
+	s.cleanupUncheckedFolders()
+
 	serverMap := make(map[string]ServerItem)
 	for _, it := range listData.Items {
-		if strings.HasPrefix(it.RelPath, "RecycleBin") {
-			continue
-		}
 		serverMap[it.RelPath] = it
 	}
 
@@ -706,6 +723,7 @@ func (s *SyncEngine) PerformSync(password string) error {
 					tf.Deleted = true
 					tf.DeletedAt = nowUnix
 					s.manifest[relPath] = tf
+					RecordClientFileUpdate(s.cfg.LocalSyncDir, relPath, "deleted", s.cfg.Username, 0, 0, "")
 				}
 			}
 		} else if statErr == nil && !lInfo.IsDir() {
@@ -718,6 +736,7 @@ func (s *SyncEngine) PerformSync(password string) error {
 				tf.ModTime = lInfo.ModTime().Unix()
 				tf.Size = lInfo.Size()
 				s.manifest[relPath] = tf
+				RecordClientFileUpdate(s.cfg.LocalSyncDir, relPath, "restored", s.cfg.Username, tf.ModTime, tf.Size, "")
 				// Clear any server deletion tombstone so it won't be deleted in Step B
 				delete(serverDeletedMap, relPath)
 			}
@@ -736,15 +755,19 @@ func (s *SyncEngine) PerformSync(password string) error {
 			tracked, wasTracked := s.manifest[delRel]
 			s.manifestMu.Unlock()
 
+			// Normalize local modTime to server timeline for fair comparison
+			normalizedLocalMod := NormalizeClientModTime(tracked.ModTime, clockOffset)
+
 			// Only delete if file was tracked by client before the deletion occurred
 			// and has not been un-deleted/placed back by the user
-			if wasTracked && !tracked.Deleted && tracked.ModTime <= delTime {
+			if wasTracked && !tracked.Deleted && normalizedLocalMod <= delTime {
 				s.writeClientDebugLog("Server deleted file: %s (deletedAt=%d). Moving local copy to RecycleBin.", delRel, delTime)
 				s.SetStatus(fmt.Sprintf("Archiving deleted file %s...", filepath.Base(delRel)))
 				s.moveLocalToRecycle(localPath, delRel, lInfo)
 				s.manifestMu.Lock()
 				s.manifest[delRel] = TrackedFile{RelPath: delRel, Deleted: true, DeletedAt: delTime}
 				s.manifestMu.Unlock()
+				RecordClientFileUpdate(s.cfg.LocalSyncDir, delRel, "deleted", s.cfg.Username, 0, 0, "")
 			}
 		}
 	}
@@ -753,7 +776,7 @@ func (s *SyncEngine) PerformSync(password string) error {
 	// STEP C: Download Server Files to Local (if server version is newer)
 	// -------------------------------------------------------------
 	for _, sItem := range listData.Items {
-		if sItem.IsDir || strings.HasPrefix(sItem.RelPath, "RecycleBin") {
+		if sItem.IsDir {
 			continue
 		}
 
@@ -777,12 +800,14 @@ func (s *SyncEngine) PerformSync(password string) error {
 				if effectiveDelTime <= 0 {
 					effectiveDelTime = tracked.ModTime
 				}
-				if sItem.ModTime > effectiveDelTime {
+				// Compare server modTime with normalized deletion time
+				normalizedDelTime := NormalizeClientModTime(effectiveDelTime, clockOffset)
+				if sItem.ModTime > normalizedDelTime {
 					// Server has updated or re-created the file strictly AFTER deletion
 					shouldDownload = true
 				} else {
 					// Server still has the older copy before deletion: do not download, re-propagate deletion to server
-					s.writeClientDebugLog("Prevented resurrection of locally deleted file %s (server modTime=%d vs deletedAt=%d)", sItem.RelPath, sItem.ModTime, effectiveDelTime)
+					s.writeClientDebugLog("Prevented resurrection of locally deleted file %s (server modTime=%d vs normalizedDelTime=%d)", sItem.RelPath, sItem.ModTime, normalizedDelTime)
 					_ = s.deleteRemoteFile(sItem.RelPath)
 				}
 			} else {
@@ -790,27 +815,32 @@ func (s *SyncEngine) PerformSync(password string) error {
 				shouldDownload = true
 			}
 		} else if err == nil {
+			normalizedLocalMod := NormalizeClientModTime(localInfo.ModTime().Unix(), clockOffset)
 			// If previously marked deleted, ensure local file was actually modified after deletion
 			if wasTracked && tracked.Deleted && localInfo.ModTime().Unix() <= tracked.DeletedAt {
 				// File was restored by accident or pending delete; archive it
 				s.moveLocalToRecycle(localPath, sItem.RelPath, localInfo)
-			} else if sItem.ModTime > localInfo.ModTime().Unix() {
+			} else if sItem.ModTime > normalizedLocalMod {
+				// Server file is strictly newer than local file
 				shouldDownload = true
 			}
 		}
 
 		if shouldDownload {
 			s.SetStatus(fmt.Sprintf("Downloading %s...", sItem.Name))
-			if err := s.downloadFile(sItem.RelPath, localPath, sItem.ModTime); err == nil {
+			// When setting local mtime, convert server timestamp to local clock timeline
+			localMTime := LocalComparableServerModTime(sItem.ModTime, clockOffset)
+			if err := s.downloadFile(sItem.RelPath, localPath, localMTime); err == nil {
 				s.manifestMu.Lock()
 				s.manifest[sItem.RelPath] = TrackedFile{
 					RelPath: sItem.RelPath,
-					ModTime: sItem.ModTime,
+					ModTime: localMTime,
 					Size:    sItem.Size,
 					SHA256:  sItem.SHA256,
 					Deleted: false,
 				}
 				s.manifestMu.Unlock()
+				RecordClientFileUpdate(s.cfg.LocalSyncDir, sItem.RelPath, "downloaded", s.cfg.Username, localMTime, sItem.Size, sItem.SHA256)
 			} else {
 				// Failed download is not added to manifest, so it remains queued to retry on next sync cycle
 				s.writeClientDebugLog("Download failed for %s: %v (will retry on next sync interval)", sItem.RelPath, err)
@@ -833,7 +863,7 @@ func (s *SyncEngine) PerformSync(password string) error {
 		}
 		relSlash := filepath.ToSlash(rel)
 		baseName := filepath.Base(relSlash)
-		if strings.HasPrefix(relSlash, ".cloud_meta") || strings.HasPrefix(relSlash, "RecycleBin") ||
+		if strings.HasPrefix(relSlash, ".cloud_meta") ||
 			baseName == ".cloud_data" || strings.HasPrefix(baseName, ".cloud-") {
 			return nil
 		}
@@ -845,11 +875,12 @@ func (s *SyncEngine) PerformSync(password string) error {
 
 		sItem, existsOnServer := serverMap[relSlash]
 		localMod := info.ModTime().Unix()
+		normalizedLocalMod := NormalizeClientModTime(localMod, clockOffset)
 
 		shouldUpload := false
 		if !existsOnServer {
 			shouldUpload = true
-		} else if localMod > sItem.ModTime {
+		} else if normalizedLocalMod > sItem.ModTime {
 			shouldUpload = true
 		}
 
@@ -864,6 +895,7 @@ func (s *SyncEngine) PerformSync(password string) error {
 					Deleted: false,
 				}
 				s.manifestMu.Unlock()
+				RecordClientFileUpdate(s.cfg.LocalSyncDir, relSlash, "uploaded", s.cfg.Username, localMod, info.Size(), "")
 			} else {
 				// Failed upload (e.g. server busy/file locked) is not marked in manifest, staying queued for next interval retry
 				s.writeClientDebugLog("Upload failed for %s: %v (will retry on next sync interval)", relSlash, err)
@@ -879,6 +911,7 @@ func (s *SyncEngine) PerformSync(password string) error {
 				Deleted: false,
 			}
 			s.manifestMu.Unlock()
+			RecordClientFileUpdate(s.cfg.LocalSyncDir, relSlash, "in-sync", s.cfg.Username, localMod, info.Size(), "")
 		}
 
 		return nil
@@ -1041,4 +1074,49 @@ func (s *SyncEngine) uploadFile(localPath, relPath string, modTime int64) error 
 	}
 
 	return nil
+}
+
+// cleanupUncheckedFolders removes local directories on the client PC if they have been opted-out/unchecked by the user.
+// Server copies remain untouched. Supports nested subdirectories.
+func (s *SyncEngine) cleanupUncheckedFolders() {
+	if s.cfg.LocalSyncDir == "" || len(s.cfg.SelectedFolders) == 0 {
+		return
+	}
+
+	var toRemove []string
+	_ = filepath.Walk(s.cfg.LocalSyncDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || !info.IsDir() {
+			return nil
+		}
+		rel, rErr := filepath.Rel(s.cfg.LocalSyncDir, path)
+		if rErr != nil || rel == "." || rel == "" {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		if strings.HasPrefix(relSlash, ".cloud_meta") || filepath.Base(path) == ".cloud_meta" {
+			return filepath.SkipDir
+		}
+
+		if !IsFolderSelected(relSlash, s.cfg.SelectedFolders) {
+			toRemove = append(toRemove, relSlash)
+			return filepath.SkipDir
+		}
+		return nil
+	})
+
+	for _, relDir := range toRemove {
+		target := filepath.Join(s.cfg.LocalSyncDir, filepath.FromSlash(relDir))
+		s.writeClientDebugLog("Cleaning up opted-out local folder: %s", target)
+		_ = os.RemoveAll(target)
+
+		// Remove tracked files under this folder from in-memory manifest
+		s.manifestMu.Lock()
+		prefix := relDir + "/"
+		for k := range s.manifest {
+			if k == relDir || strings.HasPrefix(k, prefix) {
+				delete(s.manifest, k)
+			}
+		}
+		s.manifestMu.Unlock()
+	}
 }

@@ -22,7 +22,7 @@ type ClientConfig struct {
 	SyncIntervalSec int             `json:"sync_interval_sec"`        // 120 (2 mins) to 18000 (5 hours)
 	ThrottleKBps    int             `json:"throttle_kbps"`            // 0 = unlimited, otherwise speed cap
 	IdleOnly        bool            `json:"idle_only"`                // Only upload/sync when idle
-	SelectedFolders map[string]bool `json:"selected_folders"`         // checked folders (relative paths)
+	SelectedFolders map[string]bool `json:"selected_folders"`         // folder path -> false if opted-out/unchecked, true if opted-in
 	LogToFile       bool            `json:"log_to_file"`              // Defaults to false (off)
 }
 
@@ -119,18 +119,25 @@ func HashPassword(pwd string) string {
 }
 
 // IsFolderSelected checks whether a folder (or any parent) is selected for sync.
-// If no folders are checked, root is synced.
+// Opt-out model: All folders are checked/selected by default (true).
+// If a folder or any of its parent folders is explicitly marked false in selected, it is NOT selected.
 func IsFolderSelected(relPath string, selected map[string]bool) bool {
 	if len(selected) == 0 {
-		return true // default sync all if none specified
+		return true // default sync all (opt-out model)
 	}
 
 	clean := filepath.Clean(filepath.ToSlash(relPath))
 	if clean == "." || clean == "" {
+		if val, exists := selected[""]; exists && !val {
+			return false
+		}
+		if val, exists := selected["/"]; exists && !val {
+			return false
+		}
 		return true
 	}
 
-	// Check if the path or any prefix is selected
+	// Check if this path or any parent path was explicitly unchecked (false)
 	parts := strings.Split(clean, "/")
 	curr := ""
 	for _, part := range parts {
@@ -139,10 +146,10 @@ func IsFolderSelected(relPath string, selected map[string]bool) bool {
 		} else {
 			curr = curr + "/" + part
 		}
-		if selected[curr] {
-			return true
+		if val, exists := selected[curr]; exists && !val {
+			return false
 		}
 	}
 
-	return false
+	return true
 }

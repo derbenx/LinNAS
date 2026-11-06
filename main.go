@@ -4277,6 +4277,16 @@ func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Protect root RecycleBin folder from being deleted
+	if cleanRel == "RecycleBin" || cleanRel == "RecycleBin/" {
+		w.WriteHeader(http.StatusBadRequest)
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+			"success": false,
+			"error":   "The RecycleBin root folder cannot be deleted.",
+		})
+		return
+	}
+
 	// Check file lock
 	if !acquireCloudFileLock(cleanRel) {
 		w.WriteHeader(http.StatusConflict)
@@ -4303,7 +4313,7 @@ func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
 	baseName := filepath.Base(cleanRel)
 
 	// If the file is already inside RecycleBin, PERMANENTLY delete it without re-recycling
-	if strings.HasPrefix(cleanRel, "RecycleBin") || strings.HasPrefix(cleanRel, "RecycleBin/") {
+	if strings.HasPrefix(cleanRel, "RecycleBin/") {
 		if err := os.RemoveAll(targetFile); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": err.Error()})
@@ -4327,7 +4337,12 @@ func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
 	backupPath := filepath.Join(recycleDir, backupName)
 
 	if err := os.Rename(targetFile, backupPath); err != nil {
-		// If rename fails (e.g. cross-device, or permissions), try copy and remove
+		if fi.IsDir() {
+			w.WriteHeader(http.StatusInternalServerError)
+			sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{"success": false, "error": fmt.Sprintf("failed to move directory to RecycleBin: %v", err)})
+			return
+		}
+		// If file rename fails (e.g. cross-device), copy and remove
 		data, readErr := os.ReadFile(targetFile)
 		if readErr == nil {
 			_ = os.WriteFile(backupPath, data, 0644)

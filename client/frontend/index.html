@@ -695,15 +695,30 @@
         const dirs = await window.go.main.App.FetchServerFolders();
         container.innerHTML = '';
 
+        // Helper: check if a folder is enabled under opt-out model
+        function isFolderActive(relPath) {
+          if (!relPath) return selectedFoldersMap[''] !== false && selectedFoldersMap['/'] !== false;
+          const parts = relPath.split('/');
+          let cur = '';
+          for (const p of parts) {
+            cur = cur ? cur + '/' + p : p;
+            if (selectedFoldersMap[cur] === false) return false;
+          }
+          return true;
+        }
+
         const rootChk = document.createElement('label');
         rootChk.className = 'folder-item';
-        const isRootChecked = Object.keys(selectedFoldersMap).length === 0;
-        rootChk.innerHTML = `<input type="checkbox" ${isRootChecked ? 'checked' : ''}> 📁 / (Root Cloud Folder - Sync Everything)`;
+        const isRootActive = isFolderActive('');
+        rootChk.innerHTML = `<input type="checkbox" ${isRootActive ? 'checked' : ''}> 📁 / (Root Cloud Folder - Sync Everything)`;
         rootChk.querySelector('input').onchange = (e) => {
           if (e.target.checked) {
-            selectedFoldersMap = {};
-            refreshFolders();
+            delete selectedFoldersMap[''];
+            delete selectedFoldersMap['/'];
+          } else {
+            selectedFoldersMap[''] = false;
           }
+          refreshFolders();
         };
         container.appendChild(rootChk);
 
@@ -711,20 +726,22 @@
           dirs.forEach(d => {
             const row = document.createElement('label');
             row.className = 'folder-item';
-            const checked = !!selectedFoldersMap[d.rel_path];
+            const checked = isFolderActive(d.rel_path);
             row.innerHTML = `<input type="checkbox" ${checked ? 'checked' : ''}> 📁 ${d.rel_path}`;
             row.querySelector('input').onchange = (e) => {
               if (e.target.checked) {
-                selectedFoldersMap[d.rel_path] = true;
+                delete selectedFoldersMap[d.rel_path];
+                // Also ensure parents are not opted-out
                 const parts = d.rel_path.split('/');
                 let cur = '';
                 parts.forEach(p => {
                   cur = cur ? cur + '/' + p : p;
-                  selectedFoldersMap[cur] = true;
+                  delete selectedFoldersMap[cur];
                 });
               } else {
-                delete selectedFoldersMap[d.rel_path];
+                selectedFoldersMap[d.rel_path] = false;
               }
+              refreshFolders();
             };
             container.appendChild(row);
           });
