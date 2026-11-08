@@ -713,9 +713,17 @@ func (s *SyncEngine) PerformSync(password string) error {
 		lInfo, statErr := os.Stat(localPath)
 
 		if os.IsNotExist(statErr) {
+			// Special case: if user deleted the root RecycleBin directory locally, do not propagate delete to server.
+			// The RecycleBin folder cannot be deleted; it will be re-created/restored from server in Step C.
+			if relPath == "RecycleBin" || relPath == "RecycleBin/" {
+				delete(s.manifest, relPath)
+				continue
+			}
+
 			// File is missing locally
 			if !tf.Deleted {
-				// User deleted it locally -> record deletion and inform server
+				// If a file inside RecycleBin was deleted by user, it permanently deletes from server
+				// Otherwise, user deleted normal file -> record deletion and inform server (which moves it to RecycleBin)
 				nowUnix := time.Now().Unix()
 				s.writeClientDebugLog("Detected local deletion: %s. Propagating delete to server.", relPath)
 				s.SetStatus(fmt.Sprintf("Syncing deletion of %s...", filepath.Base(relPath)))
@@ -761,9 +769,14 @@ func (s *SyncEngine) PerformSync(password string) error {
 			// Only delete if file was tracked by client before the deletion occurred
 			// and has not been un-deleted/placed back by the user
 			if wasTracked && !tracked.Deleted && normalizedLocalMod <= delTime {
-				s.writeClientDebugLog("Server deleted file: %s (deletedAt=%d). Moving local copy to RecycleBin.", delRel, delTime)
-				s.SetStatus(fmt.Sprintf("Archiving deleted file %s...", filepath.Base(delRel)))
-				s.moveLocalToRecycle(localPath, delRel, lInfo)
+				s.writeClientDebugLog("Server deleted file: %s (deletedAt=%d).", delRel, delTime)
+				// If the file is already inside RecycleBin, remove it permanently without re-recycling
+				if strings.HasPrefix(delRel, "RecycleBin/") || delRel == "RecycleBin" {
+					_ = os.Remove(localPath)
+				} else {
+					s.SetStatus(fmt.Sprintf("Archiving deleted file %s...", filepath.Base(delRel)))
+					s.moveLocalToRecycle(localPath, delRel, lInfo)
+				}
 				s.manifestMu.Lock()
 				s.manifest[delRel] = TrackedFile{RelPath: delRel, Deleted: true, DeletedAt: delTime}
 				s.manifestMu.Unlock()
@@ -818,8 +831,12 @@ func (s *SyncEngine) PerformSync(password string) error {
 			normalizedLocalMod := NormalizeClientModTime(localInfo.ModTime().Unix(), clockOffset)
 			// If previously marked deleted, ensure local file was actually modified after deletion
 			if wasTracked && tracked.Deleted && localInfo.ModTime().Unix() <= tracked.DeletedAt {
-				// File was restored by accident or pending delete; archive it
-				s.moveLocalToRecycle(localPath, sItem.RelPath, localInfo)
+				// File was restored by accident or pending delete; archive it (or remove if in RecycleBin)
+				if strings.HasPrefix(sItem.RelPath, "RecycleBin/") {
+					_ = os.Remove(localPath)
+				} else {
+					s.moveLocalToRecycle(localPath, sItem.RelPath, localInfo)
+				}
 			} else if sItem.ModTime > normalizedLocalMod {
 				// Server file is strictly newer than local file
 				shouldDownload = true
@@ -923,6 +940,13 @@ func (s *SyncEngine) PerformSync(password string) error {
 }
 
 func (s *SyncEngine) moveLocalToRecycle(localPath, relPath string, info os.FileInfo) {
+	// Guard against nested RecycleBin
+	cleanRel := filepath.ToSlash(relPath)
+	if strings.HasPrefix(cleanRel, "RecycleBin/") || cleanRel == "RecycleBin" {
+		_ = os.Remove(localPath)
+		return
+	}
+
 	dateTag := time.Now().Format("2006-01-02_150405")
 	baseName := filepath.Base(relPath)
 	relDir := filepath.Dir(relPath)
