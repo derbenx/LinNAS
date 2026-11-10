@@ -48,8 +48,38 @@ Featuring a modular, decoupled plugin architecture, **LinNAS** enables users to 
 ### STORAGE
 - **📁 SMB Shares & Credentials (`smb`)**: Manage Samba shares, user permissions (`pdbedit`), share import, and home directory visibility toggles (`[homes]`).
 - **💾 Local Drives, ISO & VHD (`drive_mount`)**: Mount physical partitions, read-only ISOs, and VHD images with optional SMB user restricted auto-sharing.
+- **☁️ Local Cloud Server (`cloud`)**: Private multi-client file synchronization server with per-folder `.cloud_data` ledgers, clock skew compensation, opt-out selective folder sync, versioned/shared `RecycleBin`, transfer throttling, and Special Root Folder protection policies.
 - **📻 DLNA Server & Caster (`dlna`)**: DLNA 1.5 & UPnP AV media server with dual backends (built-in pure Go engine and MiniDLNA) supporting legacy puck streamers like AudioCast M5, folder selection, and direct casting from the Audio Player.
 - **🔒 VeraCrypt Container Manager (`veracrypt`)**: Mount encrypted VeraCrypt (`.hc`) and TrueCrypt (`.tc`) volumes using `tcplay`.
+
+---
+
+## ☁️ Local Cloud & Desktop Client App
+
+LinNAS includes an end-to-end encrypted private cloud service paired with a lightweight, cross-platform desktop client application (`client/` built in Go and Wails v2):
+
+- **Master Server & Multi-Client Architecture**:
+  - The LinNAS server serves as the master storage repository.
+  - Both server and connected clients maintain independent, unshared `.cloud_data` ledgers inside each folder to track active files, deleted tombstones, and modification histories (capped at 10 entries per file).
+  - The client automatically compares client-server clock offset upon connection and normalizes timestamps to ensure the newest version is always preserved regardless of machine clock skew.
+- **Opt-Out Selective Sync**:
+  - In the client app, folders default to enabled (checked) so newly created directories are automatically synchronized.
+  - Users can opt out of any folder by unchecking it. Unchecking a folder cleanly erases the folder from the client's local PC while keeping the files safe on the server for other clients.
+  - Re-checking an unchecked folder instantly downloads the folder and its contents back from the server.
+- **Shared RecycleBin & Versioning**:
+  - The `RecycleBin/` folder is shared and synchronized across clients.
+  - When files or folders are deleted or overwritten by a client, the server archives timestamped copies into `RecycleBin/` with companion `.restore_info.json` origin metadata for easy recovery.
+  - Deleting files directly from inside `RecycleBin/` permanently deletes them without re-recycling.
+  - The root `RecycleBin/` folder itself is protected from deletion.
+- **Bandwidth Throttling**:
+  - User-configurable transfer speed limiter (Unlimited, 250 KB/s, 500 KB/s, 1 MB/s, 2.5 MB/s, 5 MB/s) in the desktop client.
+- **Special Root Folders**:
+  - Configure folder protection rules in the Server Local Cloud interface:
+    - **Add only**: Allows clients to add new files and subdirectories with unique names. Attempting to overwrite existing files or delete files/folders is disallowed.
+    - **Read only**: Disallows all additions, modifications, and deletions.
+  - When a client detects local changes in protected folders:
+    - In **Read-Only** folders, the client offers to **Move** the files to another location or **Dismiss** (ignoring the file in `.cloud_data` so sync continues smoothly).
+    - In **Add-Only** collision conflicts, the client offers to **Move file**, **Rename file**, or **Rename with prefix** before uploading.
 
 ---
 

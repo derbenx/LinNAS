@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -80,6 +82,14 @@ func (a *App) startup(ctx context.Context) {
 
 	a.engine.onSmartAlert = func(alertMsg string, isTest bool) {
 		a.triggerSmartAlert(alertMsg, isTest)
+	}
+
+	a.engine.onFolderConflict = func(conflict SpecialFolderConflict) {
+		if a.ctx != nil {
+			wailsRuntime.WindowShow(a.ctx)
+			wailsRuntime.WindowUnminimise(a.ctx)
+			wailsRuntime.EventsEmit(a.ctx, "folder-conflict", conflict)
+		}
 	}
 
 	// Start background workers
@@ -310,6 +320,51 @@ func (a *App) CheckSMARTStatus() CombinedSmartData {
 // MuteSmartAlerts mutes alert popups for 12 hours
 func (a *App) MuteSmartAlerts() {
 	a.engine.MuteSmartAlerts(12 * time.Hour)
+}
+
+// DismissFolderConflict marks a conflicting file as ignored in client .cloud_data
+func (a *App) DismissFolderConflict(relPath string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	SetClientFileIgnored(a.cfg.LocalSyncDir, relPath, true)
+	return nil
+}
+
+// MoveConflictFile moves a conflicting file to another local path
+func (a *App) MoveConflictFile(relPath string, targetFolder string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg.LocalSyncDir == "" || relPath == "" || targetFolder == "" {
+		return fmt.Errorf("invalid path parameters")
+	}
+	src := filepath.Join(a.cfg.LocalSyncDir, filepath.FromSlash(relPath))
+	base := filepath.Base(relPath)
+	dest := filepath.Join(targetFolder, base)
+	_ = os.MkdirAll(targetFolder, 0755)
+	if err := os.Rename(src, dest); err != nil {
+		data, rErr := os.ReadFile(src)
+		if rErr != nil {
+			return err
+		}
+		if wErr := os.WriteFile(dest, data, 0644); wErr != nil {
+			return wErr
+		}
+		_ = os.Remove(src)
+	}
+	return nil
+}
+
+// RenameConflictFile renames a conflicting file locally so it can upload with a new name
+func (a *App) RenameConflictFile(relPath string, newBaseName string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg.LocalSyncDir == "" || relPath == "" || newBaseName == "" {
+		return fmt.Errorf("invalid path parameters")
+	}
+	src := filepath.Join(a.cfg.LocalSyncDir, filepath.FromSlash(relPath))
+	dir := filepath.Dir(src)
+	dest := filepath.Join(dir, newBaseName)
+	return os.Rename(src, dest)
 }
 
 // GetStartupOnBoot returns whether run on startup is enabled
