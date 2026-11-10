@@ -560,6 +560,18 @@
     </div>
   </div>
 
+  <!-- Special Folder Conflict Modal -->
+  <div id="conflictModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 20000; align-items: center; justify-content: center;">
+    <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 480px; max-width: 90vw; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);">
+      <div style="font-size: 1rem; font-weight: 700; color: #f85149; display: flex; align-items: center; gap: 8px;">
+        <span>⚠️</span> <span id="conflictModalTitle">Special Folder Sync Conflict</span>
+      </div>
+      <div id="conflictModalMsg" style="font-size: 0.85rem; color: #c9d1d9; line-height: 1.4;"></div>
+      <div id="conflictModalInputs" style="display: flex; flex-direction: column; gap: 8px;"></div>
+      <div id="conflictModalButtons" class="btn-row" style="justify-content: flex-end; margin-top: 10px;"></div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toastContainer"></div>
 
@@ -920,6 +932,91 @@
       }
     }
 
+    function handleFolderConflict(conflict) {
+      const modal = document.getElementById('conflictModal');
+      const title = document.getElementById('conflictModalTitle');
+      const msg = document.getElementById('conflictModalMsg');
+      const inputs = document.getElementById('conflictModalInputs');
+      const btns = document.getElementById('conflictModalButtons');
+
+      inputs.innerHTML = '';
+      btns.innerHTML = '';
+      msg.innerText = conflict.message || 'A conflict occurred while syncing this file.';
+
+      const baseName = conflict.rel_path.split('/').pop();
+
+      if (conflict.rule === 'read_only') {
+        title.innerText = 'Read-Only Folder Warning';
+        btns.innerHTML = `
+          <button class="btn" id="btnDismiss">Dismiss</button>
+          <button class="btn btn-primary" id="btnMoveAll">Move</button>
+        `;
+        document.getElementById('btnDismiss').onclick = async () => {
+          modal.style.display = 'none';
+          if (window.go && window.go.main && window.go.main.App) {
+            await window.go.main.App.DismissFolderConflict(conflict.rel_path);
+            showToast(`Ignored '${baseName}'`, 'info');
+          }
+        };
+        document.getElementById('btnMoveAll').onclick = async () => {
+          if (window.go && window.go.main && window.go.main.App) {
+            const dest = await window.go.main.App.PickDirectory();
+            if (dest) {
+              await window.go.main.App.MoveConflictFile(conflict.rel_path, dest);
+              modal.style.display = 'none';
+              showToast(`Moved '${baseName}' to ${dest}`, 'success');
+              syncNow();
+            }
+          }
+        };
+      } else if (conflict.rule === 'add_only') {
+        title.innerText = 'Add-Only Folder Overwrite Conflict';
+        inputs.innerHTML = `
+          <div class="form-group">
+            <label>New file name or prefix:</label>
+            <input type="text" id="renameInput" value="copy_${baseName}">
+          </div>
+        `;
+        btns.innerHTML = `
+          <button class="btn" id="btnMoveFile">Move file</button>
+          <button class="btn" id="btnRenamePrefix">Rename with prefix</button>
+          <button class="btn btn-primary" id="btnRenameFile">Rename file</button>
+        `;
+        document.getElementById('btnMoveFile').onclick = async () => {
+          if (window.go && window.go.main && window.go.main.App) {
+            const dest = await window.go.main.App.PickDirectory();
+            if (dest) {
+              await window.go.main.App.MoveConflictFile(conflict.rel_path, dest);
+              modal.style.display = 'none';
+              showToast(`Moved '${baseName}' to ${dest}`, 'success');
+              syncNow();
+            }
+          }
+        };
+        document.getElementById('btnRenameFile').onclick = async () => {
+          const newName = document.getElementById('renameInput').value.trim();
+          if (!newName) return;
+          if (window.go && window.go.main && window.go.main.App) {
+            await window.go.main.App.RenameConflictFile(conflict.rel_path, newName);
+            modal.style.display = 'none';
+            showToast(`Renamed to '${newName}'`, 'success');
+            syncNow();
+          }
+        };
+        document.getElementById('btnRenamePrefix').onclick = async () => {
+          const prefix = prompt('Enter prefix for file name:', 'client_') || 'client_';
+          const newName = prefix + baseName;
+          if (window.go && window.go.main && window.go.main.App) {
+            await window.go.main.App.RenameConflictFile(conflict.rel_path, newName);
+            modal.style.display = 'none';
+            showToast(`Renamed to '${newName}'`, 'success');
+            syncNow();
+          }
+        };
+      }
+      modal.style.display = 'flex';
+    }
+
     // Wails runtime event listeners
     window.addEventListener('DOMContentLoaded', async () => {
       loadConfig();
@@ -963,6 +1060,10 @@
 
         window.runtime.EventsOn('sync-toggle', (enabled) => {
           document.getElementById('syncEnabled').checked = enabled;
+        });
+
+        window.runtime.EventsOn('folder-conflict', (conflict) => {
+          handleFolderConflict(conflict);
         });
       }
     });

@@ -220,6 +220,29 @@
         </div>
     </div>
 
+    <!-- Special Root Folders Card -->
+    <div class="card" style="margin-top: 18px;">
+        <div class="card-header">
+            <h3>Special Root Folders</h3>
+        </div>
+        <p style="font-size: 0.85rem; color: #8b949e; margin-bottom: 14px;">
+            Configure custom protection rules for specific cloud folders. <strong>"Add only"</strong> allows adding new files with unique names while preventing overwriting or deleting existing data. <strong>"Read only"</strong> prevents all additions, modifications, and deletions.
+        </p>
+
+        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 16px;">
+            <input type="text" id="specialFolderName" placeholder="Folder name (e.g. photos, archive)" style="max-width: 250px; padding: 6px 10px; font-size: 0.85rem; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #c9d1d9;">
+            <select id="specialFolderRule" style="padding: 6px 10px; font-size: 0.85rem; border-radius: 6px; border: 1px solid #30363d; background: #0d1117; color: #c9d1d9;">
+                <option value="add_only">Add only</option>
+                <option value="read_only">Read only</option>
+            </select>
+            <button class="btn btn-secondary" onclick="addSpecialFolderRule()">➕ Add / Update Rule</button>
+        </div>
+
+        <div id="specialFoldersList" style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="font-size: 0.82rem; color: #8b949e;">No special folder rules configured.</div>
+        </div>
+    </div>
+
 
     <!-- Folder Browser Modal with New Folder Button -->
     <div id="folderModal" class="modal">
@@ -391,9 +414,78 @@
                 document.getElementById('infoLocks').innerText = `${data.active_file_locks || 0} in-use`;
                 document.getElementById('infoEndpoint').innerText = data.server_endpoint || '--';
 
+                if (data.special_folders) {
+                    specialFolders = data.special_folders;
+                    renderSpecialFolders();
+                }
 
             } catch (err) {
                 console.error('Error fetching cloud status:', err);
+            }
+        }
+
+        let specialFolders = {};
+
+        function renderSpecialFolders() {
+            const list = document.getElementById('specialFoldersList');
+            if (!list) return;
+            const entries = Object.entries(specialFolders || {});
+            if (entries.length === 0) {
+                list.innerHTML = '<div style="font-size: 0.82rem; color: #8b949e;">No special folder rules configured.</div>';
+                return;
+            }
+            list.innerHTML = '';
+            entries.forEach(([folder, rule]) => {
+                const row = document.createElement('div');
+                row.style.display = 'flex';
+                row.style.alignItems = 'center';
+                row.style.justifyContent = 'space-between';
+                row.style.padding = '8px 12px';
+                row.style.background = '#0d1117';
+                row.style.border = '1px solid #30363d';
+                row.style.borderRadius = '6px';
+                row.style.fontSize = '0.85rem';
+
+                const ruleLabel = (rule === 'add_only') ? 'Add only (append-only)' : 'Read only';
+                const ruleColor = (rule === 'add_only') ? '#58a6ff' : '#d29922';
+
+                row.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-weight: 600; color: #f0f6fc;">📁 ${folder}</span>
+                        <span style="font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: rgba(88, 166, 255, 0.1); border: 1px solid ${ruleColor}; color: ${ruleColor}; font-weight: 600;">${ruleLabel}</span>
+                    </div>
+                    <button class="btn btn-danger" style="padding: 3px 8px; font-size: 0.75rem;" onclick="removeSpecialFolderRule('${folder}')">🗑️ Remove</button>
+                `;
+                list.appendChild(row);
+            });
+        }
+
+        async function addSpecialFolderRule() {
+            const input = document.getElementById('specialFolderName');
+            const ruleSelect = document.getElementById('specialFolderRule');
+            const folder = input.value.trim().replace(/^[\/\\]+|[\/\\]+$/g, '');
+            if (!folder) return;
+            specialFolders[folder] = ruleSelect.value;
+            input.value = '';
+            renderSpecialFolders();
+            await saveSpecialFoldersConfig();
+        }
+
+        async function removeSpecialFolderRule(folder) {
+            delete specialFolders[folder];
+            renderSpecialFolders();
+            await saveSpecialFoldersConfig();
+        }
+
+        async function saveSpecialFoldersConfig() {
+            try {
+                await fetch('/api/cloud/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ special_folders: specialFolders })
+                });
+            } catch (err) {
+                console.error('Failed to save special folders:', err);
             }
         }
 

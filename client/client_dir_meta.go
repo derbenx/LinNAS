@@ -43,8 +43,10 @@ type ClientHistoryEntry struct {
 type ClientDirMeta struct {
 	Directory string                    `json:"directory"`
 	LastScan  string                    `json:"last_scan"`
+	Rule      string                    `json:"rule,omitempty"`
 	Files     map[string]ClientMetaFile `json:"files"`
 	Deleted   map[string]int64          `json:"deleted,omitempty"` // basename -> deleted_at unix timestamp
+	Ignored   map[string]bool           `json:"ignored,omitempty"` // basename -> true if user ignored/dismissed
 	Ledger    []ClientLedgerEntry       `json:"ledger,omitempty"`
 	History   []ClientHistoryEntry      `json:"history,omitempty"`
 }
@@ -106,6 +108,9 @@ func loadClientDirMeta(rootFolder, relSubdir string) ClientDirMeta {
 		}
 		if meta.Deleted == nil {
 			meta.Deleted = make(map[string]int64)
+		}
+		if meta.Ignored == nil {
+			meta.Ignored = make(map[string]bool)
 		}
 		if meta.Ledger == nil {
 			meta.Ledger = make([]ClientLedgerEntry, 0)
@@ -188,6 +193,44 @@ func LoadAllClientMeta(rootFolder string) map[string]TrackedFile {
 		return nil
 	})
 	return manifest
+}
+
+// IsClientFileIgnored checks if a file is marked ignored in its folder's .cloud_data
+func IsClientFileIgnored(rootFolder, relPath string) bool {
+	if rootFolder == "" || relPath == "" {
+		return false
+	}
+	relSlash := filepath.ToSlash(relPath)
+	relDir := filepath.Dir(relSlash)
+	if relDir == "." {
+		relDir = ""
+	}
+	baseName := filepath.Base(relSlash)
+	meta := loadClientDirMeta(rootFolder, relDir)
+	return meta.Ignored != nil && meta.Ignored[baseName]
+}
+
+// SetClientFileIgnored marks a file as ignored in its folder's .cloud_data
+func SetClientFileIgnored(rootFolder, relPath string, ignored bool) {
+	if rootFolder == "" || relPath == "" {
+		return
+	}
+	relSlash := filepath.ToSlash(relPath)
+	relDir := filepath.Dir(relSlash)
+	if relDir == "." {
+		relDir = ""
+	}
+	baseName := filepath.Base(relSlash)
+	meta := loadClientDirMeta(rootFolder, relDir)
+	if meta.Ignored == nil {
+		meta.Ignored = make(map[string]bool)
+	}
+	if ignored {
+		meta.Ignored[baseName] = true
+	} else {
+		delete(meta.Ignored, baseName)
+	}
+	_ = saveClientDirMeta(rootFolder, relDir, meta)
 }
 
 // RecordClientFileUpdate updates the per-folder .cloud_data file for a given file action

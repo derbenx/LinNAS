@@ -142,10 +142,11 @@ var (
 )
 
 type CloudConfig struct {
-	Enabled    bool   `json:"enabled"`
-	Folder     string `json:"folder"`
-	VolumeUUID string `json:"volume_uuid"`
-	UpdatedAt  string `json:"updated_at,omitempty"`
+	Enabled        bool              `json:"enabled"`
+	Folder         string            `json:"folder"`
+	VolumeUUID     string            `json:"volume_uuid"`
+	SpecialFolders map[string]string `json:"special_folders,omitempty"`
+	UpdatedAt      string            `json:"updated_at,omitempty"`
 }
 
 type CloudMetaFile struct {
@@ -188,6 +189,7 @@ type CloudDirMeta struct {
 	ServerMAC   string                       `json:"server_mac"`
 	VolumeUUID  string                       `json:"volume_uuid"`
 	LastScan    string                       `json:"last_scan"`
+	Rule        string                       `json:"rule,omitempty"`
 	Files       map[string]CloudMetaFile     `json:"files"`
 	Deleted     map[string]int64             `json:"deleted,omitempty"` // basename -> deleted_at unix timestamp
 	Ledger      []CloudLedgerEntry           `json:"ledger,omitempty"`
@@ -3180,6 +3182,23 @@ func getCloudMetaFilePath(rootFolder, relSubdir string) string {
 
 const cloudDataHeader = "# DO NOT DELETE - this file is used by LinNAS Cloud #\n"
 
+func getSpecialFolderRule(relPath string) string {
+	cloudConfigMu.RLock()
+	defer cloudConfigMu.RUnlock()
+	if len(cloudConfig.SpecialFolders) == 0 {
+		return ""
+	}
+	clean := filepath.ToSlash(relPath)
+	parts := strings.Split(clean, "/")
+	if len(parts) > 0 {
+		rootSeg := parts[0]
+		if rule, ok := cloudConfig.SpecialFolders[rootSeg]; ok {
+			return rule
+		}
+	}
+	return ""
+}
+
 func loadCloudDirMeta(rootFolder, relSubdir string) CloudDirMeta {
 	var meta CloudDirMeta
 	meta.Directory = relSubdir
@@ -3189,6 +3208,7 @@ func loadCloudDirMeta(rootFolder, relSubdir string) CloudDirMeta {
 	meta.Deleted = make(map[string]int64)
 	meta.Ledger = make([]CloudLedgerEntry, 0)
 	meta.History = make([]CloudHistoryEntry, 0)
+	meta.Rule = getSpecialFolderRule(relSubdir)
 
 	// Check .cloud_data in the actual directory first
 	targetDir := rootFolder
@@ -3253,6 +3273,9 @@ func cleanCloudLedger(entries []CloudLedgerEntry) []CloudLedgerEntry {
 func saveCloudDirMeta(rootFolder, relSubdir string, meta CloudDirMeta) error {
 	meta.LastScan = time.Now().Format(time.RFC3339)
 	meta.Ledger = cleanCloudLedger(meta.Ledger)
+	if meta.Rule == "" {
+		meta.Rule = getSpecialFolderRule(relSubdir)
+	}
 	b, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return err
@@ -3369,6 +3392,7 @@ func handleCloudStatus(w http.ResponseWriter, r *http.Request) {
 		"configured_uuid":    cfg.VolumeUUID,
 		"current_uuid":       currentUUID,
 		"uuid_matches":       cfg.VolumeUUID == "" || cfg.VolumeUUID == currentUUID,
+		"special_folders":    cfg.SpecialFolders,
 		"server_mac":         mac,
 		"server_ip":          primaryIP,
 		"server_port":        appConfig.Port,
@@ -3653,8 +3677,9 @@ func handleCloudConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Folder  *string `json:"folder"`
-		Enabled *bool   `json:"enabled"`
+		Folder         *string            `json:"folder"`
+		Enabled        *bool              `json:"enabled"`
+		SpecialFolders *map[string]string `json:"special_folders"`
 	}
 	if err := json.Unmarshal(decryptedBody, &req); err != nil {
 		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
@@ -3710,6 +3735,10 @@ func handleCloudConfig(w http.ResponseWriter, r *http.Request) {
 				newCfg.VolumeUUID = curUUID
 			}
 		}
+	}
+
+	if req.SpecialFolders != nil {
+		newCfg.SpecialFolders = *req.SpecialFolders
 	}
 
 	if err := saveCloudConfig(newCfg); err != nil {
@@ -3918,13 +3947,18 @@ func handleCloudList(w http.ResponseWriter, r *http.Request) {
 		return ledgerItems[i].Timestamp < ledgerItems[j].Timestamp
 	})
 
+	cloudConfigMu.RLock()
+	specFolders := cloudConfig.SpecialFolders
+	cloudConfigMu.RUnlock()
+
 	jsonResponse(w, map[string]interface{}{
-		"success":   true,
-		"path":      cleanRel,
-		"items":     items,
-		"deleted":   deletedItems,
-		"ledger":    ledgerItems,
-		"timestamp": time.Now().Unix(),
+		"success":         true,
+		"path":            cleanRel,
+		"items":           items,
+		"deleted":         deletedItems,
+		"ledger":          ledgerItems,
+		"special_folders": specFolders,
+		"timestamp":       time.Now().Unix(),
 	})
 }
 
@@ -4010,6 +4044,19 @@ func handleCloudSave(w http.ResponseWriter, r *http.Request) {
 	baseName := filepath.Base(cleanRel)
 	dirMeta := loadCloudDirMeta(rootFolder, relDir)
 
+	// Enforce Special Root Folder rules (read_only and add_only)
+	folderRule := getSpecialFolderRule(cleanRel)
+	if folderRule == "read_only" {
+		w.WriteHeader(http.StatusForbidden)
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+			"success": false,
+			"error":   "Folder is configured as Read-Only. Adding or modifying files is disallowed.",
+			"status":  "read_only",
+			"path":    cleanRel,
+		})
+		return
+	}
+
 	// Server clock normalization: adjust incoming client modTime based on client-to-server clock offset
 	nowServer := time.Now().Unix()
 	effectiveModTime := req.ModTime
@@ -4027,6 +4074,17 @@ func handleCloudSave(w http.ResponseWriter, r *http.Request) {
 	// Check if file already exists
 	existingInfo, err := os.Stat(targetFile)
 	if err == nil && !existingInfo.IsDir() {
+		if folderRule == "add_only" {
+			w.WriteHeader(http.StatusConflict)
+			sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+				"success": false,
+				"error":   "Folder is configured as Add-Only. Existing file cannot be overwritten.",
+				"status":  "file_exists",
+				"path":    cleanRel,
+			})
+			return
+		}
+
 		existingModTime := existingInfo.ModTime().Unix()
 
 		// Date comparison: if incoming file is older than server's file and not forced
@@ -4304,6 +4362,18 @@ func handleCloudDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enforce Special Root Folder rules: prevent deletions in read_only or add_only
+	delRule := getSpecialFolderRule(cleanRel)
+	if delRule == "read_only" || delRule == "add_only" {
+		w.WriteHeader(http.StatusForbidden)
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Folder is configured as '%s'. Deletion is disallowed.", delRule),
+			"status":  "forbidden",
+		})
+		return
+	}
+
 	// Protect root RecycleBin folder from being deleted
 	if cleanRel == "RecycleBin" || cleanRel == "RecycleBin/" {
 		w.WriteHeader(http.StatusBadRequest)
@@ -4489,6 +4559,16 @@ func handleCloudMkdir(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		jsonResponse(w, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+
+	if getSpecialFolderRule(cleanRel) == "read_only" {
+		w.WriteHeader(http.StatusForbidden)
+		sendCloudJSONResponse(w, r, aesKey, map[string]interface{}{
+			"success": false,
+			"error":   "Folder is configured as Read-Only. Cannot create subdirectories.",
+			"status":  "read_only",
+		})
 		return
 	}
 

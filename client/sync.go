@@ -29,23 +29,34 @@ type SmartDiskInfo struct {
 	RawInfo       string `json:"raw_info,omitempty"`
 }
 
+type SpecialFolderConflict struct {
+	RelPath  string `json:"rel_path"`
+	Folder   string `json:"folder"`
+	Rule     string `json:"rule"`     // "read_only" or "add_only"
+	Conflict string `json:"conflict"` // "read_only_local" or "file_exists"
+	Message  string `json:"message"`
+}
+
 type SyncEngine struct {
-	cfg          ClientConfig
-	crypto       *ClientCrypto
-	httpClient   *http.Client
-	cookieJar    *cookiejar.Jar
-	syncLock     sync.Mutex
-	isLoggedIn   bool
-	stopChan     chan struct{}
-	lastActive   time.Time
-	statusMsg    string
-	statusMu     sync.RWMutex
-	onStatus     func(string)
-	onSmartAlert func(alertMsg string, isTest bool)
-	smartMuteUntil time.Time
-	smartMuteMu    sync.RWMutex
-	manifest     map[string]TrackedFile // relPath -> tracked state
-	manifestMu   sync.Mutex
+	cfg              ClientConfig
+	crypto           *ClientCrypto
+	httpClient       *http.Client
+	cookieJar        *cookiejar.Jar
+	syncLock         sync.Mutex
+	isLoggedIn       bool
+	stopChan         chan struct{}
+	lastActive       time.Time
+	statusMsg        string
+	statusMu         sync.RWMutex
+	onStatus         func(string)
+	onSmartAlert     func(alertMsg string, isTest bool)
+	onFolderConflict func(conflict SpecialFolderConflict)
+	smartMuteUntil   time.Time
+	smartMuteMu      sync.RWMutex
+	manifest         map[string]TrackedFile // relPath -> tracked state
+	manifestMu       sync.Mutex
+	specialRules     map[string]string      // root folder -> "add_only" or "read_only"
+	specialRulesMu   sync.RWMutex
 }
 
 type TrackedFile struct {
@@ -95,14 +106,15 @@ func NewSyncEngine(cfg ClientConfig) (*SyncEngine, error) {
 		serverURL = "http://" + serverURL
 	}
 	engine := &SyncEngine{
-		cfg:        cfg,
-		crypto:     NewClientCrypto(serverURL),
-		httpClient: client,
-		cookieJar:  jar,
-		stopChan:   make(chan struct{}),
-		lastActive: time.Now(),
-		statusMsg:  "Idle",
-		manifest:   make(map[string]TrackedFile),
+		cfg:          cfg,
+		crypto:       NewClientCrypto(serverURL),
+		httpClient:   client,
+		cookieJar:    jar,
+		stopChan:     make(chan struct{}),
+		lastActive:   time.Now(),
+		statusMsg:    "Idle",
+		manifest:     make(map[string]TrackedFile),
+		specialRules: make(map[string]string),
 	}
 	engine.loadManifest()
 	return engine, nil
@@ -204,6 +216,24 @@ func (s *SyncEngine) IsSmartAlertMuted() bool {
 	s.smartMuteMu.RLock()
 	defer s.smartMuteMu.RUnlock()
 	return time.Now().Before(s.smartMuteUntil)
+}
+
+// GetSpecialFolderRule checks if relPath is governed by a special root folder rule
+func (s *SyncEngine) GetSpecialFolderRule(relPath string) (folder string, rule string) {
+	s.specialRulesMu.RLock()
+	defer s.specialRulesMu.RUnlock()
+	if len(s.specialRules) == 0 {
+		return "", ""
+	}
+	cleanRel := filepath.ToSlash(relPath)
+	parts := strings.Split(cleanRel, "/")
+	if len(parts) > 0 {
+		rootSeg := parts[0]
+		if r, ok := s.specialRules[rootSeg]; ok {
+			return rootSeg, r
+		}
+	}
+	return "", ""
 }
 
 func (s *SyncEngine) UpdateConfig(cfg ClientConfig) {
@@ -664,12 +694,13 @@ func (s *SyncEngine) PerformSync(password string) error {
 	}
 
 	var listData struct {
-		Success   bool                `json:"success"`
-		Items     []ServerItem        `json:"items"`
-		Deleted   []ServerDeletedItem `json:"deleted"`
-		Ledger    []ServerLedgerEntry `json:"ledger"`
-		Timestamp int64               `json:"timestamp"` // Server system timestamp
-		Error     string              `json:"error,omitempty"`
+		Success        bool                `json:"success"`
+		Items          []ServerItem        `json:"items"`
+		Deleted        []ServerDeletedItem `json:"deleted"`
+		Ledger         []ServerLedgerEntry `json:"ledger"`
+		SpecialFolders map[string]string   `json:"special_folders,omitempty"`
+		Timestamp      int64               `json:"timestamp"` // Server system timestamp
+		Error          string              `json:"error,omitempty"`
 	}
 	if err := json.Unmarshal(bodyBytes, &listData); err != nil {
 		s.writeClientDebugLog("PerformSync unmarshal error: %v", err)
@@ -680,6 +711,15 @@ func (s *SyncEngine) PerformSync(password string) error {
 		s.SetStatus("Server error: " + listData.Error)
 		return fmt.Errorf("server reported error: %s", listData.Error)
 	}
+
+	s.specialRulesMu.Lock()
+	s.specialRules = make(map[string]string)
+	if listData.SpecialFolders != nil {
+		for k, v := range listData.SpecialFolders {
+			s.specialRules[k] = v
+		}
+	}
+	s.specialRulesMu.Unlock()
 
 	// Calculate client-to-server clock offset to compare timestamps accurately
 	nowClient := time.Now().Unix()
@@ -890,6 +930,31 @@ func (s *SyncEngine) PerformSync(password string) error {
 			return nil
 		}
 
+		// Check if file is ignored by user dismissal
+		if IsClientFileIgnored(s.cfg.LocalSyncDir, relSlash) {
+			return nil
+		}
+
+		sFolder, sRule := s.GetSpecialFolderRule(relSlash)
+		if sRule == "read_only" {
+			// Read only folder: client cannot add or modify files
+			// Check if file differs or doesn't exist on server
+			sItem, existsOnServer := serverMap[relSlash]
+			if !existsOnServer || sItem.Size != info.Size() {
+				s.writeClientDebugLog("Read-only folder violation: %s in folder %s", relSlash, sFolder)
+				if s.onFolderConflict != nil {
+					s.onFolderConflict(SpecialFolderConflict{
+						RelPath:  relSlash,
+						Folder:   sFolder,
+						Rule:     "read_only",
+						Conflict: "read_only_local",
+						Message:  fmt.Sprintf("The folder '%s' is Read-Only on LinNAS. File '%s' cannot be uploaded.", sFolder, baseName),
+					})
+				}
+			}
+			return nil
+		}
+
 		sItem, existsOnServer := serverMap[relSlash]
 		localMod := info.ModTime().Unix()
 		normalizedLocalMod := NormalizeClientModTime(localMod, clockOffset)
@@ -903,7 +968,8 @@ func (s *SyncEngine) PerformSync(password string) error {
 
 		if shouldUpload {
 			s.SetStatus(fmt.Sprintf("Uploading %s...", info.Name()))
-			if err := s.uploadFile(path, relSlash, localMod); err == nil {
+			upErr := s.uploadFile(path, relSlash, localMod)
+			if upErr == nil {
 				s.manifestMu.Lock()
 				s.manifest[relSlash] = TrackedFile{
 					RelPath: relSlash,
@@ -914,8 +980,22 @@ func (s *SyncEngine) PerformSync(password string) error {
 				s.manifestMu.Unlock()
 				RecordClientFileUpdate(s.cfg.LocalSyncDir, relSlash, "uploaded", s.cfg.Username, localMod, info.Size(), "")
 			} else {
-				// Failed upload (e.g. server busy/file locked) is not marked in manifest, staying queued for next interval retry
-				s.writeClientDebugLog("Upload failed for %s: %v (will retry on next sync interval)", relSlash, err)
+				if strings.Contains(upErr.Error(), "file_exists") || strings.Contains(upErr.Error(), "cannot overwrite") {
+					// Add-only folder conflict: file already exists with same name on server
+					s.writeClientDebugLog("Add-only overwrite conflict on %s: %v", relSlash, upErr)
+					if s.onFolderConflict != nil {
+						s.onFolderConflict(SpecialFolderConflict{
+							RelPath:  relSlash,
+							Folder:   sFolder,
+							Rule:     "add_only",
+							Conflict: "file_exists",
+							Message:  fmt.Sprintf("The folder '%s' is Add-Only on LinNAS. File '%s' already exists and cannot be overwritten.", sFolder, baseName),
+						})
+					}
+				} else {
+					// Failed upload (e.g. server busy/file locked) is not marked in manifest, staying queued for next interval retry
+					s.writeClientDebugLog("Upload failed for %s: %v (will retry on next sync interval)", relSlash, err)
+				}
 			}
 			leisurelyDelay()
 		} else {
@@ -1079,14 +1159,23 @@ func (s *SyncEngine) uploadFile(localPath, relPath string, modTime int64) error 
 	respBody, _ := io.ReadAll(resp.Body)
 	decrypted, _ := s.crypto.DecryptResponse(aesKey, respBody)
 
-	// If conflict_older_version was returned (409), server newer file is in payload
+	if resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("read_only folder: additions or modifications are forbidden")
+	}
+
+	// If conflict_older_version was returned (409) or file_exists
 	if resp.StatusCode == http.StatusConflict {
 		var conflictResp struct {
 			Status        string `json:"status"`
+			Error         string `json:"error"`
 			ServerModTime int64  `json:"server_mod_time"`
 			ServerFileB64 string `json:"server_file_b64"`
 		}
-		if json.Unmarshal(decrypted, &conflictResp) == nil && conflictResp.ServerFileB64 != "" {
+		_ = json.Unmarshal(decrypted, &conflictResp)
+		if conflictResp.Status == "file_exists" || strings.Contains(conflictResp.Error, "file_exists") || strings.Contains(conflictResp.Error, "Add-only") {
+			return fmt.Errorf("file_exists: cannot overwrite existing file in add-only folder")
+		}
+		if conflictResp.ServerFileB64 != "" {
 			if sBytes, bErr := base64.StdEncoding.DecodeString(conflictResp.ServerFileB64); bErr == nil {
 				_ = os.WriteFile(localPath, sBytes, 0644)
 				if conflictResp.ServerModTime > 0 {
@@ -1095,6 +1184,11 @@ func (s *SyncEngine) uploadFile(localPath, relPath string, modTime int64) error 
 				}
 			}
 		}
+		return fmt.Errorf("conflict: newer version on server")
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("upload failed with HTTP %d: %s", resp.StatusCode, string(decrypted))
 	}
 
 	return nil
